@@ -1,0 +1,9 @@
+
+PG_HOST=3.79.100.237
+PG_PORT=5432
+PG_DATABASE=postgres
+PG_USER=elias
+PG_PASSWORD=6kR4hjG78!
+PG_DB_APP=fivesanapp
+PG_DB_IOT=fivesaniot
+PG_DB_STATS=fivesanstats

@@ -1,0 +1,5 @@
+DB_HOST = www.sempreanorma.it
+DB_PORT = 3306
+DB_NAME = san
+DB_USER = fivesan
+DB_PASSWORD = sdb36DFWEQfw2w
