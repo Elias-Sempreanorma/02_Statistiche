@@ -64,8 +64,14 @@ data <- measurements |>
     offset = as.numeric(str_match(value_string, '"offset"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)')[, 2])) |>
   select(-c(value_string, value_number, value_int, value_bool))
 
+# unico i dati alla tabella coi progetti e vds per cds
 raw_data <- progetti_componenti_b10d_san |>
-  inner_join(data, by = c("cds" = "sensor_name", "coupon"))
+  inner_join(data, by = c("cds" = "sensor_name", "coupon")) |>
+  select(company= azienda, field= stabilimento, project = progetto, coupon, machine_name, machine_serial_number,
+         gateway_name, cds_name = cds, cds_description = descrizione, cds_brand = marca,
+         cds_code = codice, cds_use = utilizzo, cds_vds= b10dsan, sensor_id, sensor_description, sensor_type,
+         timestamp, value_type, status, count, offset)
   
 # salvo i dati in formato R
 saveRDS(raw_data, here("02_Output", "raw_data.rds"))
+

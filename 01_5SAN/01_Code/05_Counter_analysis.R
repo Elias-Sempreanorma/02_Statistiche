@@ -12,11 +12,11 @@ raw_data <- readRDS(here("02_Output", "raw_data.rds"))
 # Per ogni sensore confrontiamo il contatore
 # con la rilevazione precedente.
 controllo_count <- raw_data |>
-  group_by(coupon, gateway_name, sensor_id) |>
+  group_by(coupon, gateway_name, cds_name) |>
   arrange(timestamp, .by_group = TRUE) |>
   mutate(
     timestamp_precedente = lag(timestamp),
-    count_precedente = lag(count),
+    count_precedente = coalesce(lag(count), count),
     
     # Differenza grezza del contatore cumulativo
     differenza_count = count - count_precedente,
@@ -43,15 +43,41 @@ count_invariato <- controllo_count |>
 
 # Classificazione semplice del comportamento del contatore.
 # Non stiamo ancora eliminando o modificando valori.
-controllo_count <- controllo_count |>
+controllo_count <- raw_data |>
+  group_by(coupon, gateway_name, cds_name) |>
+  arrange(timestamp, .by_group = TRUE) |>
   mutate(
+    timestamp_precedente = lag(timestamp),
+    
+    # Sulla prima riga uso il count stesso.
+    # Quindi la prima differenza è sempre 0.
+    count_precedente = if_else(
+      is.na(timestamp_precedente),
+      count,
+      lag(count)
+    ),
+    
+    differenza_count = count - count_precedente,
+    
+    intervallo_secondi = as.numeric(
+      difftime(timestamp, timestamp_precedente, units = "secs")
+    ),
+    
     tipo_movimento_count = case_when(
-      is.na(differenza_count) ~ "prima_rilevazione",
+      is.na(timestamp_precedente) ~ "prima_rilevazione",
       differenza_count > 0 ~ "aumento",
       differenza_count == 0 ~ "invariato",
       differenza_count < 0 ~ "diminuzione"
+    ),
+    
+    attivazioni = case_when(
+      tipo_movimento_count == "prima_rilevazione" ~ 0,
+      tipo_movimento_count == "aumento" ~ differenza_count,
+      tipo_movimento_count == "invariato" ~ 0,
+      tipo_movimento_count == "diminuzione" ~ NA_real_
     )
-  )
+  ) |>
+  ungroup()
 
 # Aggiungiamo il tipo di intervallo del gateway:
 # normale, grande, piccolissimo, anomalo_intermedio, ecc.
@@ -81,8 +107,7 @@ controllo_count_sensore <- controllo_count |>
   ) |>
   select(
     coupon, machine_name, gateway_name,
-    sensor_id, sensor_name,
-    timestamp_precedente, timestamp,
+    cds_name, timestamp_precedente, timestamp,
     intervallo_secondi, tipo_intervallo,
     count_precedente, count,
     differenza_count, tipo_movimento_count
@@ -107,7 +132,7 @@ count_movimenti_orari <- controllo_count |>
 # Tabella oraria per sensore.
 # Questa sarà la base per giorno e settimana.
 sensore_orario <- count_movimenti_orari |>
-  group_by(coupon, machine_name, gateway_name, sensor_id, sensor_name, ora) |>
+  group_by(coupon, machine_name, gateway_name, cds_name, ora) |>
   summarise(
     attivazioni_orarie = somma_o_na(attivazioni),
     
@@ -125,7 +150,7 @@ sensore_orario <- count_movimenti_orari |>
 # Statistiche giornaliere robuste per sensore
 sensore_giornaliero <- sensore_orario |>
   mutate(giorno = as.Date(ora)) |>
-  group_by(coupon, machine_name, gateway_name, sensor_id, sensor_name, giorno) |>
+  group_by(coupon, machine_name, gateway_name, cds_name, giorno) |>
   summarise(
     attivazioni_totali = somma_o_na(attivazioni_orarie),
     media_oraria = stat_o_na(attivazioni_orarie, mean),
@@ -145,7 +170,7 @@ sensore_giornaliero <- sensore_orario |>
 # La settimana parte da lunedì.
 sensore_settimanale <- sensore_orario |>
   mutate(settimana = floor_date(ora, "week", week_start = 1)) |>
-  group_by(coupon, machine_name, gateway_name, sensor_id, sensor_name, settimana) |>
+  group_by(coupon, machine_name, gateway_name, cds_name, settimana) |>
   summarise(
     attivazioni_totali = somma_o_na(attivazioni_orarie),
     media_oraria = stat_o_na(attivazioni_orarie, mean),
