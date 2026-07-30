@@ -44,6 +44,7 @@ progetti_componenti_b10d_san <- dbGetQuery(
 
 # merge data da measurements, gateway, machine, sensor
 data <- measurements |>
+  filter(timestamp > as.POSIXct("2026-07-27 00:00:00", tz = "Europe/Rome")) |>
   select(timestamp, sensor_id = name, type, value_string, value_int, value_number, value_bool, thing_id) |>
   inner_join(gateway |> 
       left_join(machine |>
@@ -61,17 +62,29 @@ data <- measurements |>
   mutate(
     status = as.numeric(str_match(value_string, '"(?:value|status)"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)')[, 2]),
     count  = as.numeric(str_match(value_string, '"count"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)')[, 2]),
-    offset = as.numeric(str_match(value_string, '"offset"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)')[, 2])) |>
+    offset = as.numeric(str_match(value_string, '"offset"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)')[, 2]),
+    lifetime = as.numeric(str_match(value_string, '"lifetime"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)')[, 2])) |>
   select(-c(value_string, value_number, value_int, value_bool))
+
+# data <- data |>
+#   left_join(uptime, by = c("coupon", "timestamp"))
 
 # unico i dati alla tabella coi progetti e vds per cds
 raw_data <- progetti_componenti_b10d_san |>
   inner_join(data, by = c("cds" = "sensor_name", "coupon")) |>
   select(company= azienda, field= stabilimento, project = progetto, coupon, machine_name, machine_serial_number,
          gateway_name, cds_name = cds, cds_description = descrizione, cds_brand = marca,
-         cds_code = codice, cds_use = utilizzo, cds_vds= b10dsan, sensor_id, sensor_description, sensor_type,
-         timestamp, value_type, status, count, offset)
-  
+         cds_code = codice, cds_use = utilizzo, cds_vds= b10dsan, cds_t10d = 'T10d (anni)', sensor_id, sensor_description, sensor_type,
+         timestamp, value_type, status, count, offset, lifetime)
+
+
+# escludo i componenti di sicurezza non attivi
+raw_data <- raw_data |>
+  filter(
+    !(project == "C14GR" & cds_name %in% c("MB4", "MB6")),
+    !(project == "A3020" & cds_name == "FCM5"),
+    !(project == "E11RI" & cds_name == "FCM8"))
+
 # salvo i dati in formato R
 saveRDS(raw_data, here("02_Output", "raw_data.rds"))
 
