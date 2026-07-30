@@ -6,6 +6,7 @@ library(shinyWidgets)
 library(RColorBrewer)
 library(here)
 library(stringr)
+library(lubridate)
 
 dati <- readRDS(here("02_Output", "sensor_count_increment.rds"))
 
@@ -30,14 +31,58 @@ life_data <- readRDS(here("02_Output", "raw_data.rds")) |>
 sensori_info <- dati |>
   distinct(coupon, cds_name, sensor_description)
 
-# Lista aziende per il primo filtro
+# ---------------------------------------------------------------------------
+# Lookup precalcolati per i filtri a cascata: tabelle piccole, distinct
+# su poche colonne, cosi' gli observeEvent non devono piu' scandire
+# l'intero dataset `dati` ogni volta che cambia un filtro.
+# ---------------------------------------------------------------------------
 company <- dati |>
   distinct(company) |>
   arrange(company) |>
   pull(company)
 
+stabilimenti_lookup <- dati |>
+  distinct(company, field) |>
+  arrange(company, field)
+
+macchine_lookup <- dati |>
+  distinct(company, field, coupon, project, machine_name) |>
+  arrange(company, field, project, machine_name)
+
+sensori_lookup <- dati |>
+  distinct(coupon, cds_name, sensor_description) |>
+  arrange(coupon, cds_name)
+
 data_min <- min(dati$day, na.rm = TRUE)
 data_max <- max(dati$day, na.rm = TRUE)
+
+# ---------------------------------------------------------------------------
+# Helper: raggruppa una data nel periodo scelto (giorno/settimana/mese/...)
+# e restituisce anche un'etichetta leggibile per il facet del grafico
+# ---------------------------------------------------------------------------
+periodo_bucket <- function(day, granularita) {
+  switch(
+    granularita,
+    "Giorno"     = day,
+    "Settimana"  = floor_date(day, "week", week_start = 1),
+    "Mese"       = floor_date(day, "month"),
+    "Trimestre"  = floor_date(day, "quarter"),
+    "Anno"       = floor_date(day, "year"),
+    day
+  )
+}
+
+formatta_periodo_label <- function(periodo, granularita) {
+  as.character(switch(
+    granularita,
+    "Giorno"    = format(periodo, "%d-%m-%Y"),
+    "Settimana" = paste0("Sett. ", format(periodo, "%d-%m-%Y")),
+    "Mese"      = format(periodo, "%b %Y"),
+    "Trimestre" = paste0("Q", quarter(periodo), " ", format(periodo, "%Y")),
+    "Anno"      = format(periodo, "%Y"),
+    format(periodo, "%d-%m-%Y")
+  ))
+}
 
 ui <- fluidPage(
   
@@ -125,6 +170,19 @@ ui <- fluidPage(
       "Grafico attivazioni",
       
       fluidRow(
+        column(
+          3,
+          radioButtons(
+            "granularita",
+            "Aggregazione:",
+            choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
+            selected = "Giorno",
+            inline = TRUE
+          )
+        )
+      ),
+      
+      fluidRow(
         column(12, plotOutput("activationPlot", height = "550px"))
       ),
       
@@ -162,10 +220,8 @@ server <- function(input, output, session) {
     
     req(input$azienda)
     
-    stabilimenti <- dati |>
+    stabilimenti <- stabilimenti_lookup |>
       filter(company == input$azienda) |>
-      distinct(field) |>
-      arrange(field) |>
       pull(field)
     
     updateSelectInput(
@@ -180,13 +236,11 @@ server <- function(input, output, session) {
     
     req(input$azienda, input$stabilimento)
     
-    macchine_filtrate <- dati |>
+    macchine_filtrate <- macchine_lookup |>
       filter(
         company == input$azienda,
         field == input$stabilimento
-      ) |>
-      distinct(coupon, project, machine_name) |>
-      arrange(project, machine_name)
+      )
     
     updateSelectInput(
       session,
@@ -203,11 +257,8 @@ server <- function(input, output, session) {
     
     req(input$macchina)
     
-    sensori_macchina <- dati |>
-      filter(coupon == input$macchina) |>
-      distinct(cds_name, .keep_all = TRUE) |>
-      select(cds_name, sensor_description) |>
-      arrange(cds_name)
+    sensori_macchina <- sensori_lookup |>
+      filter(coupon == input$macchina)
     
     updatePickerInput(
       session,
@@ -220,49 +271,70 @@ server <- function(input, output, session) {
     )
   })
   
-  kpi_nok <- reactive({
+  # ---------------------------------------------------------------------
+  # Reactive condivisi: il valore giornaliero per sensore e la media
+  # storica (NMN) vengono calcolati una sola volta e riusati sia dalla
+  # tabella NOK sia dal grafico storico, invece di essere ricalcolati
+  # due volte in reactive separati.
+  # bindCache: se piu' utenti (o la stessa sessione in momenti diversi)
+  # scelgono la stessa macchina/sensori, il risultato viene riusato
+  # invece di ricalcolato.
+  # ---------------------------------------------------------------------
+  valori_giornalieri <- reactive({
     
-    req(input$macchina, input$date, input$sensori)
+    req(input$macchina, input$sensori)
     
-    dati_base <- dati |>
+    dati |>
       ungroup() |>
       filter(
         coupon == input$macchina,
         cds_name %in% input$sensori
-      )
-    
-    # NMN: media giornaliera di aperture orarie per sensore su tutto lo storico disponibile
-    nmn_per_sensore <- dati_base |>
-      group_by(cds_name, sensor_description, day) |>
-      summarise(daily_NMN = sum(increment) / unique(daily_uptime), .groups = "drop") |>
-      group_by(cds_name, sensor_description) |>
-      summarise(NMN = mean(daily_NMN, na.rm = TRUE), .groups = "drop")
-    
-    # NMM: media giornaliera di aperture orarie per sensore ristretta al periodo selezionato
-    nmm_per_sensore <- dati_base |>
-      filter(
-        day >= input$date[1],
-        day <= input$date[2]
       ) |>
       group_by(cds_name, sensor_description, day) |>
-      summarise(daily_NMM = sum(increment) / unique(daily_uptime), .groups = "drop") |>
+      summarise(daily_value = sum(increment, na.rm = TRUE) / unique(daily_uptime), .groups = "drop")
+  }) |>
+    bindCache(input$macchina, input$sensori)
+  
+  nmn_storico <- reactive({
+    valori_giornalieri() |>
       group_by(cds_name, sensor_description) |>
-      summarise(NMM = mean(daily_NMM, na.rm = TRUE), .groups = "drop")
-    
-    nmn_per_sensore |>
-      left_join(nmm_per_sensore, by = c("cds_name", "sensor_description")) |>
+      summarise(NMN = mean(daily_value, na.rm = TRUE), .groups = "drop")
+  })
+  
+  # Ordinamento naturale condiviso: prefisso alfabetico + numero,
+  # cosi' FCM2 viene prima di FCM10
+  ordina_naturale <- function(df) {
+    df |>
       mutate(
-        NOK = case_when(
-          is.na(NMN) | is.na(NMM) | NMM == 0 ~ NA_real_,
-          TRUE ~ NMN / NMM
-        ),
-        # Ordinamento naturale: prefisso alfabetico + numero,
-        # cosi' FCM2 viene prima di FCM10
+        cds_name = as.character(cds_name),
         .prefisso = str_extract(cds_name, "^[^0-9]+"),
         .numero = as.numeric(str_extract(cds_name, "[0-9]+$"))
       ) |>
       arrange(.prefisso, .numero) |>
       select(-.prefisso, -.numero)
+  }
+  
+  kpi_nok <- reactive({
+    
+    req(input$date)
+    
+    nmm_per_sensore <- valori_giornalieri() |>
+      filter(
+        day >= input$date[1],
+        day <= input$date[2]
+      ) |>
+      group_by(cds_name, sensor_description) |>
+      summarise(NMM = mean(daily_value, na.rm = TRUE), .groups = "drop")
+    
+    nmn_storico() |>
+      left_join(nmm_per_sensore, by = c("cds_name", "sensor_description")) |>
+      mutate(
+        NOK = case_when(
+          is.na(NMN) | is.na(NMM) | NMM == 0 ~ NA_real_,
+          TRUE ~ NMN / NMM
+        )
+      ) |>
+      ordina_naturale()
   })
   
   output$nok_table <- renderTable({
@@ -298,12 +370,8 @@ server <- function(input, output, session) {
         cds_name %in% input$sensori
       ) |>
       left_join(sensori_info, by = c("coupon", "cds_name")) |>
-      mutate(
-        etichetta_sensore = paste(cds_name, sensor_description, sep = " - "),
-        .prefisso = str_extract(cds_name, "^[^0-9]+"),
-        .numero = as.numeric(str_extract(cds_name, "[0-9]+$"))
-      ) |>
-      arrange(.prefisso, .numero) |>
+      mutate(etichetta_sensore = paste(cds_name, sensor_description, sep = " - ")) |>
+      ordina_naturale() |>
       mutate(
         etichetta_sensore = factor(etichetta_sensore, levels = unique(etichetta_sensore))
       )
@@ -384,9 +452,14 @@ server <- function(input, output, session) {
       )
   })
   
+  # ---------------------------------------------------------------------
+  # Dati per il grafico attivazioni: raggruppati nel periodo scelto
+  # (giorno/settimana/mese/trimestre/anno) cosi' il numero di pannelli
+  # in facet_grid resta contenuto anche su intervalli lunghi.
+  # ---------------------------------------------------------------------
   dati_grafico <- reactive({
     
-    req(input$macchina, input$date, input$sensori)
+    req(input$macchina, input$date, input$sensori, input$granularita)
     
     dati |>
       filter(
@@ -395,8 +468,9 @@ server <- function(input, output, session) {
         day >= input$date[1],
         day <= input$date[2]
       ) |>
+      mutate(periodo = periodo_bucket(day, input$granularita)) |>
       group_by(
-        day,
+        periodo,
         cds_name,
         sensor_description
       ) |>
@@ -407,47 +481,30 @@ server <- function(input, output, session) {
       mutate(
         etichetta = cds_name,
         etichetta_completa = paste(cds_name, sensor_description, sep = " - "),
-        .prefisso = str_extract(cds_name, "^[^0-9]+"),
-        .numero = as.numeric(str_extract(cds_name, "[0-9]+$"))
+        periodo_label = formatta_periodo_label(periodo, input$granularita)
       ) |>
-      arrange(day, .prefisso, .numero) |>
+      ordina_naturale() |>
       mutate(
         etichetta = factor(etichetta, levels = unique(etichetta)),
-        etichetta_completa = factor(etichetta_completa, levels = unique(etichetta_completa))
-      ) |>
-      select(-.prefisso, -.numero)
-  })
+        etichetta_completa = factor(etichetta_completa, levels = unique(etichetta_completa)),
+        periodo_label = factor(periodo_label, levels = unique(periodo_label[order(periodo)]))
+      )
+  }) |>
+    bindCache(input$macchina, input$sensori, input$date, input$granularita)
   
   # Storico giornaliero del NOK per sensore: ogni giorno del periodo
   # selezionato viene confrontato con la media storica (NMN) dello
   # stesso sensore, calcolata su tutto lo storico disponibile
   kpi_nok_storico <- reactive({
     
-    req(input$macchina, input$date, input$sensori)
+    req(input$date)
     
-    dati_base <- dati |>
-      ungroup() |>
-      filter(
-        coupon == input$macchina,
-        cds_name %in% input$sensori
-      )
-    
-    # Valore giornaliero per ogni giorno disponibile (tutto lo storico)
-    valori_giornalieri <- dati_base |>
-      group_by(cds_name, sensor_description, day) |>
-      summarise(daily_value = sum(increment) / unique(daily_uptime), .groups = "drop")
-    
-    # NMN: media storica di riferimento per sensore (tutto lo storico)
-    nmn_per_sensore <- valori_giornalieri |>
-      group_by(cds_name, sensor_description) |>
-      summarise(NMN = mean(daily_value, na.rm = TRUE), .groups = "drop")
-    
-    valori_giornalieri |>
+    valori_giornalieri() |>
       filter(
         day >= input$date[1],
         day <= input$date[2]
       ) |>
-      left_join(nmn_per_sensore, by = c("cds_name", "sensor_description")) |>
+      left_join(nmn_storico(), by = c("cds_name", "sensor_description")) |>
       mutate(
         NOK_giorno = case_when(
           is.na(daily_value) | is.na(NMN) | NMN == 0 ~ NA_real_,
@@ -528,7 +585,7 @@ server <- function(input, output, session) {
         width = 0.8
       ) +
       facet_grid(
-        cols = vars(day),
+        cols = vars(periodo_label),
         scales = "free_x",
         space = "free_x",
         switch = "x"

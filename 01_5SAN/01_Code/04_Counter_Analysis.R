@@ -1,14 +1,10 @@
 library(dplyr)
-library(tidyr)
 library(lubridate)
-library(ggplot2)
-library(purrr)
-library(stringr)
 library(here)
-library(openxlsx)
 
 # carica i dati 
 raw_data <- readRDS(here("02_Output", "raw_data.rds"))
+uptime <- readRDS(here("02_Output", "uptime.rds"))
 
 # calcola gli incrementi dei conteggi per ogni sensore e li classifico
 sensor_count_increment <- raw_data |>

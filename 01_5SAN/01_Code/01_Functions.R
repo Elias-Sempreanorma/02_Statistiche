@@ -29,17 +29,3 @@ connetti_maria <- function() {
   )
 }
 
-
-# funzioni controllo valori nulli
-
-# Funzione somma solo se esiste almeno un valore valido.
-# Evita di trasformare ore senza dati validi in finti zeri.
-somma_o_na <- function(x) {
-  if (all(is.na(x))) NA_real_ else sum(x, na.rm = TRUE)
-}
-
-# Funzione per calcolare statistiche evitando NaN o Inf
-stat_o_na <- function(x, fun) {
-  if (all(is.na(x))) NA_real_ else fun(x, na.rm = TRUE)
-}
-
