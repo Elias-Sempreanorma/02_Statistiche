@@ -95,6 +95,33 @@ calcola_breaks_periodo <- function(periodi, max_breaks = 12) {
   periodi_ordinati[indici]
 }
 
+# Interpola un dataframe per gruppo usando spline cubica naturale, in modo che
+# la curva passi esattamente per tutti i punti dati originali.
+interpola_spline <- function(df, x_col, y_col, group_col, n = 300) {
+  df |>
+    group_by(across(all_of(group_col))) |>
+    group_modify(function(d, ...) {
+      x_num <- as.numeric(d[[x_col]])
+      y_val <- d[[y_col]]
+      validi <- !is.na(x_num) & !is.na(y_val)
+      x_num <- x_num[validi]
+      y_val <- y_val[validi]
+      if (length(x_num) < 2) {
+        return(setNames(
+          data.frame(as.Date(x_num, origin = "1970-01-01"), y_val),
+          c(x_col, y_col)
+        ))
+      }
+      sf <- stats::splinefun(x_num, y_val, method = "monoH.FC")
+      x_interp <- seq(min(x_num), max(x_num), length.out = max(n, length(x_num)))
+      setNames(
+        data.frame(as.Date(x_interp, origin = "1970-01-01"), sf(x_interp)),
+        c(x_col, y_col)
+      )
+    }) |>
+    ungroup()
+}
+
 ui <- fluidPage(
   
   tags$head(
@@ -176,8 +203,7 @@ ui <- fluidPage(
       column(2, selectInput("azienda", "Azienda:", choices = company)),
       column(2, selectInput("stabilimento", "Stabilimento:", choices = NULL)),
       column(3, selectInput("macchina", "Macchina:", choices = NULL)),
-      column(
-        3,
+      column(3,
         dateRangeInput(
           "date",
           "Periodo:",
@@ -190,8 +216,7 @@ ui <- fluidPage(
           language = "it"
         )
       ),
-      column(
-        2,
+      column(2,
         pickerInput(
           "sensori",
           "Sensori:",
@@ -216,8 +241,7 @@ ui <- fluidPage(
       
       br(),
       fluidRow(
-        column(
-          4,
+        column(4,
           actionButton(
             "home_attivazioni",
             label = div(
@@ -228,8 +252,7 @@ ui <- fluidPage(
             class = "card-home"
           )
         ),
-        column(
-          4,
+        column(4,
           actionButton(
             "home_vita",
             label = div(
@@ -240,8 +263,7 @@ ui <- fluidPage(
             class = "card-home"
           )
         ),
-        column(
-          4,
+        column(4,
           actionButton(
             "home_nok",
             label = div(
@@ -263,8 +285,7 @@ ui <- fluidPage(
       ),
       
       fluidRow(
-        column(
-          3,
+        column(3,
           radioButtons(
             "granularita",
             "  ",
@@ -280,8 +301,7 @@ ui <- fluidPage(
       ),
       
       fluidRow(
-        column(
-          12,
+        column(12,
           h4("Andamento per sensore", class = "titolo-sezione"),
           plotOutput("activationTrendPlot", height = "500px")
         )
@@ -304,8 +324,7 @@ ui <- fluidPage(
       "Storico NOK",
       
       fluidRow(
-        column(
-          12,
+        column(12,
           h4("NOK per sensore", class = "titolo-sezione"),
           tableOutput("nok_table")
         )
@@ -316,8 +335,7 @@ ui <- fluidPage(
       ),
       
       fluidRow(
-        column(
-          3,
+        column(3,
           radioButtons(
             "granularita_nok",
             "  ",
@@ -700,7 +718,14 @@ server <- function(input, output, session) {
         space = "free_x",
         switch = "x"
       ) +
-      scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+      scale_y_continuous(
+        breaks = function(limits) {
+          b <- scales::pretty_breaks(n = 8)(limits)
+          max_y <- max(grafico$attivazioni, na.rm = TRUE)
+          sort(unique(c(b, max_y)))
+        },
+        expand = expansion(mult = c(0, 0.04))
+      ) +
       scale_fill_manual(values = palette_sensori, name = "Sensore") +
       labs(title = NULL, x = NULL, y = "Attivazioni") +
       theme_minimal(base_size = 13) +
@@ -725,26 +750,50 @@ server <- function(input, output, session) {
       need(nrow(grafico) > 0, "Nessun dato disponibile per i filtri scelti")
     )
     
+    n_sensori <- dplyr::n_distinct(grafico$etichetta_completa)
+    palette_sensori <- colorRampPalette(brewer.pal(8, "Set2"))(n_sensori)
+    
     breaks_periodo <- calcola_breaks_periodo(grafico$periodo)
     
-    ggplot(grafico, aes(x = periodo, y = attivazioni)) +
-      geom_line(color = "#7FA6C9", linewidth = 1) +
-      geom_point(color = "#4A7FA6", size = 1.8) +
-      facet_wrap(~etichetta_completa, scales = "free_y") +
+    spline_att <- interpola_spline(grafico, "periodo", "attivazioni", "etichetta_completa") |>
+      mutate(etichetta_completa = factor(etichetta_completa, levels = levels(grafico$etichetta_completa)))
+    
+    ggplot() +
+      geom_line(
+        data = spline_att,
+        aes(x = periodo, y = attivazioni, color = etichetta_completa),
+        linewidth = 1
+      ) +
+      geom_point(
+        data = grafico,
+        aes(x = periodo, y = attivazioni, color = etichetta_completa),
+        size = 1.8
+      ) +
       scale_x_date(
         breaks = breaks_periodo,
         labels = formatta_periodo_label(breaks_periodo, input$granularita)
       ) +
-      scale_y_continuous(expand = expansion(mult = c(0.02, 0.08))) +
+      scale_y_continuous(
+        breaks = function(limits) {
+          b <- scales::pretty_breaks(n = 8)(limits)
+          max_y <- max(grafico$attivazioni, na.rm = TRUE)
+          sort(unique(c(b, max_y)))
+        },
+        expand = expansion(mult = c(0, 0.04))
+      ) +
+      scale_color_manual(values = palette_sensori, name = "Sensore") +
       labs(x = NULL, y = "Attivazioni") +
       theme_minimal(base_size = 13) +
       theme(
         panel.grid.minor = element_blank(),
-        strip.text = element_text(size = 12, face = "bold", color = "#4A4A4A"),
-        strip.background = element_blank(),
-        axis.text.x = element_text(size = 10, angle = 90),
+        panel.grid.major.x = element_line(color = "#B8C4CC", linewidth = 0.5),
+        axis.text.x = element_text(size = 12, angle = 90, face = "bold", hjust = 1, vjust = 0.5),
+        axis.ticks.x = element_line(color = "#6B7380", linewidth = 0.5),
         axis.text.y = element_text(size = 11),
-        plot.title = element_blank()
+        plot.title = element_blank(),
+        legend.position = "bottom",
+        legend.title = element_text(size = 13),
+        legend.text = element_text(size = 13)
       )
   }
   
@@ -800,37 +849,60 @@ server <- function(input, output, session) {
     )
     
     storico <- storico |>
-      mutate(stato = ifelse(!is.na(NOK_periodo) & NOK_periodo > 1, "over", "ok"))
+      ordina_naturale() |>
+      mutate(etichetta_sensore = factor(etichetta_sensore, levels = unique(etichetta_sensore)))
+    
+    n_sensori <- dplyr::n_distinct(storico$etichetta_sensore)
+    palette_sensori <- colorRampPalette(brewer.pal(8, "Set2"))(n_sensori)
     
     breaks_periodo <- calcola_breaks_periodo(storico$periodo)
     
-    ggplot(storico, aes(x = periodo, y = NOK_periodo)) +
+    spline_nok <- interpola_spline(storico, "periodo", "NOK_periodo", "etichetta_sensore") |>
+      mutate(etichetta_sensore = factor(etichetta_sensore, levels = levels(storico$etichetta_sensore)))
+    
+    max_nok <- max(storico$NOK_periodo, na.rm = TRUE)
+    
+    ggplot() +
       geom_hline(
         yintercept = 1,
         linetype = "dashed",
         color = "#9AA5B1",
         linewidth = 0.8
       ) +
-      geom_line(color = "#B7C2CC", linewidth = 1) +
-      geom_point(aes(color = stato), size = 2.2) +
-      facet_wrap(~etichetta_sensore, scales = "free_y") +
-      scale_color_manual(
-        values = c(ok = "#4C8C5B", over = "#C0483E"),
-        guide = "none"
+      geom_line(
+        data = spline_nok,
+        aes(x = periodo, y = NOK_periodo, color = etichetta_sensore),
+        linewidth = 1
+      ) +
+      geom_point(
+        data = storico,
+        aes(x = periodo, y = NOK_periodo, color = etichetta_sensore),
+        size = 2.2
       ) +
       scale_x_date(
         breaks = breaks_periodo,
         labels = formatta_periodo_label(breaks_periodo, input$granularita_nok)
       ) +
+      scale_y_continuous(
+        breaks = function(limits) {
+          b <- scales::pretty_breaks(n = 8)(limits)
+          sort(unique(c(b, 1, if (is.finite(max_nok)) max_nok)))
+        },
+        expand = expansion(mult = c(0.02, 0.04))
+      ) +
+      scale_color_manual(values = palette_sensori, name = "Sensore") +
       labs(x = NULL, y = "NOK") +
       theme_minimal(base_size = 13) +
       theme(
         panel.grid.minor = element_blank(),
-        strip.text = element_text(size = 12, face = "bold", color = "#4A4A4A"),
-        strip.background = element_blank(),
-        axis.text.x = element_text(size = 10, angle = 90),
+        panel.grid.major.x = element_line(color = "#B8C4CC", linewidth = 0.5),
+        axis.text.x = element_text(size = 12, angle = 90, face = "bold", hjust = 1, vjust = 0.5),
+        axis.ticks.x = element_line(color = "#6B7380", linewidth = 0.5),
         axis.text.y = element_text(size = 11),
-        plot.title = element_blank()
+        plot.title = element_blank(),
+        legend.position = "bottom",
+        legend.title = element_text(size = 13),
+        legend.text = element_text(size = 13)
       )
   }
   
