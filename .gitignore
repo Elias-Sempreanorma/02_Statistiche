@@ -2,7 +2,7 @@
 *.Rhistory
 *.RData
 *.Ruserdata
-*.positai/
+*.positai
 *.Renviron
 *.xlsx
 *.rds
