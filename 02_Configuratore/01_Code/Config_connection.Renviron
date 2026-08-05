@@ -1,0 +1,5 @@
+DB_HOST = san-config.co4y5bmyiqmw.eu-south-1.rds.amazonaws.com
+DB_PORT = 3306
+DB_NAME = san_config
+DB_USER = san_reader
+DB_PASSWORD =san_read3r!

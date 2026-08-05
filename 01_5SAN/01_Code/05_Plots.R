@@ -7,6 +7,7 @@ library(RColorBrewer)
 library(here)
 library(stringr)
 library(lubridate)
+library(scales)
 
 dati <- readRDS(here("02_Output", "sensor_count_increment.rds"))
 
@@ -58,7 +59,7 @@ data_max <- max(dati$day, na.rm = TRUE)
 
 # ---------------------------------------------------------------------------
 # Helper: raggruppa una data nel periodo scelto (giorno/settimana/mese/...)
-# e restituisce anche un'etichetta leggibile per il facet del grafico
+# e restituisce anche un'etichetta leggibile per gli assi/facet
 # ---------------------------------------------------------------------------
 periodo_bucket <- function(day, granularita) {
   switch(
@@ -82,6 +83,16 @@ formatta_periodo_label <- function(periodo, granularita) {
     "Anno"      = format(periodo, "%Y"),
     format(periodo, "%d-%m-%Y")
   ))
+}
+
+# Sceglie al massimo `max_breaks` date da mostrare sull'asse x, distribuite
+# uniformemente, cosi' le etichette non si accavallano quando i periodi
+# disponibili sono molti (usato dai grafici trend/storico)
+calcola_breaks_periodo <- function(periodi, max_breaks = 12) {
+  periodi_ordinati <- sort(unique(periodi))
+  if (length(periodi_ordinati) <= 1) return(periodi_ordinati)
+  indici <- unique(round(seq(1, length(periodi_ordinati), length.out = min(max_breaks, length(periodi_ordinati)))))
+  periodi_ordinati[indici]
 }
 
 ui <- fluidPage(
@@ -119,12 +130,46 @@ ui <- fluidPage(
         margin-top: 10px;
         margin-bottom: 10px;
       }
+      .card-home {
+        display: block;
+        width: 100%;
+        min-height: 190px;
+        background: #FFFFFF;
+        border: 1px solid #E4E7EB;
+        border-radius: 10px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        text-align: center;
+        white-space: normal;
+        padding: 24px 16px;
+        margin-bottom: 20px;
+        color: #4A4A4A;
+      }
+      .card-home:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 18px rgba(0,0,0,0.10);
+        border-color: #7FA6C9;
+      }
+      .card-home .card-icona {
+        font-size: 30px;
+        color: #7FA6C9;
+        margin-bottom: 10px;
+      }
+      .card-home h4 {
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      .card-home p {
+        font-size: 13px;
+        color: #8A94A0;
+        margin: 0;
+      }
     "))
   ),
   
-  titlePanel("Conteggio attivazioni"),
+  titlePanel("Dashboard 5SAN"),
   
-  # Filtri in orizzontale, a piena larghezza
+  # Filtri in orizzontale, a piena larghezza, sempre visibili
   div(
     class = "pannello-filtri",
     fluidRow(
@@ -167,14 +212,62 @@ ui <- fluidPage(
     id = "pagina",
     
     tabPanel(
-      "Grafico attivazioni",
+      "Home",
+      
+      br(),
+      fluidRow(
+        column(
+          4,
+          actionButton(
+            "home_attivazioni",
+            label = div(
+              icon("chart-bar", class = "card-icona"),
+              h4("Conteggio attivazioni"),
+              p("Grafico a barre e trend nel tempo per sensore")
+            ),
+            class = "card-home"
+          )
+        ),
+        column(
+          4,
+          actionButton(
+            "home_vita",
+            label = div(
+              icon("gauge", class = "card-icona"),
+              h4("Vita sensori"),
+              p("Stato dei sensori rispetto alle soglie B10dSAN e T10d")
+            ),
+            class = "card-home"
+          )
+        ),
+        column(
+          4,
+          actionButton(
+            "home_nok",
+            label = div(
+              icon("chart-line", class = "card-icona"),
+              h4("Storico NOK"),
+              p("KPI e andamento storico del NOK per sensore")
+            ),
+            class = "card-home"
+          )
+        )
+      )
+    ),
+    
+    tabPanel(
+      "Conteggio attivazioni",
+      
+      fluidRow(
+        column(12, h4("Conteggio attivazioni", class = "titolo-sezione"))
+      ),
       
       fluidRow(
         column(
           3,
           radioButtons(
             "granularita",
-            "Aggregazione:",
+            "  ",
             choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
             selected = "Giorno",
             inline = TRUE
@@ -183,15 +276,27 @@ ui <- fluidPage(
       ),
       
       fluidRow(
-        column(12, plotOutput("activationPlot", height = "550px"))
+        column(12, plotOutput("activationPlot", height = "500px"))
       ),
       
       fluidRow(
         column(
           12,
-          h4("Stato sensori", class = "titolo-sezione"),
-          plotOutput("tankPlot", height = "260px")
+          h4("Andamento per sensore", class = "titolo-sezione"),
+          plotOutput("activationTrendPlot", height = "500px")
         )
+      )
+    ),
+    
+    tabPanel(
+      "Vita sensori",
+      
+      fluidRow(
+        column(12, h4("Vita sensori", class = "titolo-sezione"))
+      ),
+      
+      fluidRow(
+        column(12, plotOutput("tankPlot", height = "320px"))
       )
     ),
     
@@ -203,6 +308,23 @@ ui <- fluidPage(
           12,
           h4("NOK per sensore", class = "titolo-sezione"),
           tableOutput("nok_table")
+        )
+      ),
+      
+      fluidRow(
+        column(12, h4("Andamento storico del NOK", class = "titolo-sezione"))
+      ),
+      
+      fluidRow(
+        column(
+          3,
+          radioButtons(
+            "granularita_nok",
+            "  ",
+            choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
+            selected = "Giorno",
+            inline = TRUE
+          )
         )
       ),
       
@@ -269,6 +391,42 @@ server <- function(input, output, session) {
       ),
       selected = sensori_macchina$cds_name
     )
+  })
+  
+  # ---------------------------------------------------------------------
+  # Popup di anteprima dalla Home: riusano gli stessi reactive/filtri
+  # della pagina completa, quindi non ricalcolano nulla di pesante.
+  # ---------------------------------------------------------------------
+  observeEvent(input$home_attivazioni, {
+    showModal(modalDialog(
+      title = "Conteggio attivazioni",
+      size = "l",
+      easyClose = TRUE,
+      footer = modalButton("Chiudi"),
+      plotOutput("modal_activationPlot", height = "380px"),
+      br(),
+      plotOutput("modal_activationTrendPlot", height = "380px")
+    ))
+  })
+  
+  observeEvent(input$home_vita, {
+    showModal(modalDialog(
+      title = "Vita sensori",
+      size = "l",
+      easyClose = TRUE,
+      footer = modalButton("Chiudi"),
+      plotOutput("modal_tankPlot", height = "320px")
+    ))
+  })
+  
+  observeEvent(input$home_nok, {
+    showModal(modalDialog(
+      title = "Storico NOK",
+      size = "l",
+      easyClose = TRUE,
+      footer = modalButton("Chiudi"),
+      plotOutput("modal_nokPlot", height = "420px")
+    ))
   })
   
   # ---------------------------------------------------------------------
@@ -371,15 +529,27 @@ server <- function(input, output, session) {
       ) |>
       left_join(sensori_info, by = c("coupon", "cds_name")) |>
       mutate(etichetta_sensore = paste(cds_name, sensor_description, sep = " - ")) |>
-      ordina_naturale() |>
+      ordina_naturale()
+    
+    larghezza_etichetta <- max(
+      10,
+      floor(120 / max(n_distinct(base$etichetta_sensore), 1))
+    )
+    
+    base <- base |>
       mutate(
+        etichetta_sensore = str_wrap(
+          etichetta_sensore,
+          width = larghezza_etichetta,
+          whitespace_only = FALSE
+        ),
         etichetta_sensore = factor(etichetta_sensore, levels = unique(etichetta_sensore))
       )
     
     tank_attivazioni <- base |>
       transmute(
         etichetta_sensore,
-        tipo = "Attivazioni",
+        tipo = "B10dSAN",
         valore = count,
         massimo = cds_vds
       )
@@ -387,7 +557,7 @@ server <- function(input, output, session) {
     tank_durata <- base |>
       transmute(
         etichetta_sensore,
-        tipo = "Vita utile",
+        tipo = "T10d",
         valore = lifetime,
         massimo = cds_t10d
       )
@@ -400,7 +570,7 @@ server <- function(input, output, session) {
       )
   })
   
-  output$tankPlot <- renderPlot({
+  render_tank_plot <- function() {
     
     tanks <- tank_data()
     
@@ -414,13 +584,13 @@ server <- function(input, output, session) {
         data = tanks,
         aes(x = tipo, y = 100),
         fill = "#E4E7EB",
-        width = 0.45
+        width = 0.65
       ) +
       # livello di riempimento effettivo, in percentuale sul massimo
       geom_col(
         data = tanks,
         aes(x = tipo, y = percentuale_capped, fill = stato),
-        width = 0.45
+        width = 0.65
       ) +
       geom_text(
         data = tanks,
@@ -430,8 +600,8 @@ server <- function(input, output, session) {
           label = paste0(round(valore, 1), " / ", massimo)
         ),
         vjust = -0.4,
-        size = 3.6,
-        fontface = "bold",
+        size = 3,
+        fontface = "plain",
         color = "#4A4A4A"
       ) +
       facet_wrap(~etichetta_sensore, nrow = 1) +
@@ -441,21 +611,37 @@ server <- function(input, output, session) {
       ) +
       scale_y_continuous(limits = c(0, 112), expand = c(0, 0)) +
       labs(x = NULL, y = NULL) +
-      theme_minimal(base_size = 11) +
+      theme_minimal(base_size = 12) +
       theme(
         panel.grid = element_blank(),
+        panel.background = element_rect(
+          fill = scales::alpha("#7FA6C9", 0.10),
+          color = NA
+        ),
         axis.text.y = element_blank(),
-        axis.text.x = element_text(size = 11, face = "bold"),
-        strip.text = element_text(size = 11, face = "bold", color = "#4A4A4A"),
-        strip.background = element_blank(),
-        panel.spacing.x = unit(14, "pt")
+        axis.text.x = element_text(size = 10, face = "bold"),
+        strip.text = element_text(
+          size = 12,
+          face = "bold",
+          color = "#4A4A4A",
+          lineheight = 1.05,
+          margin = margin(5, 4, 6, 4)
+        ),
+        strip.background = element_rect(
+          fill = scales::alpha("#7FA6C9", 0.18),
+          color = NA
+        ),
+        panel.spacing.x = unit(6, "pt")
       )
-  })
+  }
+  
+  output$tankPlot <- renderPlot({ render_tank_plot() })
+  output$modal_tankPlot <- renderPlot({ render_tank_plot() })
   
   # ---------------------------------------------------------------------
   # Dati per il grafico attivazioni: raggruppati nel periodo scelto
-  # (giorno/settimana/mese/trimestre/anno) cosi' il numero di pannelli
-  # in facet_grid resta contenuto anche su intervalli lunghi.
+  # (giorno/settimana/mese/trimestre/anno). Usati sia dal grafico a
+  # barre (facet per periodo) sia dal grafico trend (facet per sensore).
   # ---------------------------------------------------------------------
   dati_grafico <- reactive({
     
@@ -492,77 +678,7 @@ server <- function(input, output, session) {
   }) |>
     bindCache(input$macchina, input$sensori, input$date, input$granularita)
   
-  # Storico giornaliero del NOK per sensore: ogni giorno del periodo
-  # selezionato viene confrontato con la media storica (NMN) dello
-  # stesso sensore, calcolata su tutto lo storico disponibile
-  kpi_nok_storico <- reactive({
-    
-    req(input$date)
-    
-    valori_giornalieri() |>
-      filter(
-        day >= input$date[1],
-        day <= input$date[2]
-      ) |>
-      left_join(nmn_storico(), by = c("cds_name", "sensor_description")) |>
-      mutate(
-        NOK_giorno = case_when(
-          is.na(daily_value) | is.na(NMN) | NMN == 0 ~ NA_real_,
-          TRUE ~ daily_value / NMN
-        ),
-        etichetta_sensore = paste(cds_name, sensor_description, sep = " - ")
-      ) |>
-      arrange(day)
-  })
-  
-  output$nokHistoryPlot <- renderPlot({
-    
-    storico <- kpi_nok_storico()
-    
-    validate(
-      need(nrow(storico) > 0, "Nessun dato disponibile per i filtri scelti")
-    )
-    
-    n_sensori <- dplyr::n_distinct(storico$etichetta_sensore)
-    palette_sensori <- colorRampPalette(
-      brewer.pal(8, "Set2")
-    )(n_sensori)
-    
-    ggplot(
-      storico,
-      aes(x = day, y = NOK_giorno, color = etichetta_sensore)
-    ) +
-      geom_line(linewidth = 0.8) +
-      geom_point(size = 1.8) +
-      geom_hline(
-        yintercept = 1,
-        linetype = "dashed",
-        color = "#9AA5B1"
-      ) +
-      scale_color_manual(
-        values = palette_sensori,
-        name = "Sensore"
-      ) +
-      scale_x_date(
-        date_labels = "%d-%m-%Y"
-      ) +
-      labs(
-        title = "Andamento storico del NOK",
-        x = NULL,
-        y = "NOK"
-      ) +
-      theme_minimal(base_size = 12) +
-      theme(
-        panel.grid.minor = element_blank(),
-        axis.text.x = element_text(size = 9, angle = 90),
-        plot.title = element_text(size = 16),
-        legend.position = "bottom",
-        legend.title = element_text(size = 12),
-        legend.text = element_text(size = 10)
-      )
-  })
-  
-  output$activationPlot <- renderPlot({
+  render_activation_bar <- function() {
     
     grafico <- dati_grafico()
     
@@ -570,50 +686,156 @@ server <- function(input, output, session) {
       need(nrow(grafico) > 0, "Nessun dato disponibile per i filtri scelti")
     )
     
-    # Palette tenue e professionale, generata dinamicamente in base
-    # al numero di sensori (etichetta completa) presenti nei dati filtrati
     n_sensori <- dplyr::n_distinct(grafico$etichetta_completa)
-    palette_sensori <- colorRampPalette(
-      brewer.pal(8, "Set2")
-    )(n_sensori)
+    palette_sensori <- colorRampPalette(brewer.pal(8, "Set2"))(n_sensori)
     
     ggplot(
       grafico,
       aes(x = etichetta, y = attivazioni, fill = etichetta_completa)
     ) +
-      geom_col(
-        width = 0.8
-      ) +
+      geom_col(width = 0.8) +
       facet_grid(
         cols = vars(periodo_label),
         scales = "free_x",
         space = "free_x",
         switch = "x"
       ) +
-      scale_y_continuous(
-        expand = expansion(mult = c(0, 0.05))
-      ) +
-      scale_fill_manual(
-        values = palette_sensori,
-        name = "Sensore"
-      ) +
-      labs(
-        title = "Conteggio attivazioni",
-        x = NULL,
-        y = NULL
-      ) +
-      theme_minimal(base_size = 12) +
+      scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+      scale_fill_manual(values = palette_sensori, name = "Sensore") +
+      labs(title = NULL, x = NULL, y = "Attivazioni") +
+      theme_minimal(base_size = 13) +
       theme(
         panel.grid.major.x = element_blank(),
         strip.placement = "outside",
         strip.background = element_blank(),
-        axis.text.x = element_text(size = 9, angle = 90),
-        plot.title = element_text(size = 16),
+        axis.text.x = element_text(size = 13, angle = 90),
+        axis.text.y = element_text(size = 13),
+        plot.title = element_blank(),
         legend.position = "bottom",
-        legend.title = element_text(size = 12),
-        legend.text = element_text(size = 10)
+        legend.title = element_text(size = 13),
+        legend.text = element_text(size = 13)
       )
-  })
+  }
+  
+  render_activation_trend <- function() {
+    
+    grafico <- dati_grafico()
+    
+    validate(
+      need(nrow(grafico) > 0, "Nessun dato disponibile per i filtri scelti")
+    )
+    
+    breaks_periodo <- calcola_breaks_periodo(grafico$periodo)
+    
+    ggplot(grafico, aes(x = periodo, y = attivazioni)) +
+      geom_line(color = "#7FA6C9", linewidth = 1) +
+      geom_point(color = "#4A7FA6", size = 1.8) +
+      facet_wrap(~etichetta_completa, scales = "free_y") +
+      scale_x_date(
+        breaks = breaks_periodo,
+        labels = formatta_periodo_label(breaks_periodo, input$granularita)
+      ) +
+      scale_y_continuous(expand = expansion(mult = c(0.02, 0.08))) +
+      labs(x = NULL, y = "Attivazioni") +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor = element_blank(),
+        strip.text = element_text(size = 12, face = "bold", color = "#4A4A4A"),
+        strip.background = element_blank(),
+        axis.text.x = element_text(size = 10, angle = 90),
+        axis.text.y = element_text(size = 11),
+        plot.title = element_blank()
+      )
+  }
+  
+  output$activationPlot <- renderPlot({ render_activation_bar() })
+  output$modal_activationPlot <- renderPlot({ render_activation_bar() })
+  
+  output$activationTrendPlot <- renderPlot({ render_activation_trend() })
+  output$modal_activationTrendPlot <- renderPlot({ render_activation_trend() })
+  
+  # Storico del NOK per sensore: i valori giornalieri vengono aggregati
+  # nel periodo scelto e confrontati con la media storica (NMN) dello
+  # stesso sensore, calcolata su tutto lo storico disponibile.
+  kpi_nok_storico <- reactive({
+    
+    req(input$date, input$granularita_nok)
+    
+    valori_giornalieri() |>
+      filter(
+        day >= input$date[1],
+        day <= input$date[2]
+      ) |>
+      mutate(
+        periodo = as.Date(periodo_bucket(day, input$granularita_nok))
+      ) |>
+      group_by(periodo, cds_name, sensor_description) |>
+      summarise(
+        valore_periodo = mean(daily_value, na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      left_join(nmn_storico(), by = c("cds_name", "sensor_description")) |>
+      mutate(
+        NOK_periodo = case_when(
+          is.na(valore_periodo) | is.na(NMN) | NMN == 0 ~ NA_real_,
+          TRUE ~ valore_periodo / NMN
+        ),
+        etichetta_sensore = paste(cds_name, sensor_description, sep = " - ")
+      ) |>
+      arrange(periodo)
+  }) |>
+    bindCache(
+      input$macchina,
+      input$sensori,
+      input$date,
+      input$granularita_nok
+    )
+  
+  render_nok_history <- function() {
+    
+    storico <- kpi_nok_storico()
+    
+    validate(
+      need(nrow(storico) > 0, "Nessun dato disponibile per i filtri scelti")
+    )
+    
+    storico <- storico |>
+      mutate(stato = ifelse(!is.na(NOK_periodo) & NOK_periodo > 1, "over", "ok"))
+    
+    breaks_periodo <- calcola_breaks_periodo(storico$periodo)
+    
+    ggplot(storico, aes(x = periodo, y = NOK_periodo)) +
+      geom_hline(
+        yintercept = 1,
+        linetype = "dashed",
+        color = "#9AA5B1",
+        linewidth = 0.8
+      ) +
+      geom_line(color = "#B7C2CC", linewidth = 1) +
+      geom_point(aes(color = stato), size = 2.2) +
+      facet_wrap(~etichetta_sensore, scales = "free_y") +
+      scale_color_manual(
+        values = c(ok = "#4C8C5B", over = "#C0483E"),
+        guide = "none"
+      ) +
+      scale_x_date(
+        breaks = breaks_periodo,
+        labels = formatta_periodo_label(breaks_periodo, input$granularita_nok)
+      ) +
+      labs(x = NULL, y = "NOK") +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor = element_blank(),
+        strip.text = element_text(size = 12, face = "bold", color = "#4A4A4A"),
+        strip.background = element_blank(),
+        axis.text.x = element_text(size = 10, angle = 90),
+        axis.text.y = element_text(size = 11),
+        plot.title = element_blank()
+      )
+  }
+  
+  output$nokHistoryPlot <- renderPlot({ render_nok_history() })
+  output$modal_nokPlot <- renderPlot({ render_nok_history() })
 }
 
 shinyApp(ui, server)

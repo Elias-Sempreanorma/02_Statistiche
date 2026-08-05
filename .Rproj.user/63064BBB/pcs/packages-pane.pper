@@ -1,7 +1,0 @@
-{
-    "installOptions": {
-        "installFromRepository": true,
-        "libraryPath": "C:/Users/e_forma/AppData/Local/R/win-library/4.6",
-        "installDependencies": true
-    }
-}

@@ -21,12 +21,24 @@ con_stats <- connetti_postgres(Sys.getenv("PG_DB_STATS"))
 # ---------------------------------------------------------------------------
 raw_data_path <- here("02_Output", "raw_data.rds")
 
-overlap <- as.difftime(1, units = "hours")  # margine di sicurezza per dati in ritardo
+overlap <- as.difftime(1, units = "hours")
 default_start <- as.POSIXct("2026-07-27 00:00:00", tz = "Europe/Rome")
 
 if (file.exists(raw_data_path)) {
   existing_raw_data <- readRDS(raw_data_path)
-  start_ts <- max(existing_raw_data$timestamp, na.rm = TRUE) - overlap
+  
+  if (
+    !is.null(existing_raw_data) &&
+    nrow(existing_raw_data) > 0 &&
+    "timestamp" %in% names(existing_raw_data) &&
+    any(!is.na(existing_raw_data$timestamp))
+  ) {
+    start_ts <- max(existing_raw_data$timestamp, na.rm = TRUE) - overlap
+  } else {
+    existing_raw_data <- NULL
+    start_ts <- default_start
+  }
+  
 } else {
   existing_raw_data <- NULL
   start_ts <- default_start
@@ -49,20 +61,35 @@ progetti_componenti_b10d_san <- dbGetQuery(
 measurements <- dbGetQuery(
   con_iot,
   "
+  WITH parsed AS (
+    SELECT
+      timestamp,
+      name,
+      type,
+      thing_id,
+      CASE
+        WHEN value_string IS NOT NULL
+         AND LEFT(BTRIM(value_string), 1) = '{'
+         AND RIGHT(BTRIM(value_string), 1) = '}'
+        THEN value_string::jsonb
+        ELSE NULL::jsonb
+      END AS value_json
+    FROM public.measurements
+    WHERE timestamp > $1
+  )
   SELECT
     timestamp,
     name,
     type,
     thing_id,
     COALESCE(
-      NULLIF(value_string::jsonb ->> 'value', ''),
-      NULLIF(value_string::jsonb ->> 'status', '')
+      NULLIF(value_json ->> 'value', ''),
+      NULLIF(value_json ->> 'status', '')
     )::double precision AS status,
-    NULLIF(value_string::jsonb ->> 'count', '')::double precision AS count,
-    NULLIF(value_string::jsonb ->> 'offset', '')::double precision AS offset,
-    NULLIF(value_string::jsonb ->> 'lifetime', '')::double precision AS lifetime
-  FROM public.measurements
-  WHERE timestamp > $1
+    NULLIF(value_json ->> 'count', '')::double precision AS count,
+    NULLIF(value_json ->> 'offset', '')::double precision AS offset,
+    NULLIF(value_json ->> 'lifetime', '')::double precision AS lifetime
+  FROM parsed
   ",
   params = list(start_ts)
 )
@@ -176,3 +203,8 @@ saveRDS(raw_data, raw_data_path)
 dbDisconnect(con_app)
 dbDisconnect(con_iot)
 dbDisconnect(con_stats)
+
+# ---------------------------------------------------------------------------
+# Nel caso serva aggiornare tutti i dati da 0 runnare
+# ---------------------------------------------------------------------------
+# saveRDS(NULL, raw_data_path)
