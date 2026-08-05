@@ -1,6 +1,12 @@
-.Rproj.user
+.Rproj.user/
 .Rhistory
 .RData
 .Ruserdata
-.positai
+.positai/
 .Renviron
+
+*.xlsx
+*.rds
+*.pper
+*.pbix
+*.Rproj
