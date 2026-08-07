@@ -3,7 +3,8 @@ library(lubridate)
 library(here)
 
 # carica i dati 
-raw_data <- readRDS(here("02_Output", "raw_data.rds"))
+raw_data <- readRDS(here("02_Output", "raw_data.rds")) |>
+  mutate(field = if_else(is.na(field) | trimws(field) == "", "(Non specificato)", field))
 uptime <- readRDS(here("02_Output", "uptime.rds"))
 
 # calcola gli incrementi dei conteggi per ogni sensore e li classifico

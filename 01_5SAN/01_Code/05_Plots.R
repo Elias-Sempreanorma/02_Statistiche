@@ -9,7 +9,8 @@ library(stringr)
 library(lubridate)
 library(scales)
 
-dati <- readRDS(here("02_Output", "sensor_count_increment.rds"))
+dati <- readRDS(here("02_Output", "sensor_count_increment.rds")) |>
+  mutate(field = if_else(is.na(field) | trimws(field) == "", "(Non specificato)", field))
 
 life_data <- readRDS(here("02_Output", "raw_data.rds")) |>
   group_by(coupon, cds_name, cds_vds, cds_t10d) |>
@@ -720,10 +721,11 @@ server <- function(input, output, session) {
       ) +
       scale_y_continuous(
         breaks = function(limits) {
-          b <- scales::pretty_breaks(n = 8)(limits)
-          max_y <- max(grafico$attivazioni, na.rm = TRUE)
+          b <- unique(round(scales::pretty_breaks(n = 8)(limits)))
+          max_y <- round(max(grafico$attivazioni, na.rm = TRUE))
           sort(unique(c(b, max_y)))
         },
+        labels = scales::label_number(accuracy = 1),
         expand = expansion(mult = c(0, 0.04))
       ) +
       scale_fill_manual(values = palette_sensori, name = "Sensore") +

@@ -183,7 +183,8 @@ new_raw_data <- new_raw_data |>
     !(project == "C14GR" & cds_name %in% c("MB4", "MB6")),
     !(project == "A3020" & cds_name == "FCM5"),
     !(project == "E11RI" & cds_name == "FCM8")
-  )
+  ) |>
+  mutate(field = if_else(is.na(field) | trimws(field) == "", "(Non specificato)", field))
 
 # ---------------------------------------------------------------------------
 # Unisco allo storico (deduplicando l'overlap) e salvo
@@ -208,3 +209,5 @@ dbDisconnect(con_stats)
 # Nel caso serva aggiornare tutti i dati da 0 runnare
 # ---------------------------------------------------------------------------
 # saveRDS(NULL, raw_data_path)
+
+# 
