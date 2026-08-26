@@ -5,7 +5,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     libxml2-dev \
     libpq-dev \
-    libmariadb-dev \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -23,7 +22,6 @@ RUN install2.r --error --skipinstalled \
     readxl \
     openxlsx \
     RPostgres \
-    RMariaDB \
     DBI \
     purrr
 
