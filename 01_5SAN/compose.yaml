@@ -1,0 +1,22 @@
+services:
+  shiny:
+    build:
+      context: .
+    image: san-dashboard:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3838:3838"
+    volumes:
+      - ./02_Output:/srv/shiny-server/02_Output:ro
+    environment:
+      TZ: Europe/Rome
+
+  etl:
+    image: san-dashboard:latest
+    env_file:
+      - .env
+    volumes:
+      - ./02_Output:/srv/shiny-server/02_Output
+    environment:
+      TZ: Europe/Rome
+    command: ["Rscript", "01_Code/00_ETL_Lightsail.R"]

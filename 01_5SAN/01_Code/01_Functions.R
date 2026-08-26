@@ -1,7 +1,9 @@
 # funzione per connettersi a DB postgres
 
 connetti_postgres <- function(database) {
-  readRenviron(db)
+  if (file.exists(db)) {
+    readRenviron(db)
+  }
   
   DBI::dbConnect(
     RPostgres::Postgres(),
@@ -17,7 +19,9 @@ connetti_postgres <- function(database) {
 # funzione per connettersi a Maria DB
 
 connetti_maria <- function() {
-  readRenviron(db)
+  if (file.exists(db)) {
+    readRenviron(db)
+  }
   
   DBI::dbConnect(
     RMariaDB::MariaDB(),

@@ -50,7 +50,7 @@ if (file.exists(raw_data_path)) {
 sensor  <- dbGetQuery(con_app, "SELECT * FROM public.sensor")
 machine <- dbGetQuery(con_app, "SELECT * FROM public.machine")
 gateway <- dbGetQuery(con_app, "SELECT * FROM public.gateway")
-measurements_check <- dbGetQuery(con_iot, "SELECT * FROM public.measurements")
+# measurements_check <- dbGetQuery(con_iot, "SELECT * FROM public.measurements")
 progetti_componenti_b10d_san <- dbGetQuery(
   con_stats,
   "SELECT * FROM public.progetti_componenti_b10d_san"
