@@ -13,6 +13,7 @@ RUN install2.r --error --skipinstalled \
     dplyr \
     tidyr \
     ggplot2 \
+    ggiraph \
     shinyWidgets \
     RColorBrewer \
     here \

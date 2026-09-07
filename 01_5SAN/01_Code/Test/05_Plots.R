@@ -397,7 +397,7 @@ ui <- fluidPage(
       ),
       
       fluidRow(
-        column(12, plotOutput("tankPlot", height = "320px"))
+        column(12, plotOutput("tankPlot", height = "430px"))
       )
     ),
     
@@ -514,7 +514,7 @@ server <- function(input, output, session) {
       size = "xl",
       easyClose = TRUE,
       footer = modalButton("Chiudi"),
-      plotOutput("modal_tankPlot", height = "320px")
+      plotOutput("modal_tankPlot", height = "430px")
     ))
   })
   
@@ -699,18 +699,18 @@ server <- function(input, output, session) {
           label = paste0(round(valore, 1), " / ", massimo)
         ),
         vjust = -0.4,
-        size = 3,
-        fontface = "plain",
-        color = "#4A4A4A"
+        size = 5,
+        fontface = "bold",
+        color = "#2C3E50"
       ) +
       facet_wrap(~etichetta_sensore, nrow = 1) +
       scale_fill_manual(
         values = c(ok = "#9DC3A0", over = "#D99B94"),
         guide = "none"
       ) +
-      scale_y_continuous(limits = c(0, 112), expand = c(0, 0)) +
+      scale_y_continuous(limits = c(0, 118), expand = c(0, 0)) +
       labs(x = NULL, y = NULL) +
-      theme_minimal(base_size = 12) +
+      theme_minimal(base_size = 13) +
       theme(
         panel.grid = element_blank(),
         panel.background = element_rect(
@@ -718,19 +718,19 @@ server <- function(input, output, session) {
           color = NA
         ),
         axis.text.y = element_blank(),
-        axis.text.x = element_text(size = 10, face = "bold"),
+        axis.text.x = element_text(size = 12, face = "bold"),
         strip.text = element_text(
-          size = 12,
+          size = 13,
           face = "bold",
           color = "#4A4A4A",
           lineheight = 1.05,
-          margin = margin(5, 4, 6, 4)
+          margin = margin(6, 4, 7, 4)
         ),
         strip.background = element_rect(
           fill = scales::alpha("#7FA6C9", 0.18),
           color = NA
         ),
-        panel.spacing.x = unit(6, "pt")
+        panel.spacing.x = unit(8, "pt")
       )
   }
   
