@@ -5,7 +5,7 @@ services:
     image: san-dashboard:latest
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3838:3838"
+      - "3838:3838"
     volumes:
       - ./02_Output:/srv/shiny-server/02_Output:ro
     environment:
