@@ -2,6 +2,7 @@ library(shiny)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(ggiraph)
 library(shinyWidgets)
 library(RColorBrewer)
 library(here)
@@ -98,7 +99,10 @@ calcola_breaks_periodo <- function(periodi, max_breaks = 12) {
 
 # Interpola un dataframe per gruppo usando spline cubica naturale, in modo che
 # la curva passi esattamente per tutti i punti dati originali.
-interpola_spline <- function(df, x_col, y_col, group_col, n = 300) {
+# Interpola con spline cubica monotona, ma spezza la curva dove il gap
+# tra due punti consecutivi supera `gap_factor` volte il gap mediano.
+# Cosi' i tratti densi restano morbidi e i vuoti lunghi non generano parabole.
+interpola_spline <- function(df, x_col, y_col, group_col, n = 300, gap_factor = 2.5) {
   df |>
     group_by(across(all_of(group_col))) |>
     group_modify(function(d, ...) {
@@ -107,18 +111,55 @@ interpola_spline <- function(df, x_col, y_col, group_col, n = 300) {
       validi <- !is.na(x_num) & !is.na(y_val)
       x_num <- x_num[validi]
       y_val <- y_val[validi]
+      
       if (length(x_num) < 2) {
         return(setNames(
           data.frame(as.Date(x_num, origin = "1970-01-01"), y_val),
           c(x_col, y_col)
         ))
       }
-      sf <- stats::splinefun(x_num, y_val, method = "monoH.FC")
-      x_interp <- seq(min(x_num), max(x_num), length.out = max(n, length(x_num)))
-      setNames(
-        data.frame(as.Date(x_interp, origin = "1970-01-01"), sf(x_interp)),
+      
+      # Individua i gap anomali e suddivide in segmenti
+      diffs       <- diff(x_num)
+      soglia      <- gap_factor * median(diffs)
+      grandi_gap  <- which(diffs > soglia)
+      break_pts   <- c(0L, grandi_gap, length(x_num))
+      
+      n_seg <- length(break_pts) - 1L
+      
+      parti <- lapply(seq_len(n_seg), function(i) {
+        idx <- (break_pts[i] + 1L):break_pts[i + 1L]
+        xs  <- x_num[idx]
+        ys  <- y_val[idx]
+        
+        if (length(xs) < 2L) {
+          return(setNames(
+            data.frame(as.Date(xs, origin = "1970-01-01"), ys),
+            c(x_col, y_col)
+          ))
+        }
+        
+        sf       <- stats::splinefun(xs, ys, method = "monoH.FC")
+        n_punti  <- max(round(n / n_seg), length(xs))
+        x_interp <- seq(min(xs), max(xs), length.out = n_punti)
+        setNames(
+          data.frame(as.Date(x_interp, origin = "1970-01-01"), sf(x_interp)),
+          c(x_col, y_col)
+        )
+      })
+      
+      # Unisce i segmenti separandoli con una riga NA (spezza la linea)
+      righe_na <- setNames(
+        data.frame(as.Date(NA), NA_real_),
         c(x_col, y_col)
       )
+      risultato <- parti[[1]]
+      if (n_seg > 1L) {
+        for (i in 2:n_seg) {
+          risultato <- rbind(risultato, righe_na, parti[[i]])
+        }
+      }
+      risultato
     }) |>
     ungroup()
 }
@@ -126,7 +167,42 @@ interpola_spline <- function(df, x_col, y_col, group_col, n = 300) {
 ui <- fluidPage(
   
   tags$head(
+    tags$script(HTML("
+      function aggiornaLarghezzaAttivazioni() {
+        setTimeout(function () {
+          var el = document.getElementById('activationPlot');
+
+          if (el && el.clientWidth > 0) {
+            Shiny.setInputValue(
+              'activationPlot_px_width',
+              el.clientWidth,
+              {priority: 'event'}
+            );
+          }
+        }, 100);
+      }
+
+      $(document).on('shiny:connected', aggiornaLarghezzaAttivazioni);
+      $(document).on('shown.bs.tab', aggiornaLarghezzaAttivazioni);
+      $(window).on('resize', aggiornaLarghezzaAttivazioni);
+
+      /* Larghezza del modal: misurata quando e' completamente visibile */
+      $(document).on('shown.bs.modal', function () {
+        var w = $('.modal-body').first().width();
+        if (w > 0) Shiny.setInputValue('modal_px_width', w, {priority: 'event'});
+      });
+    ")),
     tags$style(HTML("
+      /* Modal grande: quasi a schermo intero */
+      .modal-xl {
+        width: 95vw;
+        max-width: 95vw;
+      }
+      .modal-xl .modal-body {
+        max-height: 82vh;
+        overflow-y: auto;
+      }
+
       #nok_table table {
         width: 100%;
         border-collapse: collapse;
@@ -205,31 +281,31 @@ ui <- fluidPage(
       column(2, selectInput("stabilimento", "Stabilimento:", choices = NULL)),
       column(3, selectInput("macchina", "Macchina:", choices = NULL)),
       column(3,
-        dateRangeInput(
-          "date",
-          "Periodo:",
-          start = data_min,
-          end = data_max,
-          min = data_min,
-          max = data_max,
-          format = "dd-mm-yyyy",
-          separator = " a ",
-          language = "it"
-        )
+             dateRangeInput(
+               "date",
+               "Periodo:",
+               start = data_min,
+               end = data_max,
+               min = data_min,
+               max = data_max,
+               format = "dd-mm-yyyy",
+               separator = " a ",
+               language = "it"
+             )
       ),
       column(2,
-        pickerInput(
-          "sensori",
-          "Sensori:",
-          choices = NULL,
-          multiple = TRUE,
-          options = pickerOptions(
-            actionsBox = TRUE,
-            liveSearch = TRUE,
-            selectedTextFormat = "count > 3",
-            countSelectedText = "{0} sensori selezionati"
-          )
-        )
+             pickerInput(
+               "sensori",
+               "Sensori:",
+               choices = NULL,
+               multiple = TRUE,
+               options = pickerOptions(
+                 actionsBox = TRUE,
+                 liveSearch = TRUE,
+                 selectedTextFormat = "count > 3",
+                 countSelectedText = "{0} sensori selezionati"
+               )
+             )
       )
     )
   ),
@@ -243,37 +319,37 @@ ui <- fluidPage(
       br(),
       fluidRow(
         column(4,
-          actionButton(
-            "home_attivazioni",
-            label = div(
-              icon("chart-bar", class = "card-icona"),
-              h4("Conteggio attivazioni"),
-              p("Grafico a barre e trend nel tempo per sensore")
-            ),
-            class = "card-home"
-          )
+               actionButton(
+                 "home_attivazioni",
+                 label = div(
+                   icon("chart-bar", class = "card-icona"),
+                   h4("Conteggio attivazioni"),
+                   p("Grafico a barre e trend nel tempo per sensore")
+                 ),
+                 class = "card-home"
+               )
         ),
         column(4,
-          actionButton(
-            "home_vita",
-            label = div(
-              icon("gauge", class = "card-icona"),
-              h4("Vita sensori"),
-              p("Stato dei sensori rispetto alle soglie B10dSAN e T10d")
-            ),
-            class = "card-home"
-          )
+               actionButton(
+                 "home_vita",
+                 label = div(
+                   icon("gauge", class = "card-icona"),
+                   h4("Vita sensori"),
+                   p("Stato dei sensori rispetto alle soglie B10dSAN e T10d")
+                 ),
+                 class = "card-home"
+               )
         ),
         column(4,
-          actionButton(
-            "home_nok",
-            label = div(
-              icon("chart-line", class = "card-icona"),
-              h4("Storico NOK"),
-              p("KPI e andamento storico del NOK per sensore")
-            ),
-            class = "card-home"
-          )
+               actionButton(
+                 "home_nok",
+                 label = div(
+                   icon("chart-line", class = "card-icona"),
+                   h4("Storico NOK"),
+                   p("KPI e andamento storico del NOK per sensore")
+                 ),
+                 class = "card-home"
+               )
         )
       )
     ),
@@ -287,24 +363,28 @@ ui <- fluidPage(
       
       fluidRow(
         column(3,
-          radioButtons(
-            "granularita",
-            "  ",
-            choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
-            selected = "Giorno",
-            inline = TRUE
-          )
+               radioButtons(
+                 "granularita",
+                 "  ",
+                 choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
+                 selected = "Giorno",
+                 inline = TRUE
+               )
         )
       ),
       
       fluidRow(
-        column(12, plotOutput("activationPlot", height = "500px"))
+        column(12, girafeOutput(
+          "activationPlot",
+          width = "100%",
+          height = "500px"
+        ))
       ),
       
       fluidRow(
         column(12,
-          h4("Andamento per sensore", class = "titolo-sezione"),
-          plotOutput("activationTrendPlot", height = "500px")
+               h4("Andamento per sensore", class = "titolo-sezione"),
+               girafeOutput("activationTrendPlot", height = "500px")
         )
       )
     ),
@@ -326,8 +406,8 @@ ui <- fluidPage(
       
       fluidRow(
         column(12,
-          h4("NOK per sensore", class = "titolo-sezione"),
-          tableOutput("nok_table")
+               h4("NOK per sensore", class = "titolo-sezione"),
+               tableOutput("nok_table")
         )
       ),
       
@@ -337,18 +417,18 @@ ui <- fluidPage(
       
       fluidRow(
         column(3,
-          radioButtons(
-            "granularita_nok",
-            "  ",
-            choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
-            selected = "Giorno",
-            inline = TRUE
-          )
+               radioButtons(
+                 "granularita_nok",
+                 "  ",
+                 choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
+                 selected = "Giorno",
+                 inline = TRUE
+               )
         )
       ),
       
       fluidRow(
-        column(12, plotOutput("nokHistoryPlot", height = "550px"))
+        column(12, girafeOutput("nokHistoryPlot", height = "550px"))
       )
     )
   )
@@ -419,19 +499,19 @@ server <- function(input, output, session) {
   observeEvent(input$home_attivazioni, {
     showModal(modalDialog(
       title = "Conteggio attivazioni",
-      size = "l",
+      size = "xl",
       easyClose = TRUE,
       footer = modalButton("Chiudi"),
-      plotOutput("modal_activationPlot", height = "380px"),
+      girafeOutput("modal_activationPlot", height = "380px"),
       br(),
-      plotOutput("modal_activationTrendPlot", height = "380px")
+      girafeOutput("modal_activationTrendPlot", height = "380px")
     ))
   })
   
   observeEvent(input$home_vita, {
     showModal(modalDialog(
       title = "Vita sensori",
-      size = "l",
+      size = "xl",
       easyClose = TRUE,
       footer = modalButton("Chiudi"),
       plotOutput("modal_tankPlot", height = "320px")
@@ -441,10 +521,10 @@ server <- function(input, output, session) {
   observeEvent(input$home_nok, {
     showModal(modalDialog(
       title = "Storico NOK",
-      size = "l",
+      size = "xl",
       easyClose = TRUE,
       footer = modalButton("Chiudi"),
-      plotOutput("modal_nokPlot", height = "420px")
+      girafeOutput("modal_nokPlot", height = "420px")
     ))
   })
   
@@ -697,7 +777,20 @@ server <- function(input, output, session) {
   }) |>
     bindCache(input$macchina, input$sensori, input$date, input$granularita)
   
-  render_activation_bar <- function() {
+  # CSS del tooltip, condiviso tra main e modal
+  tooltip_css <- paste0(
+    "background-color:#2C3E50;",
+    "color:#FFFFFF;",
+    "padding:8px 12px;",
+    "border-radius:6px;",
+    "font-size:13px;",
+    "line-height:1.6;",
+    "box-shadow:0 2px 8px rgba(0,0,0,0.3);"
+  )
+  
+  # Costruisce solo il ggplot (senza girafe), usato sia dal
+  # grafico principale sia dal modal
+  render_activation_bar_gg <- function() {
     
     grafico <- dati_grafico()
     
@@ -712,7 +805,17 @@ server <- function(input, output, session) {
       grafico,
       aes(x = etichetta, y = attivazioni, fill = etichetta_completa)
     ) +
-      geom_col(width = 0.8) +
+      geom_col_interactive(
+        aes(
+          tooltip = paste0(
+            "<b>", etichetta_completa, "</b><br/>",
+            "Periodo: ", periodo_label, "<br/>",
+            "Attivazioni: ", scales::label_number(accuracy = 1, big.mark = ".")(attivazioni)
+          ),
+          data_id = paste(etichetta_completa, periodo_label, sep = "__")
+        ),
+        width = 0.8
+      ) +
       facet_grid(
         cols = vars(periodo_label),
         scales = "free_x",
@@ -744,7 +847,10 @@ server <- function(input, output, session) {
       )
   }
   
-  render_activation_trend <- function() {
+  # Curva morbida (spline) con gap-detection: segmenti densi restano fluidi,
+  # i vuoti lunghi spezzano la linea invece di generare parabole.
+  # I punti reali sono interattivi con tooltip.
+  render_activation_trend_gg <- function() {
     
     grafico <- dati_grafico()
     
@@ -764,11 +870,22 @@ server <- function(input, output, session) {
       geom_line(
         data = spline_att,
         aes(x = periodo, y = attivazioni, color = etichetta_completa),
-        linewidth = 1
+        linewidth = 1,
+        na.rm = FALSE   # gli NA spezzano la linea nel punto di gap
       ) +
-      geom_point(
+      geom_point_interactive(
         data = grafico,
-        aes(x = periodo, y = attivazioni, color = etichetta_completa),
+        aes(
+          x       = periodo,
+          y       = attivazioni,
+          color   = etichetta_completa,
+          tooltip = paste0(
+            "<b>", etichetta_completa, "</b><br/>",
+            "Periodo: ", periodo_label, "<br/>",
+            "Attivazioni: ", scales::label_number(accuracy = 1, big.mark = ".")(attivazioni)
+          ),
+          data_id = paste(etichetta_completa, periodo_label, sep = "__")
+        ),
         size = 1.8
       ) +
       scale_x_date(
@@ -799,11 +916,65 @@ server <- function(input, output, session) {
       )
   }
   
-  output$activationPlot <- renderPlot({ render_activation_bar() })
-  output$modal_activationPlot <- renderPlot({ render_activation_bar() })
+  # Grafico principale: width_svg misurata dal JS sul contenitore reale.
+  # Si divide per 72 (DPI interno ggiraph) e non 96, cosi' il fattore di
+  # scala SVG->schermo e' 1:1 e testo/leggenda non risultano ingranditi.
+  output$activationPlot <- renderGirafe({
+    req(input$activationPlot_px_width > 0)
+    
+    girafe(
+      ggobj      = render_activation_bar_gg(),
+      width_svg  = input$activationPlot_px_width / 72,
+      height_svg = 500 / 72,
+      options    = list(
+        opts_tooltip(css = tooltip_css, use_fill = FALSE),
+        opts_hover(css = "opacity:0.8;cursor:pointer;")
+      )
+    )
+  })
   
-  output$activationTrendPlot <- renderPlot({ render_activation_trend() })
-  output$modal_activationTrendPlot <- renderPlot({ render_activation_trend() })
+  # Modal (size = "xl", ~95vw): larghezza misurata dal JS dopo l'apertura
+  output$modal_activationPlot <- renderGirafe({
+    w_px <- if (!is.null(input$modal_px_width) && input$modal_px_width > 0)
+      input$modal_px_width else 1100
+    girafe(
+      ggobj      = render_activation_bar_gg(),
+      width_svg  = w_px / 72,
+      height_svg = 380 / 72,
+      options    = list(
+        opts_tooltip(css = tooltip_css, use_fill = FALSE),
+        opts_hover(css = "opacity:0.8;cursor:pointer;")
+      )
+    )
+  })
+  
+  # Riusa la larghezza del grafico a barre (stessa colonna, stessa dimensione)
+  output$activationTrendPlot <- renderGirafe({
+    req(input$activationPlot_px_width > 0)
+    girafe(
+      ggobj      = render_activation_trend_gg(),
+      width_svg  = input$activationPlot_px_width / 72,
+      height_svg = 500 / 72,
+      options    = list(
+        opts_tooltip(css = tooltip_css, use_fill = FALSE),
+        opts_hover(css = "opacity:0.8;cursor:pointer;")
+      )
+    )
+  })
+  
+  output$modal_activationTrendPlot <- renderGirafe({
+    w_px <- if (!is.null(input$modal_px_width) && input$modal_px_width > 0)
+      input$modal_px_width else 1100
+    girafe(
+      ggobj      = render_activation_trend_gg(),
+      width_svg  = w_px / 72,
+      height_svg = 380 / 72,
+      options    = list(
+        opts_tooltip(css = tooltip_css, use_fill = FALSE),
+        opts_hover(css = "opacity:0.8;cursor:pointer;")
+      )
+    )
+  })
   
   # Storico del NOK per sensore: i valori giornalieri vengono aggregati
   # nel periodo scelto e confrontati con la media storica (NMN) dello
@@ -842,7 +1013,7 @@ server <- function(input, output, session) {
       input$granularita_nok
     )
   
-  render_nok_history <- function() {
+  render_nok_history_gg <- function() {
     
     storico <- kpi_nok_storico()
     
@@ -852,7 +1023,10 @@ server <- function(input, output, session) {
     
     storico <- storico |>
       ordina_naturale() |>
-      mutate(etichetta_sensore = factor(etichetta_sensore, levels = unique(etichetta_sensore)))
+      mutate(
+        etichetta_sensore = factor(etichetta_sensore, levels = unique(etichetta_sensore)),
+        periodo_label     = formatta_periodo_label(periodo, input$granularita_nok)
+      )
     
     n_sensori <- dplyr::n_distinct(storico$etichetta_sensore)
     palette_sensori <- colorRampPalette(brewer.pal(8, "Set2"))(n_sensori)
@@ -874,11 +1048,22 @@ server <- function(input, output, session) {
       geom_line(
         data = spline_nok,
         aes(x = periodo, y = NOK_periodo, color = etichetta_sensore),
-        linewidth = 1
+        linewidth = 1,
+        na.rm = FALSE
       ) +
-      geom_point(
+      geom_point_interactive(
         data = storico,
-        aes(x = periodo, y = NOK_periodo, color = etichetta_sensore),
+        aes(
+          x       = periodo,
+          y       = NOK_periodo,
+          color   = etichetta_sensore,
+          tooltip = paste0(
+            "<b>", etichetta_sensore, "</b><br/>",
+            "Periodo: ", periodo_label, "<br/>",
+            "NOK: ", round(NOK_periodo, 3)
+          ),
+          data_id = paste(etichetta_sensore, periodo_label, sep = "__")
+        ),
         size = 2.2
       ) +
       scale_x_date(
@@ -908,8 +1093,32 @@ server <- function(input, output, session) {
       )
   }
   
-  output$nokHistoryPlot <- renderPlot({ render_nok_history() })
-  output$modal_nokPlot <- renderPlot({ render_nok_history() })
+  output$nokHistoryPlot <- renderGirafe({
+    req(input$activationPlot_px_width > 0)
+    girafe(
+      ggobj      = render_nok_history_gg(),
+      width_svg  = input$activationPlot_px_width / 72,
+      height_svg = 550 / 72,
+      options    = list(
+        opts_tooltip(css = tooltip_css, use_fill = FALSE),
+        opts_hover(css = "opacity:0.8;cursor:pointer;")
+      )
+    )
+  })
+  
+  output$modal_nokPlot <- renderGirafe({
+    w_px <- if (!is.null(input$modal_px_width) && input$modal_px_width > 0)
+      input$modal_px_width else 1100
+    girafe(
+      ggobj      = render_nok_history_gg(),
+      width_svg  = w_px / 72,
+      height_svg = 420 / 72,
+      options    = list(
+        opts_tooltip(css = tooltip_css, use_fill = FALSE),
+        opts_hover(css = "opacity:0.8;cursor:pointer;")
+      )
+    )
+  })
 }
 
 shinyApp(ui, server)

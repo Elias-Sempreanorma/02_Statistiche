@@ -1,5 +1,3 @@
-# Aggiorna dati e pubblica la dashboard
-
 library(here)
 library(rsconnect)
 
@@ -11,18 +9,39 @@ scripts <- c(
 )
 
 for (script in scripts) {
-  message("Eseguo: ", script)
-  source(here("01_Code", "Test", script), local = .GlobalEnv)
+  source(
+    here("01_Code", "Test", script),
+    local = .GlobalEnv
+  )
 }
 
+# Crea il pacchetto temporaneo per shinyapps.io
+deploy_dir <- tempfile("5san_test_")
+
+dir.create(
+  file.path(deploy_dir, "02_Output", "Test"),
+  recursive = TRUE
+)
+
+# 05_Plots.R diventa l'app.R della versione test
+file.copy(
+  here("01_Code", "Test", "05_Plots.R"),
+  file.path(deploy_dir, "app.R")
+)
+
+file.copy(
+  here("02_Output", "Test", "sensor_count_increment.rds"),
+  file.path(deploy_dir, "02_Output", "Test",
+            "sensor_count_increment.rds")
+)
+
+file.copy(
+  here("02_Output", "Test", "raw_data.rds"),
+  file.path(deploy_dir, "02_Output", "Test", "raw_data.rds")
+)
+
 rsconnect::deployApp(
-  appDir = here::here(),
-  appFiles = c(
-    "app.R",
-    "01_Code/Test/05_Plots.R",
-    "02_Output/Test/sensor_count_increment.rds",
-    "02_Output/Test/raw_data.rds"
-  ),
+  appDir = deploy_dir,
   appName = "01_5san",
   account = "kb5mot-elias0forma",
   server = "shinyapps.io",
