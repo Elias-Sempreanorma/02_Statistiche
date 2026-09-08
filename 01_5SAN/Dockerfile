@@ -24,7 +24,8 @@ RUN install2.r --error --skipinstalled \
     openxlsx \
     RPostgres \
     DBI \
-    purrr
+    purrr \
+    DT
 
 RUN rm -rf /srv/shiny-server/*
 

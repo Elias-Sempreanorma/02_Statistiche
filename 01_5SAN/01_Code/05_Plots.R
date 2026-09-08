@@ -9,6 +9,7 @@ library(here)
 library(stringr)
 library(lubridate)
 library(scales)
+library(DT)
 
 dati <- readRDS(here("02_Output", "sensor_count_increment.rds")) |>
   mutate(field = if_else(is.na(field) | trimws(field) == "", "(Non specificato)", field))
@@ -382,9 +383,21 @@ ui <- fluidPage(
       ),
       
       fluidRow(
+        column(12, align = "right",
+               actionButton("btn_dati_attivazioni", "Dati", icon = icon("table"), class = "btn-sm btn-default")
+        )
+      ),
+      
+      fluidRow(
         column(12,
                h4("Andamento per sensore", class = "titolo-sezione"),
                girafeOutput("activationTrendPlot", height = "500px")
+        )
+      ),
+      
+      fluidRow(
+        column(12, align = "right",
+               actionButton("btn_dati_trend", "Dati", icon = icon("table"), class = "btn-sm btn-default")
         )
       )
     ),
@@ -398,6 +411,12 @@ ui <- fluidPage(
       
       fluidRow(
         column(12, plotOutput("tankPlot", height = "430px"))
+      ),
+      
+      fluidRow(
+        column(12, align = "right",
+               actionButton("btn_dati_tank", "Dati", icon = icon("table"), class = "btn-sm btn-default")
+        )
       )
     ),
     
@@ -429,6 +448,12 @@ ui <- fluidPage(
       
       fluidRow(
         column(12, girafeOutput("nokHistoryPlot", height = "550px"))
+      ),
+      
+      fluidRow(
+        column(12, align = "right",
+               actionButton("btn_dati_nok", "Dati", icon = icon("table"), class = "btn-sm btn-default")
+        )
       )
     )
   )
@@ -1119,6 +1144,100 @@ server <- function(input, output, session) {
       )
     )
   })
+  
+  # -----------------------------------------------------------------------
+  # Bottoni "Dati": aprono un modal con la tabella sintetica dei dati
+  # usati dal grafico corrispondente.
+  # -----------------------------------------------------------------------
+  
+  # Grafico a barre – Conteggio attivazioni
+  observeEvent(input$btn_dati_attivazioni, {
+    showModal(modalDialog(
+      title     = "Dati \u2013 Conteggio attivazioni",
+      size      = "l",
+      easyClose = TRUE,
+      footer    = modalButton("Chiudi"),
+      DTOutput("tabella_dati_attivazioni")
+    ))
+  })
+  
+  output$tabella_dati_attivazioni <- renderDT({
+    dati_grafico() |>
+      transmute(
+        Periodo     = as.character(periodo_label),
+        Sensore     = as.character(etichetta_completa),
+        Attivazioni = attivazioni
+      ) |>
+      arrange(Periodo, Sensore)
+  }, rownames = FALSE, options = list(pageLength = 25, dom = "tip"))
+  
+  # Grafico trend – Andamento per sensore
+  observeEvent(input$btn_dati_trend, {
+    showModal(modalDialog(
+      title     = "Dati \u2013 Andamento per sensore",
+      size      = "l",
+      easyClose = TRUE,
+      footer    = modalButton("Chiudi"),
+      DTOutput("tabella_dati_trend")
+    ))
+  })
+  
+  output$tabella_dati_trend <- renderDT({
+    dati_grafico() |>
+      transmute(
+        Sensore     = as.character(etichetta_completa),
+        Periodo     = as.character(periodo_label),
+        Attivazioni = attivazioni
+      ) |>
+      arrange(Sensore, Periodo)
+  }, rownames = FALSE, options = list(pageLength = 25, dom = "tip"))
+  
+  # Grafico serbatoi – Vita sensori
+  observeEvent(input$btn_dati_tank, {
+    showModal(modalDialog(
+      title     = "Dati \u2013 Vita sensori",
+      size      = "l",
+      easyClose = TRUE,
+      footer    = modalButton("Chiudi"),
+      DTOutput("tabella_dati_tank")
+    ))
+  })
+  
+  output$tabella_dati_tank <- renderDT({
+    tank_data() |>
+      transmute(
+        Sensore = gsub("\n", " ", as.character(etichetta_sensore)),
+        Tipo    = tipo,
+        Valore  = round(valore, 1),
+        Massimo = massimo,
+        `%`     = ifelse(
+          is.na(percentuale),
+          NA_character_,
+          paste0(round(percentuale, 1), " %")
+        )
+      )
+  }, rownames = FALSE, options = list(pageLength = 25, dom = "t"))
+  
+  # Grafico storico – NOK per periodo
+  observeEvent(input$btn_dati_nok, {
+    showModal(modalDialog(
+      title     = "Dati \u2013 Storico NOK",
+      size      = "l",
+      easyClose = TRUE,
+      footer    = modalButton("Chiudi"),
+      DTOutput("tabella_dati_nok")
+    ))
+  })
+  
+  output$tabella_dati_nok <- renderDT({
+    kpi_nok_storico() |>
+      transmute(
+        Periodo = formatta_periodo_label(periodo, input$granularita_nok),
+        Sensore = etichetta_sensore,
+        NOK     = round(NOK_periodo, 3)
+      ) |>
+      arrange(Periodo, Sensore)
+  }, rownames = FALSE, options = list(pageLength = 25, dom = "tip"))
 }
 
 shinyApp(ui, server)
