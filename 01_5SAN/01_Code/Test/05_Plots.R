@@ -440,6 +440,16 @@ ui <- fluidPage(
         border-radius: 7px;
         background: #FFFFFF;
       }
+      .modal-nav-bar {
+        margin-bottom: 20px;
+        padding-bottom: 14px;
+        border-bottom: 2px solid #E4E7EB;
+      }
+      .modal-nav-bar .btn-group .btn {
+        font-weight: 600;
+        font-size: 14px;
+        padding: 8px 18px;
+      }
       @media (max-width: 700px) {
         .home-menu {
           padding-right: 15px;
@@ -605,234 +615,190 @@ server <- function(input, output, session) {
   # valori dei filtri generali, ma hanno input distinti e possono quindi
   # essere modificati all'interno del modal senza cambiare la Home.
   # ---------------------------------------------------------------------
-  observeEvent(input$home_attivazioni, {
-    req(input$macchina, input$date)
-    
-    sensori_macchina <- sensori_lookup |>
-      filter(coupon == input$macchina)
-    
-    sensori_selezionati <- intersect(input$sensori, sensori_macchina$cds_name)
+  # ---------------------------------------------------------------------
+  # Modal unico con navigazione interna tramite radioGroupButtons.
+  # apri_modal() viene chiamata dai tre bottoni Home: imposta la vista
+  # iniziale e mostra il dialogo. Il contenuto cambia senza chiuderlo.
+  # ---------------------------------------------------------------------
+  apri_modal <- function(vista_iniziale) {
     mostra_dati_attivazioni(FALSE)
     mostra_dati_trend(FALSE)
+    mostra_dati_tank(FALSE)
+    mostra_dati_nok(FALSE)
     
     showModal(modalDialog(
-      title = "Conteggio attivazioni",
+      title = NULL,
       size = "xl",
       easyClose = TRUE,
       footer = modalButton("Chiudi"),
       
       div(
-        class = "modal-filters",
-        fluidRow(
-          column(
-            4,
-            dateRangeInput(
-              "modal_date_attivazioni",
-              "Periodo:",
-              start = input$date[1],
-              end = input$date[2],
-              min = data_min,
-              max = data_max,
-              format = "dd-mm-yyyy",
-              separator = " a ",
-              language = "it"
-            )
+        class = "modal-nav-bar",
+        radioGroupButtons(
+          "vista_selezionata",
+          label = NULL,
+          choices = c(
+            "Conteggio attivazioni" = "attivazioni",
+            "Vita sensori"          = "vita",
+            "Storico NOK"           = "nok"
           ),
-          column(
-            8,
-            pickerInput(
-              "modal_sensori_attivazioni",
-              "Sensori:",
-              choices = setNames(
-                sensori_macchina$cds_name,
-                paste(
-                  sensori_macchina$cds_name,
-                  sensori_macchina$sensor_description,
-                  sep = " - "
-                )
-              ),
-              selected = sensori_selezionati,
-              multiple = TRUE,
-              options = pickerOptions(
-                actionsBox = TRUE,
-                liveSearch = TRUE,
-                selectedTextFormat = "count > 3",
-                countSelectedText = "{0} sensori selezionati"
-              )
-            )
-          )
-        ),
-        radioButtons(
-          "modal_granularita_attivazioni",
-          "Raggruppamento:",
-          choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
-          selected = "Giorno",
-          inline = TRUE
+          selected = vista_iniziale,
+          status   = "primary",
+          size     = "normal",
+          width    = "auto"
         )
       ),
       
-      h4("Conteggio attivazioni", class = "titolo-sezione"),
-      girafeOutput("modal_activationPlot", height = "380px"),
-      div(
-        class = "modal-data-button",
-        actionButton(
-          "modal_btn_dati_attivazioni",
-          "Dati",
-          icon = icon("table"),
-          class = "btn-sm btn-default"
-        )
-      ),
-      uiOutput("modal_panel_dati_attivazioni"),
-      
-      h4("Andamento per sensore", class = "titolo-sezione"),
-      br(),
-      girafeOutput("modal_activationTrendPlot", height = "380px"),
-      div(
-        class = "modal-data-button",
-        actionButton(
-          "modal_btn_dati_trend",
-          "Dati",
-          icon = icon("table"),
-          class = "btn-sm btn-default"
-        )
-      ),
-      uiOutput("modal_panel_dati_trend")
+      uiOutput("modal_contenuto")
     ))
+  }
+  
+  observeEvent(input$home_attivazioni, {
+    req(input$macchina, input$date)
+    apri_modal("attivazioni")
   })
   
   observeEvent(input$home_vita, {
     req(input$macchina)
-    
-    sensori_macchina <- sensori_lookup |>
-      filter(coupon == input$macchina)
-    
-    sensori_selezionati <- intersect(input$sensori, sensori_macchina$cds_name)
-    mostra_dati_tank(FALSE)
-    
-    showModal(modalDialog(
-      title = "Vita sensori",
-      size = "xl",
-      easyClose = TRUE,
-      footer = modalButton("Chiudi"),
-      
-      div(
-        class = "modal-filters",
-        pickerInput(
-          "modal_sensori_vita",
-          "Sensori:",
-          choices = setNames(
-            sensori_macchina$cds_name,
-            paste(
-              sensori_macchina$cds_name,
-              sensori_macchina$sensor_description,
-              sep = " - "
-            )
-          ),
-          selected = sensori_selezionati,
-          multiple = TRUE,
-          options = pickerOptions(
-            actionsBox = TRUE,
-            liveSearch = TRUE,
-            selectedTextFormat = "count > 3",
-            countSelectedText = "{0} sensori selezionati"
-          )
-        )
-      ),
-      
-      plotOutput("modal_tankPlot", height = "430px"),
-      div(
-        class = "modal-data-button",
-        actionButton(
-          "modal_btn_dati_tank",
-          "Dati",
-          icon = icon("table"),
-          class = "btn-sm btn-default"
-        )
-      ),
-      uiOutput("modal_panel_dati_tank")
-    ))
+    apri_modal("vita")
   })
   
   observeEvent(input$home_nok, {
     req(input$macchina, input$date)
+    apri_modal("nok")
+  })
+  
+  # Quando si cambia vista, azzera la visibilita' delle tabelle dati
+  observeEvent(input$vista_selezionata, {
+    mostra_dati_attivazioni(FALSE)
+    mostra_dati_trend(FALSE)
+    mostra_dati_tank(FALSE)
+    mostra_dati_nok(FALSE)
+  }, ignoreInit = TRUE)
+  
+  # Contenuto del modal: si aggiorna al cambio di vista senza chiudere il dialogo
+  output$modal_contenuto <- renderUI({
+    req(input$vista_selezionata, input$macchina)
+    
+    vista <- input$vista_selezionata
     
     sensori_macchina <- sensori_lookup |>
       filter(coupon == input$macchina)
     
     sensori_selezionati <- intersect(input$sensori, sensori_macchina$cds_name)
-    mostra_dati_nok(FALSE)
     
-    showModal(modalDialog(
-      title = "Storico NOK",
-      size = "xl",
-      easyClose = TRUE,
-      footer = modalButton("Chiudi"),
-      
-      div(
-        class = "modal-filters",
-        fluidRow(
-          column(
-            4,
-            dateRangeInput(
-              "modal_date_nok",
-              "Periodo:",
-              start = input$date[1],
-              end = input$date[2],
-              min = data_min,
-              max = data_max,
-              format = "dd-mm-yyyy",
-              separator = " a ",
-              language = "it"
-            )
-          ),
-          column(
-            8,
-            pickerInput(
-              "modal_sensori_nok",
-              "Sensori:",
-              choices = setNames(
-                sensori_macchina$cds_name,
-                paste(
-                  sensori_macchina$cds_name,
-                  sensori_macchina$sensor_description,
-                  sep = " - "
-                )
-              ),
-              selected = sensori_selezionati,
-              multiple = TRUE,
-              options = pickerOptions(
-                actionsBox = TRUE,
-                liveSearch = TRUE,
-                selectedTextFormat = "count > 3",
-                countSelectedText = "{0} sensori selezionati"
+    scelte_sensori <- setNames(
+      sensori_macchina$cds_name,
+      paste(sensori_macchina$cds_name, sensori_macchina$sensor_description, sep = " - ")
+    )
+    
+    picker_opts <- pickerOptions(
+      actionsBox = TRUE,
+      liveSearch = TRUE,
+      selectedTextFormat = "count > 3",
+      countSelectedText = "{0} sensori selezionati"
+    )
+    
+    if (vista == "attivazioni") {
+      tagList(
+        div(
+          class = "modal-filters",
+          fluidRow(
+            column(4,
+              dateRangeInput(
+                "modal_date_attivazioni", "Periodo:",
+                start = input$date[1], end = input$date[2],
+                min = data_min, max = data_max,
+                format = "dd-mm-yyyy", separator = " a ", language = "it"
+              )
+            ),
+            column(8,
+              pickerInput(
+                "modal_sensori_attivazioni", "Sensori:",
+                choices = scelte_sensori, selected = sensori_selezionati,
+                multiple = TRUE, options = picker_opts
               )
             )
+          ),
+          radioButtons(
+            "modal_granularita_attivazioni", "Raggruppamento:",
+            choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
+            selected = "Giorno", inline = TRUE
           )
         ),
-        radioButtons(
-          "modal_granularita_nok",
-          "Raggruppamento:",
-          choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
-          selected = "Giorno",
-          inline = TRUE
-        )
-      ),
+        h4("Conteggio attivazioni", class = "titolo-sezione"),
+        girafeOutput("modal_activationPlot", height = "380px"),
+        div(
+          class = "modal-data-button",
+          actionButton("modal_btn_dati_attivazioni", "Dati", icon = icon("table"), class = "btn-sm btn-default")
+        ),
+        uiOutput("modal_panel_dati_attivazioni"),
+        h4("Andamento per sensore", class = "titolo-sezione"),
+        br(),
+        girafeOutput("modal_activationTrendPlot", height = "380px"),
+        div(
+          class = "modal-data-button",
+          actionButton("modal_btn_dati_trend", "Dati", icon = icon("table"), class = "btn-sm btn-default")
+        ),
+        uiOutput("modal_panel_dati_trend")
+      )
       
-      h4("NOK per sensore", class = "titolo-sezione"),
-      tableOutput("modal_nok_table"),
-      h4("Andamento storico del NOK", class = "titolo-sezione"),
-      girafeOutput("modal_nokPlot", height = "520px"),
-      div(
-        class = "modal-data-button",
-        actionButton(
-          "modal_btn_dati_nok",
-          "Dati",
-          icon = icon("table"),
-          class = "btn-sm btn-default"
-        )
-      ),
-      uiOutput("modal_panel_dati_nok")
-    ))
+    } else if (vista == "vita") {
+      tagList(
+        div(
+          class = "modal-filters",
+          pickerInput(
+            "modal_sensori_vita", "Sensori:",
+            choices = scelte_sensori, selected = sensori_selezionati,
+            multiple = TRUE, options = picker_opts
+          )
+        ),
+        plotOutput("modal_tankPlot", height = "430px"),
+        div(
+          class = "modal-data-button",
+          actionButton("modal_btn_dati_tank", "Dati", icon = icon("table"), class = "btn-sm btn-default")
+        ),
+        uiOutput("modal_panel_dati_tank")
+      )
+      
+    } else if (vista == "nok") {
+      tagList(
+        div(
+          class = "modal-filters",
+          fluidRow(
+            column(4,
+              dateRangeInput(
+                "modal_date_nok", "Periodo:",
+                start = input$date[1], end = input$date[2],
+                min = data_min, max = data_max,
+                format = "dd-mm-yyyy", separator = " a ", language = "it"
+              )
+            ),
+            column(8,
+              pickerInput(
+                "modal_sensori_nok", "Sensori:",
+                choices = scelte_sensori, selected = sensori_selezionati,
+                multiple = TRUE, options = picker_opts
+              )
+            )
+          ),
+          radioButtons(
+            "modal_granularita_nok", "Raggruppamento:",
+            choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
+            selected = "Giorno", inline = TRUE
+          )
+        ),
+        h4("NOK per sensore", class = "titolo-sezione"),
+        tableOutput("modal_nok_table"),
+        h4("Andamento storico del NOK", class = "titolo-sezione"),
+        girafeOutput("modal_nokPlot", height = "520px"),
+        div(
+          class = "modal-data-button",
+          actionButton("modal_btn_dati_nok", "Dati", icon = icon("table"), class = "btn-sm btn-default")
+        ),
+        uiOutput("modal_panel_dati_nok")
+      )
+    }
   })
   
   observeEvent(input$modal_btn_dati_attivazioni, {
@@ -850,7 +816,63 @@ server <- function(input, output, session) {
   observeEvent(input$modal_btn_dati_nok, {
     mostra_dati_nok(!mostra_dati_nok())
   })
-  
+
+  # ---------------------------------------------------------------------
+  # Sincronizzazione bidirezionale: modal -> principale.
+  # Quando l'utente modifica un filtro dentro un modal, la modifica viene
+  # propagata al corrispondente filtro nella schermata principale.
+  # Il check identical() evita loop: se il valore e' gia' uguale non
+  # viene inviato nessun aggiornamento.
+  # ---------------------------------------------------------------------
+
+  # Date: modal attivazioni -> principale
+  observeEvent(input$modal_date_attivazioni, {
+    req(input$modal_date_attivazioni)
+    if (!identical(input$date, input$modal_date_attivazioni)) {
+      updateDateRangeInput(
+        session, "date",
+        start = input$modal_date_attivazioni[1],
+        end   = input$modal_date_attivazioni[2]
+      )
+    }
+  }, ignoreInit = TRUE)
+
+  # Date: modal NOK -> principale
+  observeEvent(input$modal_date_nok, {
+    req(input$modal_date_nok)
+    if (!identical(input$date, input$modal_date_nok)) {
+      updateDateRangeInput(
+        session, "date",
+        start = input$modal_date_nok[1],
+        end   = input$modal_date_nok[2]
+      )
+    }
+  }, ignoreInit = TRUE)
+
+  # Sensori: modal attivazioni -> principale
+  observeEvent(input$modal_sensori_attivazioni, {
+    req(input$modal_sensori_attivazioni)
+    if (!identical(sort(input$sensori), sort(input$modal_sensori_attivazioni))) {
+      updatePickerInput(session, "sensori", selected = input$modal_sensori_attivazioni)
+    }
+  }, ignoreInit = TRUE)
+
+  # Sensori: modal vita -> principale
+  observeEvent(input$modal_sensori_vita, {
+    req(input$modal_sensori_vita)
+    if (!identical(sort(input$sensori), sort(input$modal_sensori_vita))) {
+      updatePickerInput(session, "sensori", selected = input$modal_sensori_vita)
+    }
+  }, ignoreInit = TRUE)
+
+  # Sensori: modal NOK -> principale
+  observeEvent(input$modal_sensori_nok, {
+    req(input$modal_sensori_nok)
+    if (!identical(sort(input$sensori), sort(input$modal_sensori_nok))) {
+      updatePickerInput(session, "sensori", selected = input$modal_sensori_nok)
+    }
+  }, ignoreInit = TRUE)
+
   output$modal_panel_dati_attivazioni <- renderUI({
     if (!mostra_dati_attivazioni()) return(NULL)
     div(class = "modal-data-panel", DTOutput("modal_tabella_dati_attivazioni"))
