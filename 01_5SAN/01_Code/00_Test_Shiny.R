@@ -23,6 +23,26 @@ dir.create(
   recursive = TRUE
 )
 
+# Copia nel pacchetto di deploy le immagini degli schemi. Vengono incluse
+# soltanto le immagini, non gli altri file eventualmente presenti in cartella.
+dir.create(
+  file.path(deploy_dir, "00_Data", "02_CdS"),
+  recursive = TRUE
+)
+
+immagini_cds <- list.files(
+  here("00_Data", "02_CdS"),
+  pattern = "\\.(png|jpg|jpeg)$",
+  full.names = TRUE,
+  ignore.case = TRUE
+)
+
+file.copy(
+  immagini_cds,
+  file.path(deploy_dir, "00_Data", "02_CdS"),
+  overwrite = TRUE
+)
+
 # 05_Plots.R diventa l'app.R della versione test
 file.copy(
   here("01_Code", "Test", "05_Plots.R"),

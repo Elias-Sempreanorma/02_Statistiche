@@ -11,6 +11,14 @@ library(lubridate)
 library(scales)
 library(DT)
 
+# Le immagini non sono nella cartella www: le espongo a Shiny con un
+# resource path dedicato. Se la cartella non esiste, l'app continua comunque
+# a funzionare e nella Home non viene mostrato alcuno schema.
+cds_images_dir <- here("00_Data", "02_CdS")
+if (dir.exists(cds_images_dir)) {
+  addResourcePath("cds-images", cds_images_dir)
+}
+
 dati <- readRDS(here("02_Output", "Test", "sensor_count_increment.rds")) |>
   mutate(field = if_else(is.na(field) | trimws(field) == "", "(Non specificato)", field))
 
@@ -59,6 +67,81 @@ sensori_lookup <- dati |>
 
 data_min <- min(dati$day, na.rm = TRUE)
 data_max <- max(dati$day, na.rm = TRUE)
+
+# ---------------------------------------------------------------------------
+# Immagini disponibili e coordinate dei punti interattivi.
+# Le coordinate sono espresse inizialmente in pixel rispetto all'immagine
+# originale e poi convertite in percentuale, cosi' restano corrette anche
+# quando l'immagine si ridimensiona.
+# ---------------------------------------------------------------------------
+immagini_progetti <- data.frame(
+  project = c("A3020", "C14GR", "E11RI", "F0400"),
+  file_name = c(
+    "Giacomini_G1_A3020.png",
+    "Giacomini_G1_C14GR.png",
+    "Giacomini_G1_E11RI.png",
+    "Giacomini_G1_F0400.png"
+  ),
+  stringsAsFactors = FALSE
+)
+
+mappa_sensori <- bind_rows(
+  data.frame(
+    project = "A3020", image_width = 964, image_height = 519,
+    cds_name = c(
+      "EML", "REG", "PE2", "BIM2", "FCM5", "FCM6", "FCM4",
+      "FCM3", "FCM2", "FCM1", "FCM7", "FCM8", "FCM13", "PE1",
+      "FCM9", "FCM12", "FCM11", "FCM10", "BIM1"
+    ),
+    x = c(536, 556, 96, 86, 129, 144, 159, 324, 341, 372,
+          62, 62, 473, 457, 371, 172, 324, 341, 169),
+    y = c(136, 185, 228, 249, 268, 268, 267, 278, 277, 295,
+          307, 330, 338, 343, 359, 362, 375, 375, 384)
+  ),
+  data.frame(
+    project = "C14GR", image_width = 964, image_height = 700,
+    cds_name = c(
+      "EML", "REG", "MB4", "MB3", "SM3", "MB2", "SM2", "SC1",
+      "SM1", "FCM1", "MB1", "PE1", "RE1", "MB5", "MB6", "SM4"
+    ),
+    x = c(683, 722, 367, 391, 460, 465, 569, 602,
+          768, 725, 761, 469, 560, 366, 396, 296),
+    y = c(58, 58, 155, 156, 145, 223, 194, 242,
+          397, 431, 439, 461, 460, 478, 477, 464)
+  ),
+  data.frame(
+    project = "E11RI", image_width = 964, image_height = 712,
+    cds_name = c(
+      "MF1", "MF2", "FCM6", "FCM5", "RA2", "FCM7", "RA6",
+      "FCM4", "UPe2", "MBe2", "RA5", "FCM3", "FCM2", "FCM1",
+      "MBe1", "UPe1", "RA4", "RA7", "UPe3", "MB4", "MB3",
+      "FCM9", "FTCe1", "UPe4", "FCM8", "FMEe3", "RA3", "RA1",
+      "FMEe1", "MB1", "MB2", "FMEe2", "EML", "REG"
+    ),
+    x = c(121, 229, 463, 522, 326, 371, 505, 615, 560, 559, 559,
+          615, 522, 463, 497, 514, 484, 426, 466, 287, 307, 361,
+          384, 426, 371, 343, 260, 238, 121, 160, 200, 227, 780, 810),
+    y = c(176, 176, 186, 186, 239, 269, 240, 279, 277, 295, 334,
+          357, 430, 430, 354, 379, 364, 270, 245, 303, 323, 298,
+          318, 318, 357, 282, 353, 390, 362, 362, 362, 354, 489, 518)
+  ),
+  data.frame(
+    project = "F0400", image_width = 966, image_height = 712,
+    cds_name = c(
+      "EML", "REG", "MB6", "MB5", "MB4", "MB3", "MB2", "SM3",
+      "SM2", "R3", "PE1", "FCM1", "FTC1", "MB1", "SM1"
+    ),
+    x = c(302, 263, 412, 234, 234, 595, 595, 223,
+          598, 576, 233, 180, 535, 502, 602),
+    y = c(108, 108, 184, 206, 227, 205, 223, 289,
+          289, 392, 397, 430, 446, 495, 473)
+  )
+) |>
+  mutate(
+    cds_key = str_to_upper(str_squish(cds_name)),
+    x_pct = 100 * x / image_width,
+    y_pct = 100 * y / image_height
+  )
 
 # ---------------------------------------------------------------------------
 # Helper: raggruppa una data nel periodo scelto (giorno/settimana/mese/...)
@@ -269,6 +352,92 @@ ui <- fluidPage(
         color: #8A94A0;
         margin: 0;
       }
+      .schema-home {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        margin: 6px 0 28px 0;
+      }
+      .schema-frame {
+        position: relative;
+        width: 100%;
+        max-width: 1050px;
+      }
+      .schema-frame img {
+        display: block;
+        width: 100%;
+        height: auto;
+        border: 1px solid #E4E7EB;
+        border-radius: 8px;
+        background: #FFFFFF;
+      }
+      .sensor-hotspot {
+        position: absolute;
+        width: 24px;
+        height: 24px;
+        transform: translate(-50%, -50%);
+        border: 2px solid transparent;
+        border-radius: 50%;
+        background: transparent;
+        box-shadow: none;
+        cursor: pointer;
+        z-index: 2;
+        outline: none;
+      }
+      .sensor-hotspot:hover,
+      .sensor-hotspot:focus {
+        background: rgba(127, 166, 201, 0.58);
+        border-color: #2C3E50;
+        z-index: 20;
+      }
+      .sensor-tooltip {
+        display: none;
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 10px);
+        transform: translateX(-50%);
+        min-width: 220px;
+        padding: 10px 12px;
+        border-radius: 7px;
+        background: #2C3E50;
+        color: #FFFFFF;
+        text-align: left;
+        font-size: 13px;
+        line-height: 1.5;
+        white-space: nowrap;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+        pointer-events: none;
+      }
+      .sensor-tooltip::after {
+        content: '';
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-left: -6px;
+        border-width: 6px;
+        border-style: solid;
+        border-color: #2C3E50 transparent transparent transparent;
+      }
+      .sensor-hotspot:hover .sensor-tooltip,
+      .sensor-hotspot:focus .sensor-tooltip {
+        display: block;
+      }
+      .sensor-tooltip-title {
+        display: block;
+        margin-bottom: 4px;
+        font-weight: 700;
+      }
+      @media (max-width: 700px) {
+        .sensor-hotspot {
+          width: 18px;
+          height: 18px;
+        }
+        .sensor-tooltip {
+          min-width: 190px;
+          font-size: 12px;
+          white-space: normal;
+        }
+      }
     "))
   ),
   
@@ -352,6 +521,12 @@ ui <- fluidPage(
                  class = "card-home"
                )
         )
+      ),
+      
+      # Se non esiste un'immagine associata al progetto selezionato,
+      # renderUI restituisce NULL e nella Home non compare alcun contenitore.
+      fluidRow(
+        column(12, uiOutput("schema_sensori"))
       )
     ),
     
@@ -617,6 +792,152 @@ server <- function(input, output, session) {
         )
       ) |>
       ordina_naturale()
+  })
+  
+  # ---------------------------------------------------------------------
+  # Schema interattivo nella Home. Mostra esclusivamente le immagini
+  # disponibili per il progetto della macchina selezionata. I punti sono
+  # limitati ai sensori selezionati e realmente presenti nella macchina.
+  # ---------------------------------------------------------------------
+  output$schema_sensori <- renderUI({
+    
+    req(input$macchina, input$date)
+    
+    progetto <- macchine_lookup |>
+      filter(coupon == input$macchina) |>
+      distinct(project) |>
+      slice_head(n = 1) |>
+      pull(project)
+    
+    if (length(progetto) == 0 || is.na(progetto)) {
+      return(NULL)
+    }
+    
+    immagine <- immagini_progetti |>
+      filter(project == progetto) |>
+      slice_head(n = 1)
+    
+    if (
+      nrow(immagine) == 0 ||
+      !dir.exists(cds_images_dir) ||
+      !file.exists(file.path(cds_images_dir, immagine$file_name))
+    ) {
+      return(NULL)
+    }
+    
+    sensori_selezionati <- if (is.null(input$sensori)) character(0) else input$sensori
+    
+    sensori_macchina <- sensori_lookup |>
+      filter(
+        coupon == input$macchina,
+        cds_name %in% sensori_selezionati
+      ) |>
+      mutate(cds_key = str_to_upper(str_squish(cds_name))) |>
+      group_by(cds_key) |>
+      summarise(
+        cds_name = first(cds_name),
+        sensor_description = paste(
+          unique(na.omit(sensor_description)),
+          collapse = ", "
+        ),
+        .groups = "drop"
+      )
+    
+    metriche <- if (length(sensori_selezionati) == 0) {
+      data.frame(
+        cds_key = character(),
+        N_medio = double(),
+        NOK = double()
+      )
+    } else {
+      raw_avg <- dati |>
+        filter(
+          coupon == input$macchina,
+          cds_name %in% sensori_selezionati,
+          day >= input$date[1],
+          day <= input$date[2]
+        ) |>
+        group_by(cds_name, day) |>
+        summarise(daily_count = sum(increment, na.rm = TRUE), .groups = "drop") |>
+        group_by(cds_name) |>
+        summarise(N_medio = mean(daily_count, na.rm = TRUE), .groups = "drop") |>
+        mutate(cds_key = str_to_upper(str_squish(cds_name)))
+
+      kpi_nok() |>
+        mutate(cds_key = str_to_upper(str_squish(cds_name))) |>
+        select(cds_key, NOK) |>
+        group_by(cds_key) |>
+        summarise(NOK = first(NOK), .groups = "drop") |>
+        left_join(select(raw_avg, cds_key, N_medio), by = "cds_key")
+    }
+    
+    punti <- mappa_sensori |>
+      filter(project == progetto) |>
+      select(project, cds_key, x_pct, y_pct) |>
+      inner_join(sensori_macchina, by = "cds_key") |>
+      left_join(metriche, by = "cds_key")
+    
+    formatta_numero <- function(x, decimali) {
+      if (length(x) == 0 || is.na(x) || is.nan(x) || is.infinite(x)) {
+        return("N/D")
+      }
+      
+      formatC(
+        x,
+        format = "f",
+        digits = decimali,
+        decimal.mark = ",",
+        big.mark = "."
+      )
+    }
+    
+    hotspot <- lapply(seq_len(nrow(punti)), function(i) {
+      punto <- punti[i, ]
+      descrizione <- if (
+        is.na(punto$sensor_description) ||
+        trimws(punto$sensor_description) == ""
+      ) {
+        punto$cds_name
+      } else {
+        paste(punto$cds_name, punto$sensor_description, sep = " - ")
+      }
+      
+      attivazioni_medie <- formatta_numero(punto$N_medio, 1)
+      nok_periodo <- formatta_numero(punto$NOK, 3)
+      
+      tags$span(
+        class = "sensor-hotspot",
+        tabindex = "0",
+        `aria-label` = paste0(
+          descrizione,
+          "; attivazioni giornaliere medie: ", attivazioni_medie,
+          "; NOK: ", nok_periodo
+        ),
+        style = sprintf(
+          "left: %.4f%%; top: %.4f%%;",
+          punto$x_pct,
+          punto$y_pct
+        ),
+        tags$span(
+          class = "sensor-tooltip",
+          tags$span(descrizione, class = "sensor-tooltip-title"),
+          tags$div("Attivazioni giornaliere medie: ", tags$strong(attivazioni_medie)),
+          tags$div("NOK: ", tags$strong(nok_periodo))
+        )
+      )
+    })
+    
+    div(
+      class = "schema-home",
+      div(
+        class = "schema-frame",
+        tags$img(
+          src = paste0("cds-images/", immagine$file_name),
+          alt = paste("Schema sensori del progetto", progetto)
+        ),
+        hotspot
+      )
+    )
   })
   
   output$nok_table <- renderTable({
