@@ -7,7 +7,9 @@
 .Renviron
 *.Renviron
 .env
-00_Data
+00_Data/*
+!00_Data/02_CdS/
+!00_Data/02_CdS/**
 02_Output
 .rscignore
 *.Rproj
