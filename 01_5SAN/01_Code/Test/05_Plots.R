@@ -252,13 +252,13 @@ ui <- fluidPage(
   
   tags$head(
     tags$script(HTML("
-      function aggiornaLarghezzaAttivazioni() {
+      function aggiornaLarghezzaModal() {
         setTimeout(function () {
-          var el = document.getElementById('activationPlot');
+          var el = document.querySelector('.modal-body');
 
           if (el && el.clientWidth > 0) {
             Shiny.setInputValue(
-              'activationPlot_px_width',
+              'modal_px_width',
               el.clientWidth,
               {priority: 'event'}
             );
@@ -266,15 +266,8 @@ ui <- fluidPage(
         }, 100);
       }
 
-      $(document).on('shiny:connected', aggiornaLarghezzaAttivazioni);
-      $(document).on('shown.bs.tab', aggiornaLarghezzaAttivazioni);
-      $(window).on('resize', aggiornaLarghezzaAttivazioni);
-
-      /* Larghezza del modal: misurata quando e' completamente visibile */
-      $(document).on('shown.bs.modal', function () {
-        var w = $('.modal-body').first().width();
-        if (w > 0) Shiny.setInputValue('modal_px_width', w, {priority: 'event'});
-      });
+      $(document).on('shown.bs.modal', aggiornaLarghezzaModal);
+      $(window).on('resize', aggiornaLarghezzaModal);
     ")),
     tags$style(HTML("
       /* Modal grande: quasi a schermo intero */
@@ -321,16 +314,16 @@ ui <- fluidPage(
       .card-home {
         display: block;
         width: 100%;
-        min-height: 190px;
+        min-height: 132px;
         background: #FFFFFF;
         border: 1px solid #E4E7EB;
         border-radius: 10px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.06);
         transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-        text-align: center;
+        text-align: left;
         white-space: normal;
-        padding: 24px 16px;
-        margin-bottom: 20px;
+        padding: 18px 16px;
+        margin-bottom: 16px;
         color: #4A4A4A;
       }
       .card-home:hover {
@@ -339,13 +332,13 @@ ui <- fluidPage(
         border-color: #7FA6C9;
       }
       .card-home .card-icona {
-        font-size: 30px;
+        font-size: 25px;
         color: #7FA6C9;
-        margin-bottom: 10px;
+        margin-bottom: 7px;
       }
       .card-home h4 {
         font-weight: 700;
-        margin-bottom: 8px;
+        margin: 0 0 6px 0;
       }
       .card-home p {
         font-size: 13px;
@@ -356,12 +349,12 @@ ui <- fluidPage(
         width: 100%;
         display: flex;
         justify-content: center;
-        margin: 6px 0 28px 0;
+        margin: 0 0 28px 0;
       }
       .schema-frame {
         position: relative;
         width: 100%;
-        max-width: 1050px;
+        max-width: 100%;
       }
       .schema-frame img {
         display: block;
@@ -427,7 +420,30 @@ ui <- fluidPage(
         margin-bottom: 4px;
         font-weight: 700;
       }
+      .home-menu {
+        padding-right: 18px;
+      }
+      .modal-filters {
+        background: #F4F6F8;
+        border-radius: 7px;
+        padding: 14px 16px 4px 16px;
+        margin-bottom: 18px;
+      }
+      .modal-data-button {
+        margin: 6px 0 14px 0;
+        text-align: right;
+      }
+      .modal-data-panel {
+        margin: 0 0 22px 0;
+        padding: 12px;
+        border: 1px solid #E4E7EB;
+        border-radius: 7px;
+        background: #FFFFFF;
+      }
       @media (max-width: 700px) {
+        .home-menu {
+          padding-right: 15px;
+        }
         .sensor-hotspot {
           width: 18px;
           height: 18px;
@@ -480,157 +496,43 @@ ui <- fluidPage(
     )
   ),
   
-  tabsetPanel(
-    id = "pagina",
-    
-    tabPanel(
-      "Home",
-      
-      br(),
-      fluidRow(
-        column(4,
-               actionButton(
-                 "home_attivazioni",
-                 label = div(
-                   icon("chart-bar", class = "card-icona"),
-                   h4("Conteggio attivazioni"),
-                   p("Grafico a barre e trend nel tempo per sensore")
-                 ),
-                 class = "card-home"
-               )
+  # Home unica: menu verticale a sinistra e schema della macchina a destra.
+  br(),
+  fluidRow(
+    column(
+      3,
+      class = "home-menu",
+      actionButton(
+        "home_attivazioni",
+        label = div(
+          icon("chart-bar", class = "card-icona"),
+          h4("Conteggio attivazioni"),
+          p("Grafico a barre e trend nel tempo per sensore")
         ),
-        column(4,
-               actionButton(
-                 "home_vita",
-                 label = div(
-                   icon("gauge", class = "card-icona"),
-                   h4("Vita sensori"),
-                   p("Stato dei sensori rispetto alle soglie B10dSAN e T10d")
-                 ),
-                 class = "card-home"
-               )
+        class = "card-home"
+      ),
+      actionButton(
+        "home_vita",
+        label = div(
+          icon("gauge", class = "card-icona"),
+          h4("Vita sensori"),
+          p("Stato dei sensori rispetto alle soglie B10dSAN e T10d")
         ),
-        column(4,
-               actionButton(
-                 "home_nok",
-                 label = div(
-                   icon("chart-line", class = "card-icona"),
-                   h4("Storico NOK"),
-                   p("KPI e andamento storico del NOK per sensore")
-                 ),
-                 class = "card-home"
-               )
-        )
+        class = "card-home"
       ),
-      
-      # Se non esiste un'immagine associata al progetto selezionato,
-      # renderUI restituisce NULL e nella Home non compare alcun contenitore.
-      fluidRow(
-        column(12, uiOutput("schema_sensori"))
+      actionButton(
+        "home_nok",
+        label = div(
+          icon("chart-line", class = "card-icona"),
+          h4("Storico NOK"),
+          p("KPI e andamento storico del NOK per sensore")
+        ),
+        class = "card-home"
       )
     ),
-    
-    tabPanel(
-      "Conteggio attivazioni",
-      
-      fluidRow(
-        column(12, h4("Conteggio attivazioni", class = "titolo-sezione"))
-      ),
-      
-      fluidRow(
-        column(3,
-               radioButtons(
-                 "granularita",
-                 "  ",
-                 choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
-                 selected = "Giorno",
-                 inline = TRUE
-               )
-        )
-      ),
-      
-      fluidRow(
-        column(12, girafeOutput(
-          "activationPlot",
-          width = "100%",
-          height = "500px"
-        ))
-      ),
-      
-      fluidRow(
-        column(12, align = "right",
-               actionButton("btn_dati_attivazioni", "Dati", icon = icon("table"), class = "btn-sm btn-default")
-        )
-      ),
-      
-      fluidRow(
-        column(12,
-               h4("Andamento per sensore", class = "titolo-sezione"),
-               girafeOutput("activationTrendPlot", height = "500px")
-        )
-      ),
-      
-      fluidRow(
-        column(12, align = "right",
-               actionButton("btn_dati_trend", "Dati", icon = icon("table"), class = "btn-sm btn-default")
-        )
-      )
-    ),
-    
-    tabPanel(
-      "Vita sensori",
-      
-      fluidRow(
-        column(12, h4("Vita sensori", class = "titolo-sezione"))
-      ),
-      
-      fluidRow(
-        column(12, plotOutput("tankPlot", height = "430px"))
-      ),
-      
-      fluidRow(
-        column(12, align = "right",
-               actionButton("btn_dati_tank", "Dati", icon = icon("table"), class = "btn-sm btn-default")
-        )
-      )
-    ),
-    
-    tabPanel(
-      "Storico NOK",
-      
-      fluidRow(
-        column(12,
-               h4("NOK per sensore", class = "titolo-sezione"),
-               tableOutput("nok_table")
-        )
-      ),
-      
-      fluidRow(
-        column(12, h4("Andamento storico del NOK", class = "titolo-sezione"))
-      ),
-      
-      fluidRow(
-        column(3,
-               radioButtons(
-                 "granularita_nok",
-                 "  ",
-                 choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
-                 selected = "Giorno",
-                 inline = TRUE
-               )
-        )
-      ),
-      
-      fluidRow(
-        column(12, girafeOutput("nokHistoryPlot", height = "550px"))
-      ),
-      
-      fluidRow(
-        column(12, align = "right",
-               actionButton("btn_dati_nok", "Dati", icon = icon("table"), class = "btn-sm btn-default")
-        )
-      )
-    )
+    # Se non esiste un'immagine associata al progetto selezionato,
+    # renderUI restituisce NULL e la colonna destra resta vuota.
+    column(9, uiOutput("schema_sensori"))
   )
 )
 
@@ -692,40 +594,281 @@ server <- function(input, output, session) {
     )
   })
   
+  # Tabelle dati mostrate direttamente all'interno dei modal.
+  mostra_dati_attivazioni <- reactiveVal(FALSE)
+  mostra_dati_trend <- reactiveVal(FALSE)
+  mostra_dati_tank <- reactiveVal(FALSE)
+  mostra_dati_nok <- reactiveVal(FALSE)
+  
   # ---------------------------------------------------------------------
-  # Popup di anteprima dalla Home: riusano gli stessi reactive/filtri
-  # della pagina completa, quindi non ricalcolano nulla di pesante.
+  # Finestre complete aperte dalla Home. Periodo e sensori partono dai
+  # valori dei filtri generali, ma hanno input distinti e possono quindi
+  # essere modificati all'interno del modal senza cambiare la Home.
   # ---------------------------------------------------------------------
   observeEvent(input$home_attivazioni, {
+    req(input$macchina, input$date)
+    
+    sensori_macchina <- sensori_lookup |>
+      filter(coupon == input$macchina)
+    
+    sensori_selezionati <- intersect(input$sensori, sensori_macchina$cds_name)
+    mostra_dati_attivazioni(FALSE)
+    mostra_dati_trend(FALSE)
+    
     showModal(modalDialog(
       title = "Conteggio attivazioni",
       size = "xl",
       easyClose = TRUE,
       footer = modalButton("Chiudi"),
+      
+      div(
+        class = "modal-filters",
+        fluidRow(
+          column(
+            4,
+            dateRangeInput(
+              "modal_date_attivazioni",
+              "Periodo:",
+              start = input$date[1],
+              end = input$date[2],
+              min = data_min,
+              max = data_max,
+              format = "dd-mm-yyyy",
+              separator = " a ",
+              language = "it"
+            )
+          ),
+          column(
+            8,
+            pickerInput(
+              "modal_sensori_attivazioni",
+              "Sensori:",
+              choices = setNames(
+                sensori_macchina$cds_name,
+                paste(
+                  sensori_macchina$cds_name,
+                  sensori_macchina$sensor_description,
+                  sep = " - "
+                )
+              ),
+              selected = sensori_selezionati,
+              multiple = TRUE,
+              options = pickerOptions(
+                actionsBox = TRUE,
+                liveSearch = TRUE,
+                selectedTextFormat = "count > 3",
+                countSelectedText = "{0} sensori selezionati"
+              )
+            )
+          )
+        ),
+        radioButtons(
+          "modal_granularita_attivazioni",
+          "Raggruppamento:",
+          choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
+          selected = "Giorno",
+          inline = TRUE
+        )
+      ),
+      
+      h4("Conteggio attivazioni", class = "titolo-sezione"),
       girafeOutput("modal_activationPlot", height = "380px"),
+      div(
+        class = "modal-data-button",
+        actionButton(
+          "modal_btn_dati_attivazioni",
+          "Dati",
+          icon = icon("table"),
+          class = "btn-sm btn-default"
+        )
+      ),
+      uiOutput("modal_panel_dati_attivazioni"),
+      
+      h4("Andamento per sensore", class = "titolo-sezione"),
       br(),
-      girafeOutput("modal_activationTrendPlot", height = "380px")
+      girafeOutput("modal_activationTrendPlot", height = "380px"),
+      div(
+        class = "modal-data-button",
+        actionButton(
+          "modal_btn_dati_trend",
+          "Dati",
+          icon = icon("table"),
+          class = "btn-sm btn-default"
+        )
+      ),
+      uiOutput("modal_panel_dati_trend")
     ))
   })
   
   observeEvent(input$home_vita, {
+    req(input$macchina)
+    
+    sensori_macchina <- sensori_lookup |>
+      filter(coupon == input$macchina)
+    
+    sensori_selezionati <- intersect(input$sensori, sensori_macchina$cds_name)
+    mostra_dati_tank(FALSE)
+    
     showModal(modalDialog(
       title = "Vita sensori",
       size = "xl",
       easyClose = TRUE,
       footer = modalButton("Chiudi"),
-      plotOutput("modal_tankPlot", height = "430px")
+      
+      div(
+        class = "modal-filters",
+        pickerInput(
+          "modal_sensori_vita",
+          "Sensori:",
+          choices = setNames(
+            sensori_macchina$cds_name,
+            paste(
+              sensori_macchina$cds_name,
+              sensori_macchina$sensor_description,
+              sep = " - "
+            )
+          ),
+          selected = sensori_selezionati,
+          multiple = TRUE,
+          options = pickerOptions(
+            actionsBox = TRUE,
+            liveSearch = TRUE,
+            selectedTextFormat = "count > 3",
+            countSelectedText = "{0} sensori selezionati"
+          )
+        )
+      ),
+      
+      plotOutput("modal_tankPlot", height = "430px"),
+      div(
+        class = "modal-data-button",
+        actionButton(
+          "modal_btn_dati_tank",
+          "Dati",
+          icon = icon("table"),
+          class = "btn-sm btn-default"
+        )
+      ),
+      uiOutput("modal_panel_dati_tank")
     ))
   })
   
   observeEvent(input$home_nok, {
+    req(input$macchina, input$date)
+    
+    sensori_macchina <- sensori_lookup |>
+      filter(coupon == input$macchina)
+    
+    sensori_selezionati <- intersect(input$sensori, sensori_macchina$cds_name)
+    mostra_dati_nok(FALSE)
+    
     showModal(modalDialog(
       title = "Storico NOK",
       size = "xl",
       easyClose = TRUE,
       footer = modalButton("Chiudi"),
-      girafeOutput("modal_nokPlot", height = "420px")
+      
+      div(
+        class = "modal-filters",
+        fluidRow(
+          column(
+            4,
+            dateRangeInput(
+              "modal_date_nok",
+              "Periodo:",
+              start = input$date[1],
+              end = input$date[2],
+              min = data_min,
+              max = data_max,
+              format = "dd-mm-yyyy",
+              separator = " a ",
+              language = "it"
+            )
+          ),
+          column(
+            8,
+            pickerInput(
+              "modal_sensori_nok",
+              "Sensori:",
+              choices = setNames(
+                sensori_macchina$cds_name,
+                paste(
+                  sensori_macchina$cds_name,
+                  sensori_macchina$sensor_description,
+                  sep = " - "
+                )
+              ),
+              selected = sensori_selezionati,
+              multiple = TRUE,
+              options = pickerOptions(
+                actionsBox = TRUE,
+                liveSearch = TRUE,
+                selectedTextFormat = "count > 3",
+                countSelectedText = "{0} sensori selezionati"
+              )
+            )
+          )
+        ),
+        radioButtons(
+          "modal_granularita_nok",
+          "Raggruppamento:",
+          choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
+          selected = "Giorno",
+          inline = TRUE
+        )
+      ),
+      
+      h4("NOK per sensore", class = "titolo-sezione"),
+      tableOutput("modal_nok_table"),
+      h4("Andamento storico del NOK", class = "titolo-sezione"),
+      girafeOutput("modal_nokPlot", height = "520px"),
+      div(
+        class = "modal-data-button",
+        actionButton(
+          "modal_btn_dati_nok",
+          "Dati",
+          icon = icon("table"),
+          class = "btn-sm btn-default"
+        )
+      ),
+      uiOutput("modal_panel_dati_nok")
     ))
+  })
+  
+  observeEvent(input$modal_btn_dati_attivazioni, {
+    mostra_dati_attivazioni(!mostra_dati_attivazioni())
+  })
+  
+  observeEvent(input$modal_btn_dati_trend, {
+    mostra_dati_trend(!mostra_dati_trend())
+  })
+  
+  observeEvent(input$modal_btn_dati_tank, {
+    mostra_dati_tank(!mostra_dati_tank())
+  })
+  
+  observeEvent(input$modal_btn_dati_nok, {
+    mostra_dati_nok(!mostra_dati_nok())
+  })
+  
+  output$modal_panel_dati_attivazioni <- renderUI({
+    if (!mostra_dati_attivazioni()) return(NULL)
+    div(class = "modal-data-panel", DTOutput("modal_tabella_dati_attivazioni"))
+  })
+  
+  output$modal_panel_dati_trend <- renderUI({
+    if (!mostra_dati_trend()) return(NULL)
+    div(class = "modal-data-panel", DTOutput("modal_tabella_dati_trend"))
+  })
+  
+  output$modal_panel_dati_tank <- renderUI({
+    if (!mostra_dati_tank()) return(NULL)
+    div(class = "modal-data-panel", DTOutput("modal_tabella_dati_tank"))
+  })
+  
+  output$modal_panel_dati_nok <- renderUI({
+    if (!mostra_dati_nok()) return(NULL)
+    div(class = "modal-data-panel", DTOutput("modal_tabella_dati_nok"))
   })
   
   # ---------------------------------------------------------------------
@@ -862,7 +1005,7 @@ server <- function(input, output, session) {
         group_by(cds_name) |>
         summarise(N_medio = mean(daily_count, na.rm = TRUE), .groups = "drop") |>
         mutate(cds_key = str_to_upper(str_squish(cds_name)))
-
+      
       kpi_nok() |>
         mutate(cds_key = str_to_upper(str_squish(cds_name))) |>
         select(cds_key, NOK) |>
@@ -940,9 +1083,56 @@ server <- function(input, output, session) {
     )
   })
   
-  output$nok_table <- renderTable({
+  valori_giornalieri_modal_nok <- reactive({
     
-    kpi <- kpi_nok()
+    req(input$macchina, input$modal_sensori_nok)
+    
+    dati |>
+      ungroup() |>
+      filter(
+        coupon == input$macchina,
+        cds_name %in% input$modal_sensori_nok
+      ) |>
+      group_by(cds_name, sensor_description, day) |>
+      summarise(
+        daily_value = sum(increment, na.rm = TRUE) / unique(daily_uptime),
+        .groups = "drop"
+      )
+  }) |>
+    bindCache(input$macchina, input$modal_sensori_nok)
+  
+  nmn_storico_modal_nok <- reactive({
+    valori_giornalieri_modal_nok() |>
+      group_by(cds_name, sensor_description) |>
+      summarise(NMN = mean(daily_value, na.rm = TRUE), .groups = "drop")
+  })
+  
+  kpi_nok_modal <- reactive({
+    
+    req(input$modal_date_nok)
+    
+    nmm_per_sensore <- valori_giornalieri_modal_nok() |>
+      filter(
+        day >= input$modal_date_nok[1],
+        day <= input$modal_date_nok[2]
+      ) |>
+      group_by(cds_name, sensor_description) |>
+      summarise(NMM = mean(daily_value, na.rm = TRUE), .groups = "drop")
+    
+    nmn_storico_modal_nok() |>
+      left_join(nmm_per_sensore, by = c("cds_name", "sensor_description")) |>
+      mutate(
+        NOK = case_when(
+          is.na(NMN) | is.na(NMM) | NMM == 0 ~ NA_real_,
+          TRUE ~ NMN / NMM
+        )
+      ) |>
+      ordina_naturale()
+  })
+  
+  output$modal_nok_table <- renderTable({
+    
+    kpi <- kpi_nok_modal()
     
     validate(
       need(nrow(kpi) > 0, "Nessun dato disponibile per i filtri scelti")
@@ -963,14 +1153,14 @@ server <- function(input, output, session) {
   
   # Dati per i serbatoi: stato attuale (non dipende dal periodo selezionato,
   # rappresenta il valore cumulato/corrente del sensore)
-  tank_data <- reactive({
+  tank_data_modal <- reactive({
     
-    req(input$macchina, input$sensori)
+    req(input$macchina, input$modal_sensori_vita)
     
     base <- life_data |>
       filter(
         coupon == input$macchina,
-        cds_name %in% input$sensori
+        cds_name %in% input$modal_sensori_vita
       ) |>
       left_join(sensori_info, by = c("coupon", "cds_name")) |>
       mutate(etichetta_sensore = paste(cds_name, sensor_description, sep = " - ")) |>
@@ -1017,7 +1207,7 @@ server <- function(input, output, session) {
   
   render_tank_plot <- function() {
     
-    tanks <- tank_data()
+    tanks <- tank_data_modal()
     
     validate(
       need(nrow(tanks) > 0, "Nessun dato disponibile per i filtri scelti")
@@ -1080,7 +1270,6 @@ server <- function(input, output, session) {
       )
   }
   
-  output$tankPlot <- renderPlot({ render_tank_plot() })
   output$modal_tankPlot <- renderPlot({ render_tank_plot() })
   
   # ---------------------------------------------------------------------
@@ -1088,18 +1277,23 @@ server <- function(input, output, session) {
   # (giorno/settimana/mese/trimestre/anno). Usati sia dal grafico a
   # barre (facet per periodo) sia dal grafico trend (facet per sensore).
   # ---------------------------------------------------------------------
-  dati_grafico <- reactive({
+  dati_grafico_modal <- reactive({
     
-    req(input$macchina, input$date, input$sensori, input$granularita)
+    req(
+      input$macchina,
+      input$modal_date_attivazioni,
+      input$modal_sensori_attivazioni,
+      input$modal_granularita_attivazioni
+    )
     
     dati |>
       filter(
         coupon == input$macchina,
-        cds_name %in% input$sensori,
-        day >= input$date[1],
-        day <= input$date[2]
+        cds_name %in% input$modal_sensori_attivazioni,
+        day >= input$modal_date_attivazioni[1],
+        day <= input$modal_date_attivazioni[2]
       ) |>
-      mutate(periodo = periodo_bucket(day, input$granularita)) |>
+      mutate(periodo = periodo_bucket(day, input$modal_granularita_attivazioni)) |>
       group_by(
         periodo,
         cds_name,
@@ -1112,7 +1306,10 @@ server <- function(input, output, session) {
       mutate(
         etichetta = cds_name,
         etichetta_completa = paste(cds_name, sensor_description, sep = " - "),
-        periodo_label = formatta_periodo_label(periodo, input$granularita)
+        periodo_label = formatta_periodo_label(
+          periodo,
+          input$modal_granularita_attivazioni
+        )
       ) |>
       ordina_naturale() |>
       mutate(
@@ -1121,7 +1318,12 @@ server <- function(input, output, session) {
         periodo_label = factor(periodo_label, levels = unique(periodo_label[order(periodo)]))
       )
   }) |>
-    bindCache(input$macchina, input$sensori, input$date, input$granularita)
+    bindCache(
+      input$macchina,
+      input$modal_sensori_attivazioni,
+      input$modal_date_attivazioni,
+      input$modal_granularita_attivazioni
+    )
   
   # CSS del tooltip, condiviso tra main e modal
   tooltip_css <- paste0(
@@ -1138,7 +1340,7 @@ server <- function(input, output, session) {
   # grafico principale sia dal modal
   render_activation_bar_gg <- function() {
     
-    grafico <- dati_grafico()
+    grafico <- dati_grafico_modal()
     
     validate(
       need(nrow(grafico) > 0, "Nessun dato disponibile per i filtri scelti")
@@ -1198,7 +1400,7 @@ server <- function(input, output, session) {
   # I punti reali sono interattivi con tooltip.
   render_activation_trend_gg <- function() {
     
-    grafico <- dati_grafico()
+    grafico <- dati_grafico_modal()
     
     validate(
       need(nrow(grafico) > 0, "Nessun dato disponibile per i filtri scelti")
@@ -1236,7 +1438,10 @@ server <- function(input, output, session) {
       ) +
       scale_x_date(
         breaks = breaks_periodo,
-        labels = formatta_periodo_label(breaks_periodo, input$granularita)
+        labels = formatta_periodo_label(
+          breaks_periodo,
+          input$modal_granularita_attivazioni
+        )
       ) +
       scale_y_continuous(
         breaks = function(limits) {
@@ -1262,23 +1467,6 @@ server <- function(input, output, session) {
       )
   }
   
-  # Grafico principale: width_svg misurata dal JS sul contenitore reale.
-  # Si divide per 72 (DPI interno ggiraph) e non 96, cosi' il fattore di
-  # scala SVG->schermo e' 1:1 e testo/leggenda non risultano ingranditi.
-  output$activationPlot <- renderGirafe({
-    req(input$activationPlot_px_width > 0)
-    
-    girafe(
-      ggobj      = render_activation_bar_gg(),
-      width_svg  = input$activationPlot_px_width / 72,
-      height_svg = 500 / 72,
-      options    = list(
-        opts_tooltip(css = tooltip_css, use_fill = FALSE),
-        opts_hover(css = "opacity:0.8;cursor:pointer;")
-      )
-    )
-  })
-  
   # Modal (size = "xl", ~95vw): larghezza misurata dal JS dopo l'apertura
   output$modal_activationPlot <- renderGirafe({
     w_px <- if (!is.null(input$modal_px_width) && input$modal_px_width > 0)
@@ -1287,20 +1475,6 @@ server <- function(input, output, session) {
       ggobj      = render_activation_bar_gg(),
       width_svg  = w_px / 72,
       height_svg = 380 / 72,
-      options    = list(
-        opts_tooltip(css = tooltip_css, use_fill = FALSE),
-        opts_hover(css = "opacity:0.8;cursor:pointer;")
-      )
-    )
-  })
-  
-  # Riusa la larghezza del grafico a barre (stessa colonna, stessa dimensione)
-  output$activationTrendPlot <- renderGirafe({
-    req(input$activationPlot_px_width > 0)
-    girafe(
-      ggobj      = render_activation_trend_gg(),
-      width_svg  = input$activationPlot_px_width / 72,
-      height_svg = 500 / 72,
       options    = list(
         opts_tooltip(css = tooltip_css, use_fill = FALSE),
         opts_hover(css = "opacity:0.8;cursor:pointer;")
@@ -1325,24 +1499,24 @@ server <- function(input, output, session) {
   # Storico del NOK per sensore: i valori giornalieri vengono aggregati
   # nel periodo scelto e confrontati con la media storica (NMN) dello
   # stesso sensore, calcolata su tutto lo storico disponibile.
-  kpi_nok_storico <- reactive({
+  kpi_nok_storico_modal <- reactive({
     
-    req(input$date, input$granularita_nok)
+    req(input$modal_date_nok, input$modal_granularita_nok)
     
-    valori_giornalieri() |>
+    valori_giornalieri_modal_nok() |>
       filter(
-        day >= input$date[1],
-        day <= input$date[2]
+        day >= input$modal_date_nok[1],
+        day <= input$modal_date_nok[2]
       ) |>
       mutate(
-        periodo = as.Date(periodo_bucket(day, input$granularita_nok))
+        periodo = as.Date(periodo_bucket(day, input$modal_granularita_nok))
       ) |>
       group_by(periodo, cds_name, sensor_description) |>
       summarise(
         valore_periodo = mean(daily_value, na.rm = TRUE),
         .groups = "drop"
       ) |>
-      left_join(nmn_storico(), by = c("cds_name", "sensor_description")) |>
+      left_join(nmn_storico_modal_nok(), by = c("cds_name", "sensor_description")) |>
       mutate(
         NOK_periodo = case_when(
           is.na(valore_periodo) | is.na(NMN) | NMN == 0 ~ NA_real_,
@@ -1354,14 +1528,14 @@ server <- function(input, output, session) {
   }) |>
     bindCache(
       input$macchina,
-      input$sensori,
-      input$date,
-      input$granularita_nok
+      input$modal_sensori_nok,
+      input$modal_date_nok,
+      input$modal_granularita_nok
     )
   
   render_nok_history_gg <- function() {
     
-    storico <- kpi_nok_storico()
+    storico <- kpi_nok_storico_modal()
     
     validate(
       need(nrow(storico) > 0, "Nessun dato disponibile per i filtri scelti")
@@ -1371,7 +1545,10 @@ server <- function(input, output, session) {
       ordina_naturale() |>
       mutate(
         etichetta_sensore = factor(etichetta_sensore, levels = unique(etichetta_sensore)),
-        periodo_label     = formatta_periodo_label(periodo, input$granularita_nok)
+        periodo_label = formatta_periodo_label(
+          periodo,
+          input$modal_granularita_nok
+        )
       )
     
     n_sensori <- dplyr::n_distinct(storico$etichetta_sensore)
@@ -1414,7 +1591,10 @@ server <- function(input, output, session) {
       ) +
       scale_x_date(
         breaks = breaks_periodo,
-        labels = formatta_periodo_label(breaks_periodo, input$granularita_nok)
+        labels = formatta_periodo_label(
+          breaks_periodo,
+          input$modal_granularita_nok
+        )
       ) +
       scale_y_continuous(
         breaks = function(limits) {
@@ -1439,19 +1619,6 @@ server <- function(input, output, session) {
       )
   }
   
-  output$nokHistoryPlot <- renderGirafe({
-    req(input$activationPlot_px_width > 0)
-    girafe(
-      ggobj      = render_nok_history_gg(),
-      width_svg  = input$activationPlot_px_width / 72,
-      height_svg = 550 / 72,
-      options    = list(
-        opts_tooltip(css = tooltip_css, use_fill = FALSE),
-        opts_hover(css = "opacity:0.8;cursor:pointer;")
-      )
-    )
-  })
-  
   output$modal_nokPlot <- renderGirafe({
     w_px <- if (!is.null(input$modal_px_width) && input$modal_px_width > 0)
       input$modal_px_width else 1100
@@ -1467,23 +1634,11 @@ server <- function(input, output, session) {
   })
   
   # -----------------------------------------------------------------------
-  # Bottoni "Dati": aprono un modal con la tabella sintetica dei dati
-  # usati dal grafico corrispondente.
+  # Tabelle mostrate/nascoste dentro le finestre principali.
   # -----------------------------------------------------------------------
   
-  # Grafico a barre – Conteggio attivazioni
-  observeEvent(input$btn_dati_attivazioni, {
-    showModal(modalDialog(
-      title     = "Dati \u2013 Conteggio attivazioni",
-      size      = "l",
-      easyClose = TRUE,
-      footer    = modalButton("Chiudi"),
-      DTOutput("tabella_dati_attivazioni")
-    ))
-  })
-  
-  output$tabella_dati_attivazioni <- renderDT({
-    dati_grafico() |>
+  output$modal_tabella_dati_attivazioni <- renderDT({
+    dati_grafico_modal() |>
       transmute(
         Periodo     = as.character(periodo_label),
         Sensore     = as.character(etichetta_completa),
@@ -1492,19 +1647,8 @@ server <- function(input, output, session) {
       arrange(Periodo, Sensore)
   }, rownames = FALSE, options = list(pageLength = 25, dom = "tip"))
   
-  # Grafico trend – Andamento per sensore
-  observeEvent(input$btn_dati_trend, {
-    showModal(modalDialog(
-      title     = "Dati \u2013 Andamento per sensore",
-      size      = "l",
-      easyClose = TRUE,
-      footer    = modalButton("Chiudi"),
-      DTOutput("tabella_dati_trend")
-    ))
-  })
-  
-  output$tabella_dati_trend <- renderDT({
-    dati_grafico() |>
+  output$modal_tabella_dati_trend <- renderDT({
+    dati_grafico_modal() |>
       transmute(
         Sensore     = as.character(etichetta_completa),
         Periodo     = as.character(periodo_label),
@@ -1513,19 +1657,8 @@ server <- function(input, output, session) {
       arrange(Sensore, Periodo)
   }, rownames = FALSE, options = list(pageLength = 25, dom = "tip"))
   
-  # Grafico serbatoi – Vita sensori
-  observeEvent(input$btn_dati_tank, {
-    showModal(modalDialog(
-      title     = "Dati \u2013 Vita sensori",
-      size      = "l",
-      easyClose = TRUE,
-      footer    = modalButton("Chiudi"),
-      DTOutput("tabella_dati_tank")
-    ))
-  })
-  
-  output$tabella_dati_tank <- renderDT({
-    tank_data() |>
+  output$modal_tabella_dati_tank <- renderDT({
+    tank_data_modal() |>
       transmute(
         Sensore = gsub("\n", " ", as.character(etichetta_sensore)),
         Tipo    = tipo,
@@ -1539,21 +1672,13 @@ server <- function(input, output, session) {
       )
   }, rownames = FALSE, options = list(pageLength = 25, dom = "t"))
   
-  # Grafico storico – NOK per periodo
-  observeEvent(input$btn_dati_nok, {
-    showModal(modalDialog(
-      title     = "Dati \u2013 Storico NOK",
-      size      = "l",
-      easyClose = TRUE,
-      footer    = modalButton("Chiudi"),
-      DTOutput("tabella_dati_nok")
-    ))
-  })
-  
-  output$tabella_dati_nok <- renderDT({
-    kpi_nok_storico() |>
+  output$modal_tabella_dati_nok <- renderDT({
+    kpi_nok_storico_modal() |>
       transmute(
-        Periodo = formatta_periodo_label(periodo, input$granularita_nok),
+        Periodo = formatta_periodo_label(
+          periodo,
+          input$modal_granularita_nok
+        ),
         Sensore = etichetta_sensore,
         NOK     = round(NOK_periodo, 3)
       ) |>
