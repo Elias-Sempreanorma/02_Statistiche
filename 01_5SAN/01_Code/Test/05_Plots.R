@@ -1,3 +1,5 @@
+# VERSIONE FIX FILTRI 2026-09-10
+# Debounce 800 ms + isolamento del renderUI per eliminare il loop.
 library(shiny)
 library(dplyr)
 library(tidyr)
@@ -268,6 +270,24 @@ ui <- fluidPage(
 
       $(document).on('shown.bs.modal', aggiornaLarghezzaModal);
       $(window).on('resize', aggiornaLarghezzaModal);
+
+      $(document).on('click', '.sensor-hotspot', function () {
+        Shiny.setInputValue(
+          'schema_sensor_click',
+          {
+            sensor: $(this).attr('data-sensor'),
+            nonce: Date.now()
+          },
+          {priority: 'event'}
+        );
+      });
+
+      $(document).on('keydown', '.sensor-hotspot', function (event) {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          $(this).trigger('click');
+        }
+      });
     ")),
     tags$style(HTML("
       /* Modal grande: quasi a schermo intero */
@@ -610,17 +630,49 @@ server <- function(input, output, session) {
   mostra_dati_tank <- reactiveVal(FALSE)
   mostra_dati_nok <- reactiveVal(FALSE)
   
+  # I filtri vengono applicati solo dopo una breve pausa dall'ultima scelta.
+  # In questo modo una selezione multipla genera un solo aggiornamento.
+  ritardo_filtri_ms <- 800
+  
+  normalizza_sensori <- function(x) {
+    if (is.null(x)) character(0) else sort(unique(as.character(x)))
+  }
+  
+  sensori_modal_correnti <- reactiveVal(character(0))
+  date_modal_correnti <- reactiveVal(c(data_min, data_max))
+  granularita_attivazioni_corrente <- reactiveVal("Giorno")
+  granularita_nok_corrente <- reactiveVal("Giorno")
+  
+  filtri_principali <- reactive({
+    req(input$macchina, input$date)
+    
+    list(
+      macchina = input$macchina,
+      date = as.Date(input$date),
+      sensori = normalizza_sensori(input$sensori)
+    )
+  }) |>
+    debounce(millis = ritardo_filtri_ms)
+  
   # ---------------------------------------------------------------------
   # Finestre complete aperte dalla Home. Periodo e sensori partono dai
-  # valori dei filtri generali, ma hanno input distinti e possono quindi
-  # essere modificati all'interno del modal senza cambiare la Home.
-  # ---------------------------------------------------------------------
+  # valori generali; le modifiche vengono riportate alla Home solo dopo
+  # la pausa definita da ritardo_filtri_ms.
   # ---------------------------------------------------------------------
   # Modal unico con navigazione interna tramite radioGroupButtons.
   # apri_modal() viene chiamata dai tre bottoni Home: imposta la vista
   # iniziale e mostra il dialogo. Il contenuto cambia senza chiuderlo.
   # ---------------------------------------------------------------------
-  apri_modal <- function(vista_iniziale) {
+  apri_modal <- function(vista_iniziale, sensori_iniziali = NULL) {
+    if (is.null(sensori_iniziali)) {
+      sensori_iniziali <- isolate(input$sensori)
+    }
+    
+    sensori_modal_correnti(normalizza_sensori(sensori_iniziali))
+    date_modal_correnti(as.Date(isolate(input$date)))
+    granularita_attivazioni_corrente("Giorno")
+    granularita_nok_corrente("Giorno")
+    
     mostra_dati_attivazioni(FALSE)
     mostra_dati_trend(FALSE)
     mostra_dati_tank(FALSE)
@@ -668,6 +720,27 @@ server <- function(input, output, session) {
     apri_modal("nok")
   })
   
+  # Click su un CdS nello schema: seleziona quel sensore e apre la tenda
+  # direttamente sulla vista Conteggio attivazioni.
+  observeEvent(input$schema_sensor_click, {
+    req(input$macchina, input$date, input$schema_sensor_click$sensor)
+    
+    sensore_cliccato <- input$schema_sensor_click$sensor
+    sensori_validi <- sensori_lookup |>
+      filter(coupon == input$macchina) |>
+      pull(cds_name)
+    
+    req(sensore_cliccato %in% sensori_validi)
+    
+    updatePickerInput(
+      session,
+      "sensori",
+      selected = sensore_cliccato
+    )
+    
+    apri_modal("attivazioni", sensore_cliccato)
+  })
+  
   # Quando si cambia vista, azzera la visibilita' delle tabelle dati
   observeEvent(input$vista_selezionata, {
     mostra_dati_attivazioni(FALSE)
@@ -685,7 +758,12 @@ server <- function(input, output, session) {
     sensori_macchina <- sensori_lookup |>
       filter(coupon == input$macchina)
     
-    sensori_selezionati <- intersect(input$sensori, sensori_macchina$cds_name)
+    sensori_selezionati <- intersect(
+      isolate(sensori_modal_correnti()),
+      sensori_macchina$cds_name
+    )
+    
+    date_selezionate <- isolate(date_modal_correnti())
     
     scelte_sensori <- setNames(
       sensori_macchina$cds_name,
@@ -705,25 +783,25 @@ server <- function(input, output, session) {
           class = "modal-filters",
           fluidRow(
             column(4,
-              dateRangeInput(
-                "modal_date_attivazioni", "Periodo:",
-                start = input$date[1], end = input$date[2],
-                min = data_min, max = data_max,
-                format = "dd-mm-yyyy", separator = " a ", language = "it"
-              )
+                   dateRangeInput(
+                     "modal_date_attivazioni", "Periodo:",
+                     start = date_selezionate[1], end = date_selezionate[2],
+                     min = data_min, max = data_max,
+                     format = "dd-mm-yyyy", separator = " a ", language = "it"
+                   )
             ),
             column(8,
-              pickerInput(
-                "modal_sensori_attivazioni", "Sensori:",
-                choices = scelte_sensori, selected = sensori_selezionati,
-                multiple = TRUE, options = picker_opts
-              )
+                   pickerInput(
+                     "modal_sensori_attivazioni", "Sensori:",
+                     choices = scelte_sensori, selected = sensori_selezionati,
+                     multiple = TRUE, options = picker_opts
+                   )
             )
           ),
           radioButtons(
             "modal_granularita_attivazioni", "Raggruppamento:",
             choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
-            selected = "Giorno", inline = TRUE
+            selected = isolate(granularita_attivazioni_corrente()), inline = TRUE
           )
         ),
         h4("Conteggio attivazioni", class = "titolo-sezione"),
@@ -767,25 +845,25 @@ server <- function(input, output, session) {
           class = "modal-filters",
           fluidRow(
             column(4,
-              dateRangeInput(
-                "modal_date_nok", "Periodo:",
-                start = input$date[1], end = input$date[2],
-                min = data_min, max = data_max,
-                format = "dd-mm-yyyy", separator = " a ", language = "it"
-              )
+                   dateRangeInput(
+                     "modal_date_nok", "Periodo:",
+                     start = date_selezionate[1], end = date_selezionate[2],
+                     min = data_min, max = data_max,
+                     format = "dd-mm-yyyy", separator = " a ", language = "it"
+                   )
             ),
             column(8,
-              pickerInput(
-                "modal_sensori_nok", "Sensori:",
-                choices = scelte_sensori, selected = sensori_selezionati,
-                multiple = TRUE, options = picker_opts
-              )
+                   pickerInput(
+                     "modal_sensori_nok", "Sensori:",
+                     choices = scelte_sensori, selected = sensori_selezionati,
+                     multiple = TRUE, options = picker_opts
+                   )
             )
           ),
           radioButtons(
             "modal_granularita_nok", "Raggruppamento:",
             choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
-            selected = "Giorno", inline = TRUE
+            selected = isolate(granularita_nok_corrente()), inline = TRUE
           )
         ),
         h4("NOK per sensore", class = "titolo-sezione"),
@@ -816,63 +894,93 @@ server <- function(input, output, session) {
   observeEvent(input$modal_btn_dati_nok, {
     mostra_dati_nok(!mostra_dati_nok())
   })
-
+  
   # ---------------------------------------------------------------------
-  # Sincronizzazione bidirezionale: modal -> principale.
-  # Quando l'utente modifica un filtro dentro un modal, la modifica viene
-  # propagata al corrispondente filtro nella schermata principale.
-  # Il check identical() evita loop: se il valore e' gia' uguale non
-  # viene inviato nessun aggiornamento.
+  # Coda ottimizzata dei filtri modal.
+  # Il debounce aspetta 800 ms dall'ultima modifica; solo allora aggiorna
+  # grafici, stato del modal e filtri principali. Il contenuto del modal
+  # non dipende direttamente dai filtri principali, evitando il loop di
+  # distruzione e ricreazione continua degli input.
   # ---------------------------------------------------------------------
-
-  # Date: modal attivazioni -> principale
-  observeEvent(input$modal_date_attivazioni, {
-    req(input$modal_date_attivazioni)
-    if (!identical(input$date, input$modal_date_attivazioni)) {
-      updateDateRangeInput(
-        session, "date",
-        start = input$modal_date_attivazioni[1],
-        end   = input$modal_date_attivazioni[2]
-      )
+  filtri_attivazioni_modal <- reactive({
+    req(
+      identical(input$vista_selezionata, "attivazioni"),
+      input$modal_date_attivazioni,
+      input$modal_granularita_attivazioni
+    )
+    
+    list(
+      macchina = input$macchina,
+      date = as.Date(input$modal_date_attivazioni),
+      sensori = normalizza_sensori(input$modal_sensori_attivazioni),
+      granularita = input$modal_granularita_attivazioni
+    )
+  }) |>
+    debounce(millis = ritardo_filtri_ms)
+  
+  filtri_vita_modal <- reactive({
+    req(identical(input$vista_selezionata, "vita"))
+    
+    list(
+      macchina = input$macchina,
+      sensori = normalizza_sensori(input$modal_sensori_vita)
+    )
+  }) |>
+    debounce(millis = ritardo_filtri_ms)
+  
+  filtri_nok_modal <- reactive({
+    req(
+      identical(input$vista_selezionata, "nok"),
+      input$modal_date_nok,
+      input$modal_granularita_nok
+    )
+    
+    list(
+      macchina = input$macchina,
+      date = as.Date(input$modal_date_nok),
+      sensori = normalizza_sensori(input$modal_sensori_nok),
+      granularita = input$modal_granularita_nok
+    )
+  }) |>
+    debounce(millis = ritardo_filtri_ms)
+  
+  applica_filtri_principali <- function(filtri) {
+    sensori_modal_correnti(filtri$sensori)
+    
+    if (!identical(normalizza_sensori(input$sensori), filtri$sensori)) {
+      updatePickerInput(session, "sensori", selected = filtri$sensori)
     }
-  }, ignoreInit = TRUE)
-
-  # Date: modal NOK -> principale
-  observeEvent(input$modal_date_nok, {
-    req(input$modal_date_nok)
-    if (!identical(input$date, input$modal_date_nok)) {
-      updateDateRangeInput(
-        session, "date",
-        start = input$modal_date_nok[1],
-        end   = input$modal_date_nok[2]
-      )
+    
+    if (!is.null(filtri$date)) {
+      date_modal_correnti(filtri$date)
+      
+      if (!identical(as.Date(input$date), filtri$date)) {
+        updateDateRangeInput(
+          session,
+          "date",
+          start = filtri$date[1],
+          end = filtri$date[2]
+        )
+      }
     }
+  }
+  
+  observeEvent(filtri_attivazioni_modal(), {
+    filtri <- filtri_attivazioni_modal()
+    granularita_attivazioni_corrente(filtri$granularita)
+    applica_filtri_principali(filtri)
   }, ignoreInit = TRUE)
-
-  # Sensori: modal attivazioni -> principale
-  observeEvent(input$modal_sensori_attivazioni, {
-    req(input$modal_sensori_attivazioni)
-    if (!identical(sort(input$sensori), sort(input$modal_sensori_attivazioni))) {
-      updatePickerInput(session, "sensori", selected = input$modal_sensori_attivazioni)
-    }
+  
+  observeEvent(filtri_vita_modal(), {
+    applica_filtri_principali(filtri_vita_modal())
   }, ignoreInit = TRUE)
-
-  # Sensori: modal vita -> principale
-  observeEvent(input$modal_sensori_vita, {
-    req(input$modal_sensori_vita)
-    if (!identical(sort(input$sensori), sort(input$modal_sensori_vita))) {
-      updatePickerInput(session, "sensori", selected = input$modal_sensori_vita)
-    }
+  
+  observeEvent(filtri_nok_modal(), {
+    filtri <- filtri_nok_modal()
+    granularita_nok_corrente(filtri$granularita)
+    applica_filtri_principali(filtri)
   }, ignoreInit = TRUE)
-
-  # Sensori: modal NOK -> principale
-  observeEvent(input$modal_sensori_nok, {
-    req(input$modal_sensori_nok)
-    if (!identical(sort(input$sensori), sort(input$modal_sensori_nok))) {
-      updatePickerInput(session, "sensori", selected = input$modal_sensori_nok)
-    }
-  }, ignoreInit = TRUE)
-
+  
   output$modal_panel_dati_attivazioni <- renderUI({
     if (!mostra_dati_attivazioni()) return(NULL)
     div(class = "modal-data-panel", DTOutput("modal_tabella_dati_attivazioni"))
@@ -904,18 +1012,19 @@ server <- function(input, output, session) {
   # ---------------------------------------------------------------------
   valori_giornalieri <- reactive({
     
-    req(input$macchina, input$sensori)
+    filtri <- filtri_principali()
+    req(length(filtri$sensori) > 0)
     
     dati |>
       ungroup() |>
       filter(
-        coupon == input$macchina,
-        cds_name %in% input$sensori
+        coupon == filtri$macchina,
+        cds_name %in% filtri$sensori
       ) |>
       group_by(cds_name, sensor_description, day) |>
       summarise(daily_value = sum(increment, na.rm = TRUE) / unique(daily_uptime), .groups = "drop")
   }) |>
-    bindCache(input$macchina, input$sensori)
+    bindCache(filtri_principali()$macchina, filtri_principali()$sensori)
   
   nmn_storico <- reactive({
     valori_giornalieri() |>
@@ -938,12 +1047,12 @@ server <- function(input, output, session) {
   
   kpi_nok <- reactive({
     
-    req(input$date)
+    filtri <- filtri_principali()
     
     nmm_per_sensore <- valori_giornalieri() |>
       filter(
-        day >= input$date[1],
-        day <= input$date[2]
+        day >= filtri$date[1],
+        day <= filtri$date[2]
       ) |>
       group_by(cds_name, sensor_description) |>
       summarise(NMM = mean(daily_value, na.rm = TRUE), .groups = "drop")
@@ -966,10 +1075,10 @@ server <- function(input, output, session) {
   # ---------------------------------------------------------------------
   output$schema_sensori <- renderUI({
     
-    req(input$macchina, input$date)
+    filtri <- filtri_principali()
     
     progetto <- macchine_lookup |>
-      filter(coupon == input$macchina) |>
+      filter(coupon == filtri$macchina) |>
       distinct(project) |>
       slice_head(n = 1) |>
       pull(project)
@@ -990,11 +1099,11 @@ server <- function(input, output, session) {
       return(NULL)
     }
     
-    sensori_selezionati <- if (is.null(input$sensori)) character(0) else input$sensori
+    sensori_selezionati <- filtri$sensori
     
     sensori_macchina <- sensori_lookup |>
       filter(
-        coupon == input$macchina,
+        coupon == filtri$macchina,
         cds_name %in% sensori_selezionati
       ) |>
       mutate(cds_key = str_to_upper(str_squish(cds_name))) |>
@@ -1017,10 +1126,10 @@ server <- function(input, output, session) {
     } else {
       raw_avg <- dati |>
         filter(
-          coupon == input$macchina,
+          coupon == filtri$macchina,
           cds_name %in% sensori_selezionati,
-          day >= input$date[1],
-          day <= input$date[2]
+          day >= filtri$date[1],
+          day <= filtri$date[2]
         ) |>
         group_by(cds_name, day) |>
         summarise(daily_count = sum(increment, na.rm = TRUE), .groups = "drop") |>
@@ -1073,6 +1182,7 @@ server <- function(input, output, session) {
       tags$span(
         class = "sensor-hotspot",
         tabindex = "0",
+        `data-sensor` = punto$cds_name,
         `aria-label` = paste0(
           descrizione,
           "; attivazioni giornaliere medie: ", attivazioni_medie,
@@ -1107,13 +1217,14 @@ server <- function(input, output, session) {
   
   valori_giornalieri_modal_nok <- reactive({
     
-    req(input$macchina, input$modal_sensori_nok)
+    filtri <- filtri_nok_modal()
+    req(length(filtri$sensori) > 0)
     
     dati |>
       ungroup() |>
       filter(
-        coupon == input$macchina,
-        cds_name %in% input$modal_sensori_nok
+        coupon == filtri$macchina,
+        cds_name %in% filtri$sensori
       ) |>
       group_by(cds_name, sensor_description, day) |>
       summarise(
@@ -1121,7 +1232,7 @@ server <- function(input, output, session) {
         .groups = "drop"
       )
   }) |>
-    bindCache(input$macchina, input$modal_sensori_nok)
+    bindCache(filtri_nok_modal()$macchina, filtri_nok_modal()$sensori)
   
   nmn_storico_modal_nok <- reactive({
     valori_giornalieri_modal_nok() |>
@@ -1131,12 +1242,12 @@ server <- function(input, output, session) {
   
   kpi_nok_modal <- reactive({
     
-    req(input$modal_date_nok)
+    filtri <- filtri_nok_modal()
     
     nmm_per_sensore <- valori_giornalieri_modal_nok() |>
       filter(
-        day >= input$modal_date_nok[1],
-        day <= input$modal_date_nok[2]
+        day >= filtri$date[1],
+        day <= filtri$date[2]
       ) |>
       group_by(cds_name, sensor_description) |>
       summarise(NMM = mean(daily_value, na.rm = TRUE), .groups = "drop")
@@ -1177,12 +1288,13 @@ server <- function(input, output, session) {
   # rappresenta il valore cumulato/corrente del sensore)
   tank_data_modal <- reactive({
     
-    req(input$macchina, input$modal_sensori_vita)
+    filtri <- filtri_vita_modal()
+    req(length(filtri$sensori) > 0)
     
     base <- life_data |>
       filter(
-        coupon == input$macchina,
-        cds_name %in% input$modal_sensori_vita
+        coupon == filtri$macchina,
+        cds_name %in% filtri$sensori
       ) |>
       left_join(sensori_info, by = c("coupon", "cds_name")) |>
       mutate(etichetta_sensore = paste(cds_name, sensor_description, sep = " - ")) |>
@@ -1301,21 +1413,17 @@ server <- function(input, output, session) {
   # ---------------------------------------------------------------------
   dati_grafico_modal <- reactive({
     
-    req(
-      input$macchina,
-      input$modal_date_attivazioni,
-      input$modal_sensori_attivazioni,
-      input$modal_granularita_attivazioni
-    )
+    filtri <- filtri_attivazioni_modal()
+    req(length(filtri$sensori) > 0)
     
     dati |>
       filter(
-        coupon == input$macchina,
-        cds_name %in% input$modal_sensori_attivazioni,
-        day >= input$modal_date_attivazioni[1],
-        day <= input$modal_date_attivazioni[2]
+        coupon == filtri$macchina,
+        cds_name %in% filtri$sensori,
+        day >= filtri$date[1],
+        day <= filtri$date[2]
       ) |>
-      mutate(periodo = periodo_bucket(day, input$modal_granularita_attivazioni)) |>
+      mutate(periodo = periodo_bucket(day, filtri$granularita)) |>
       group_by(
         periodo,
         cds_name,
@@ -1330,7 +1438,7 @@ server <- function(input, output, session) {
         etichetta_completa = paste(cds_name, sensor_description, sep = " - "),
         periodo_label = formatta_periodo_label(
           periodo,
-          input$modal_granularita_attivazioni
+          filtri$granularita
         )
       ) |>
       ordina_naturale() |>
@@ -1340,12 +1448,7 @@ server <- function(input, output, session) {
         periodo_label = factor(periodo_label, levels = unique(periodo_label[order(periodo)]))
       )
   }) |>
-    bindCache(
-      input$macchina,
-      input$modal_sensori_attivazioni,
-      input$modal_date_attivazioni,
-      input$modal_granularita_attivazioni
-    )
+    bindCache(filtri_attivazioni_modal())
   
   # CSS del tooltip, condiviso tra main e modal
   tooltip_css <- paste0(
@@ -1423,6 +1526,7 @@ server <- function(input, output, session) {
   render_activation_trend_gg <- function() {
     
     grafico <- dati_grafico_modal()
+    granularita <- filtri_attivazioni_modal()$granularita
     
     validate(
       need(nrow(grafico) > 0, "Nessun dato disponibile per i filtri scelti")
@@ -1462,7 +1566,7 @@ server <- function(input, output, session) {
         breaks = breaks_periodo,
         labels = formatta_periodo_label(
           breaks_periodo,
-          input$modal_granularita_attivazioni
+          granularita
         )
       ) +
       scale_y_continuous(
@@ -1523,15 +1627,15 @@ server <- function(input, output, session) {
   # stesso sensore, calcolata su tutto lo storico disponibile.
   kpi_nok_storico_modal <- reactive({
     
-    req(input$modal_date_nok, input$modal_granularita_nok)
+    filtri <- filtri_nok_modal()
     
     valori_giornalieri_modal_nok() |>
       filter(
-        day >= input$modal_date_nok[1],
-        day <= input$modal_date_nok[2]
+        day >= filtri$date[1],
+        day <= filtri$date[2]
       ) |>
       mutate(
-        periodo = as.Date(periodo_bucket(day, input$modal_granularita_nok))
+        periodo = as.Date(periodo_bucket(day, filtri$granularita))
       ) |>
       group_by(periodo, cds_name, sensor_description) |>
       summarise(
@@ -1548,16 +1652,12 @@ server <- function(input, output, session) {
       ) |>
       arrange(periodo)
   }) |>
-    bindCache(
-      input$macchina,
-      input$modal_sensori_nok,
-      input$modal_date_nok,
-      input$modal_granularita_nok
-    )
+    bindCache(filtri_nok_modal())
   
   render_nok_history_gg <- function() {
     
     storico <- kpi_nok_storico_modal()
+    granularita <- filtri_nok_modal()$granularita
     
     validate(
       need(nrow(storico) > 0, "Nessun dato disponibile per i filtri scelti")
@@ -1569,7 +1669,7 @@ server <- function(input, output, session) {
         etichetta_sensore = factor(etichetta_sensore, levels = unique(etichetta_sensore)),
         periodo_label = formatta_periodo_label(
           periodo,
-          input$modal_granularita_nok
+          granularita
         )
       )
     
@@ -1615,7 +1715,7 @@ server <- function(input, output, session) {
         breaks = breaks_periodo,
         labels = formatta_periodo_label(
           breaks_periodo,
-          input$modal_granularita_nok
+          granularita
         )
       ) +
       scale_y_continuous(
@@ -1695,11 +1795,13 @@ server <- function(input, output, session) {
   }, rownames = FALSE, options = list(pageLength = 25, dom = "t"))
   
   output$modal_tabella_dati_nok <- renderDT({
+    granularita <- filtri_nok_modal()$granularita
+    
     kpi_nok_storico_modal() |>
       transmute(
         Periodo = formatta_periodo_label(
           periodo,
-          input$modal_granularita_nok
+          granularita
         ),
         Sensore = etichetta_sensore,
         NOK     = round(NOK_periodo, 3)
