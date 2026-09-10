@@ -11,10 +11,10 @@ library(lubridate)
 library(scales)
 library(DT)
 
-dati <- readRDS(here("02_Output", "sensor_count_increment.rds")) |>
+dati <- readRDS(here("02_Output", "Test", "sensor_count_increment.rds")) |>
   mutate(field = if_else(is.na(field) | trimws(field) == "", "(Non specificato)", field))
 
-life_data <- readRDS(here("02_Output", "raw_data.rds")) |>
+life_data <- readRDS(here("02_Output", "Test", "raw_data.rds")) |>
   group_by(coupon, cds_name, cds_vds, cds_t10d) |>
   summarise(
     count = max(count),
