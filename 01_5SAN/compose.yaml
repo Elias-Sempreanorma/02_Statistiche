@@ -6,6 +6,7 @@ services:
     restart: unless-stopped
     ports:
       - "3838:3838"
+      - "3839:3838"
     volumes:
       - ./02_Output:/srv/shiny-server/02_Output:ro
     environment:
