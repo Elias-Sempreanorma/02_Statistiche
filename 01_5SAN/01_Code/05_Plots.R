@@ -675,6 +675,7 @@ server <- function(input, output, session) {
   }
   
   sensori_modal_correnti <- reactiveVal(character(0))
+  sensori_schema_apertura <- reactiveVal(NULL)
   date_modal_correnti <- reactiveVal(c(data_min, data_max))
   granularita_attivazioni_corrente <- reactiveVal("Giorno")
   granularita_nok_corrente <- reactiveVal("Giorno")
@@ -748,16 +749,19 @@ server <- function(input, output, session) {
   
   observeEvent(input$home_attivazioni, {
     req(input$macchina, input$date)
+    sensori_schema_apertura(NULL)
     apri_modal("attivazioni")
   })
   
   observeEvent(input$home_vita, {
     req(input$macchina)
+    sensori_schema_apertura(NULL)
     apri_modal("vita")
   })
   
   observeEvent(input$home_nok, {
     req(input$macchina, input$date)
+    sensori_schema_apertura(NULL)
     apri_modal("nok")
   })
   
@@ -773,6 +777,7 @@ server <- function(input, output, session) {
     
     req(sensore_cliccato %in% sensori_validi)
     
+    sensori_schema_apertura(normalizza_sensori(sensore_cliccato))
     apri_modal("attivazioni", sensore_cliccato)
   })
   
@@ -954,14 +959,28 @@ server <- function(input, output, session) {
       input$modal_granularita_attivazioni
     )
     
+    sensori_input <- normalizza_sensori(input$modal_sensori_attivazioni)
+    sensori_forzati <- sensori_schema_apertura()
+    sensori_effettivi <- if (is.null(sensori_forzati)) sensori_input else sensori_forzati
+    
     list(
       macchina = input$macchina,
       date = as.Date(input$modal_date_attivazioni),
-      sensori = normalizza_sensori(input$modal_sensori_attivazioni),
+      sensori = sensori_effettivi,
       granularita = input$modal_granularita_attivazioni
     )
   }) |>
     debounce(millis = ritardo_filtri_ms)
+  
+  observeEvent(input$modal_sensori_attivazioni, {
+    sensori_forzati <- sensori_schema_apertura()
+    if (
+      !is.null(sensori_forzati) &&
+      identical(normalizza_sensori(input$modal_sensori_attivazioni), sensori_forzati)
+    ) {
+      sensori_schema_apertura(NULL)
+    }
+  }, ignoreInit = FALSE)
   
   filtri_vita_modal <- reactive({
     req(identical(input$vista_selezionata, "vita"))
