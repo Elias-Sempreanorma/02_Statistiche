@@ -1,5 +1,4 @@
-# VERSIONE FIX FILTRI 2026-09-10
-# Debounce 800 ms + isolamento del renderUI per eliminare il loop.
+
 library(shiny)
 library(dplyr)
 library(tidyr)
@@ -366,6 +365,179 @@ ui <- fluidPage(
         font-size: 14px;
         padding: 8px 18px;
       }
+
+      /* ------------------------------------------------------------------
+         Vita sensori - card con valore corrente, massimo, utilizzo e residuo
+         ------------------------------------------------------------------ */
+      .life-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 18px;
+        margin: 4px 0 18px 0;
+      }
+      .life-header-title {
+        margin: 0;
+        color: #24364B;
+        font-size: 23px;
+        font-weight: 700;
+      }
+      .life-header-subtitle {
+        margin-top: 4px;
+        color: #718096;
+        font-size: 14px;
+      }
+      .life-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+        width: 100%;
+      }
+      .life-card {
+        min-width: 0;
+        background: #FFFFFF;
+        border: 1px solid #DDE4EA;
+        border-radius: 10px;
+        padding: 15px 17px 14px 17px;
+        box-shadow: 0 2px 7px rgba(0,0,0,0.045);
+      }
+      .life-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 10px;
+        padding-bottom: 10px;
+        margin-bottom: 13px;
+        border-bottom: 1px solid #E6EBEF;
+      }
+      .life-card-title {
+        min-width: 0;
+        color: #24364B;
+        font-size: 14px;
+        line-height: 1.25;
+        font-weight: 700;
+      }
+      .life-status {
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .life-status-ok {
+        color: #19764A;
+        background: #DDF3E6;
+      }
+      .life-status-warning {
+        color: #996400;
+        background: #FFF0C8;
+      }
+      .life-status-over {
+        color: #A93B32;
+        background: #F7D9D5;
+      }
+      .life-row {
+        margin-bottom: 16px;
+      }
+      .life-row:last-child {
+        margin-bottom: 1px;
+      }
+      .life-row + .life-row {
+        padding-top: 13px;
+        border-top: 1px solid #EEF1F4;
+      }
+      .life-row-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 10px;
+        margin-bottom: 7px;
+      }
+      .life-metric {
+        flex-shrink: 0;
+        color: #24364B;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .life-value {
+        color: #24364B;
+        font-size: 12px;
+        font-weight: 600;
+        text-align: right;
+        white-space: nowrap;
+      }
+      .life-progress {
+        position: relative;
+        width: 100%;
+        height: 14px;
+        overflow: visible;
+        background: #E4E9ED;
+        border-radius: 999px;
+      }
+      .life-progress-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: #77B98D;
+      }
+      .life-progress-fill.warning {
+        background: #E1B552;
+      }
+      .life-progress-fill.over {
+        background: #D9897F;
+      }
+      .life-progress-marker {
+        position: absolute;
+        top: 50%;
+        width: 10px;
+        height: 10px;
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+        background: #259762;
+        box-shadow: 0 0 0 2px #FFFFFF;
+      }
+      .life-progress-marker.warning {
+        background: #C58A17;
+      }
+      .life-progress-marker.over {
+        background: #BB4F45;
+      }
+      .life-row-footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 6px;
+        color: #718096;
+        font-size: 11px;
+      }
+      .life-row-footer strong {
+        color: #25865B;
+      }
+      .life-row-footer strong.warning {
+        color: #A16C08;
+      }
+      .life-row-footer strong.over {
+        color: #A93B32;
+      }
+      @media (max-width: 1250px) {
+        .life-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 760px) {
+        .life-grid {
+          grid-template-columns: 1fr;
+        }
+        .life-header {
+          display: block;
+        }
+        .life-value {
+          white-space: normal;
+        }
+      }
+
       @media (max-width: 700px) {
         .home-menu {
           padding-right: 15px;
@@ -727,7 +899,17 @@ server <- function(input, output, session) {
             multiple = TRUE, options = picker_opts
           )
         ),
-        plotOutput("modal_tankPlot", height = "430px"),
+        div(
+          class = "life-header",
+          div(
+            h4("Vita sensori", class = "life-header-title"),
+            div(
+              "Consumo attuale rispetto ai limiti massimi B10dSAN e T10d",
+              class = "life-header-subtitle"
+            )
+          )
+        ),
+        uiOutput("modal_tankCards"),
         div(
           class = "modal-data-button",
           actionButton("modal_btn_dati_tank", "Dati", icon = icon("table"), class = "btn-sm btn-default")
@@ -1196,19 +1378,14 @@ server <- function(input, output, session) {
       mutate(etichetta_sensore = paste(cds_name, sensor_description, sep = " - ")) |>
       ordina_naturale()
     
-    larghezza_etichetta <- max(
-      10,
-      floor(120 / max(n_distinct(base$etichetta_sensore), 1))
-    )
-    
+    # Nelle card il nome del sensore puo' usare tutta la larghezza:
+    # niente wrapping forzato in base al numero di sensori selezionati.
     base <- base |>
       mutate(
-        etichetta_sensore = str_wrap(
+        etichetta_sensore = factor(
           etichetta_sensore,
-          width = larghezza_etichetta,
-          whitespace_only = FALSE
-        ),
-        etichetta_sensore = factor(etichetta_sensore, levels = unique(etichetta_sensore))
+          levels = unique(etichetta_sensore)
+        )
       )
     
     tank_attivazioni <- base |>
@@ -1235,7 +1412,18 @@ server <- function(input, output, session) {
       )
   })
   
-  render_tank_plot <- function() {
+  # ---------------------------------------------------------------------
+  # Vita sensori: griglia di card.
+  # Ogni card mostra:
+  # - valore corrente / massimo B10dSAN (attivazioni)
+  # - valore corrente / massimo T10d (anni)
+  # - percentuale utilizzata e residua
+  # - marker sempre visibile anche con percentuali molto piccole
+  #
+  # Soglie SOLO grafiche:
+  # <80% = OK; 80-100% = Attenzione; >100% = Superato.
+  # ---------------------------------------------------------------------
+  output$modal_tankCards <- renderUI({
     
     tanks <- tank_data_modal()
     
@@ -1243,64 +1431,190 @@ server <- function(input, output, session) {
       need(nrow(tanks) > 0, "Nessun dato disponibile per i filtri scelti")
     )
     
-    ggplot() +
-      # "vasca" vuota di sfondo, sempre alta uguale (0-100)
-      geom_col(
-        data = tanks,
-        aes(x = tipo, y = 100),
-        fill = "#E4E7EB",
-        width = 0.65
-      ) +
-      # livello di riempimento effettivo, in percentuale sul massimo
-      geom_col(
-        data = tanks,
-        aes(x = tipo, y = percentuale_capped, fill = stato),
-        width = 0.65
-      ) +
-      geom_text(
-        data = tanks,
-        aes(
-          x = tipo,
-          y = pmax(percentuale_capped, 10),
-          label = paste0(round(valore, 1), " / ", massimo)
-        ),
-        vjust = -0.4,
-        size = 5,
-        fontface = "bold",
-        color = "#2C3E50"
-      ) +
-      facet_wrap(~etichetta_sensore, nrow = 1) +
-      scale_fill_manual(
-        values = c(ok = "#9DC3A0", over = "#D99B94"),
-        guide = "none"
-      ) +
-      scale_y_continuous(limits = c(0, 118), expand = c(0, 0)) +
-      labs(x = NULL, y = NULL) +
-      theme_minimal(base_size = 13) +
-      theme(
-        panel.grid = element_blank(),
-        panel.background = element_rect(
-          fill = scales::alpha("#7FA6C9", 0.10),
-          color = NA
-        ),
-        axis.text.y = element_blank(),
-        axis.text.x = element_text(size = 12, face = "bold"),
-        strip.text = element_text(
-          size = 13,
-          face = "bold",
-          color = "#4A4A4A",
-          lineheight = 1.05,
-          margin = margin(6, 4, 7, 4)
-        ),
-        strip.background = element_rect(
-          fill = scales::alpha("#7FA6C9", 0.18),
-          color = NA
-        ),
-        panel.spacing.x = unit(8, "pt")
+    tanks <- tanks |>
+      mutate(
+        etichetta_sensore = gsub("\n", " ", as.character(etichetta_sensore)),
+        percentuale_visuale = pmax(pmin(percentuale, 100), 0),
+        residuo = pmax(100 - percentuale, 0)
       )
-  }
-  
-  output$modal_tankPlot <- renderPlot({ render_tank_plot() })
+    
+    formatta_vita_numero <- function(x, tipo) {
+      if (length(x) == 0 || is.na(x) || is.nan(x) || is.infinite(x)) {
+        return("N/D")
+      }
+      
+      if (identical(tipo, "B10dSAN")) {
+        formatC(
+          round(x),
+          format = "f",
+          digits = 0,
+          decimal.mark = ",",
+          big.mark = "."
+        )
+      } else {
+        formatC(
+          x,
+          format = "f",
+          digits = 1,
+          decimal.mark = ",",
+          big.mark = "."
+        )
+      }
+    }
+    
+    formatta_vita_percentuale <- function(x) {
+      if (length(x) == 0 || is.na(x) || is.nan(x) || is.infinite(x)) {
+        return("N/D")
+      }
+      
+      # Evita di mostrare 0,00% quando esiste comunque un consumo reale.
+      if (x > 0 && x < 0.01) {
+        return("<0,01%")
+      }
+      
+      paste0(
+        formatC(
+          x,
+          format = "f",
+          digits = 2,
+          decimal.mark = ","
+        ),
+        "%"
+      )
+    }
+    
+    classe_vita <- function(percentuale) {
+      if (is.na(percentuale) || is.nan(percentuale) || is.infinite(percentuale)) {
+        return("")
+      }
+      if (percentuale > 100) return("over")
+      if (percentuale >= 80) return("warning")
+      ""
+    }
+    
+    crea_riga_vita <- function(riga) {
+      
+      pct <- riga$percentuale_visuale
+      stato_css <- classe_vita(riga$percentuale)
+      
+      # La barra mantiene il valore reale. Il pallino ha una posizione minima
+      # dell'1% solo per restare visibile con valori come 391 / 2.000.000.
+      marker_pct <- if (
+        is.na(pct) || is.nan(pct) || is.infinite(pct)
+      ) {
+        0
+      } else {
+        min(max(pct, 1), 100)
+      }
+      
+      unita <- if (
+        identical(riga$tipo, "B10dSAN")
+      ) {
+        " attivazioni"
+      } else {
+        " anni"
+      }
+      
+      valore_testo <- paste0(
+        formatta_vita_numero(riga$valore, riga$tipo),
+        " / ",
+        formatta_vita_numero(riga$massimo, riga$tipo),
+        unita
+      )
+      
+      div(
+        class = "life-row",
+        
+        div(
+          class = "life-row-header",
+          span(riga$tipo, class = "life-metric"),
+          span(valore_testo, class = "life-value")
+        ),
+        
+        div(
+          class = "life-progress",
+          div(
+            class = paste("life-progress-fill", stato_css),
+            style = sprintf(
+              "width: %.6f%%;",
+              ifelse(is.na(pct), 0, pct)
+            )
+          ),
+          div(
+            class = paste("life-progress-marker", stato_css),
+            style = sprintf("left: %.6f%%;", marker_pct)
+          )
+        ),
+        
+        div(
+          class = "life-row-footer",
+          span(
+            "Utilizzo: ",
+            strong(
+              formatta_vita_percentuale(riga$percentuale),
+              class = stato_css
+            )
+          ),
+          span(
+            "Residuo: ",
+            strong(
+              formatta_vita_percentuale(riga$residuo),
+              class = stato_css
+            )
+          )
+        )
+      )
+    }
+    
+    # Mantiene l'ordine naturale gia' prodotto da ordina_naturale()
+    # nella costruzione di tank_data_modal().
+    ordine_sensori <- unique(tanks$etichetta_sensore)
+    
+    cards <- lapply(ordine_sensori, function(nome_sensore) {
+      
+      df <- tanks |>
+        filter(etichetta_sensore == nome_sensore) |>
+        arrange(match(tipo, c("B10dSAN", "T10d")))
+      
+      max_pct <- suppressWarnings(max(df$percentuale, na.rm = TRUE))
+      if (!is.finite(max_pct)) {
+        max_pct <- NA_real_
+      }
+      
+      stato_label <- if (is.na(max_pct)) {
+        "N/D"
+      } else if (max_pct > 100) {
+        "Superato"
+      } else if (max_pct >= 80) {
+        "Attenzione"
+      } else {
+        "OK"
+      }
+      
+      stato_class <- if (identical(stato_label, "Superato")) {
+        "life-status life-status-over"
+      } else if (identical(stato_label, "Attenzione")) {
+        "life-status life-status-warning"
+      } else {
+        "life-status life-status-ok"
+      }
+      
+      div(
+        class = "life-card",
+        div(
+          class = "life-card-header",
+          span(nome_sensore, class = "life-card-title"),
+          span(stato_label, class = stato_class)
+        ),
+        lapply(
+          seq_len(nrow(df)),
+          function(i) crea_riga_vita(df[i, ])
+        )
+      )
+    })
+    
+    div(class = "life-grid", cards)
+  })
   
   # ---------------------------------------------------------------------
   # Dati per il grafico attivazioni: raggruppati nel periodo scelto
