@@ -675,8 +675,7 @@ server <- function(input, output, session) {
   }
   
   sensori_modal_correnti <- reactiveVal(character(0))
-  sensori_schema_apertura <- reactiveVal(NULL)
-  date_modal_correnti <- reactiveVal(c(data_min, data_max))
+  modal_apertura_id <- reactiveVal(0)
   granularita_attivazioni_corrente <- reactiveVal("Giorno")
   granularita_nok_corrente <- reactiveVal("Giorno")
   
@@ -711,9 +710,10 @@ server <- function(input, output, session) {
     }
     
     sensori_modal_correnti(normalizza_sensori(sensori_iniziali))
-    date_modal_correnti(as.Date(isolate(input$date)))
     granularita_attivazioni_corrente("Giorno")
     granularita_nok_corrente("Giorno")
+    
+    modal_apertura_id(isolate(modal_apertura_id()) + 1)
     
     mostra_dati_attivazioni(FALSE)
     mostra_dati_trend(FALSE)
@@ -749,19 +749,16 @@ server <- function(input, output, session) {
   
   observeEvent(input$home_attivazioni, {
     req(input$macchina, input$date)
-    sensori_schema_apertura(NULL)
     apri_modal("attivazioni")
   })
   
   observeEvent(input$home_vita, {
     req(input$macchina)
-    sensori_schema_apertura(NULL)
     apri_modal("vita")
   })
   
   observeEvent(input$home_nok, {
     req(input$macchina, input$date)
-    sensori_schema_apertura(NULL)
     apri_modal("nok")
   })
   
@@ -777,7 +774,6 @@ server <- function(input, output, session) {
     
     req(sensore_cliccato %in% sensori_validi)
     
-    sensori_schema_apertura(normalizza_sensori(sensore_cliccato))
     apri_modal("attivazioni", sensore_cliccato)
   })
   
@@ -787,11 +783,13 @@ server <- function(input, output, session) {
     mostra_dati_trend(FALSE)
     mostra_dati_tank(FALSE)
     mostra_dati_nok(FALSE)
+    
   }, ignoreInit = TRUE)
   
   # Contenuto del modal: si aggiorna al cambio di vista senza chiudere il dialogo
   output$modal_contenuto <- renderUI({
     req(input$vista_selezionata, input$macchina)
+    modal_apertura_id()
     
     vista <- input$vista_selezionata
     
@@ -803,7 +801,7 @@ server <- function(input, output, session) {
       sensori_macchina$cds_name
     )
     
-    date_selezionate <- isolate(date_modal_correnti())
+    date_selezionate <- isolate(as.Date(input$date))
     
     scelte_sensori <- setNames(
       sensori_macchina$cds_name,
@@ -824,7 +822,7 @@ server <- function(input, output, session) {
           fluidRow(
             column(4,
                    dateRangeInput(
-                     "modal_date_attivazioni", "Periodo:",
+                     "modal_date", "Periodo:",
                      start = date_selezionate[1], end = date_selezionate[2],
                      min = data_min, max = data_max,
                      format = "dd-mm-yyyy", separator = " a ", language = "it"
@@ -832,7 +830,7 @@ server <- function(input, output, session) {
             ),
             column(8,
                    pickerInput(
-                     "modal_sensori_attivazioni", "Sensori:",
+                     "modal_sensori", "Sensori:",
                      choices = scelte_sensori, selected = sensori_selezionati,
                      multiple = TRUE, options = picker_opts
                    )
@@ -866,7 +864,7 @@ server <- function(input, output, session) {
         div(
           class = "modal-filters",
           pickerInput(
-            "modal_sensori_vita", "Sensori:",
+            "modal_sensori", "Sensori:",
             choices = scelte_sensori, selected = sensori_selezionati,
             multiple = TRUE, options = picker_opts
           )
@@ -896,7 +894,7 @@ server <- function(input, output, session) {
           fluidRow(
             column(4,
                    dateRangeInput(
-                     "modal_date_nok", "Periodo:",
+                     "modal_date", "Periodo:",
                      start = date_selezionate[1], end = date_selezionate[2],
                      min = data_min, max = data_max,
                      format = "dd-mm-yyyy", separator = " a ", language = "it"
@@ -904,7 +902,7 @@ server <- function(input, output, session) {
             ),
             column(8,
                    pickerInput(
-                     "modal_sensori_nok", "Sensori:",
+                     "modal_sensori", "Sensori:",
                      choices = scelte_sensori, selected = sensori_selezionati,
                      multiple = TRUE, options = picker_opts
                    )
@@ -952,94 +950,105 @@ server <- function(input, output, session) {
   # non dipende direttamente dai filtri principali, evitando il loop di
   # distruzione e ricreazione continua degli input.
   # ---------------------------------------------------------------------
-  filtri_attivazioni_modal <- reactive({
-    req(
-      identical(input$vista_selezionata, "attivazioni"),
-      input$modal_date_attivazioni,
-      input$modal_granularita_attivazioni
+  sensori_modal_input <- eventReactive(input$modal_sensori, {
+    list(
+      apertura_id = isolate(modal_apertura_id()),
+      sensori = normalizza_sensori(input$modal_sensori)
     )
+  }, ignoreNULL = TRUE) |>
+    debounce(millis = ritardo_filtri_ms)
+  
+  observeEvent(sensori_modal_input(), {
+    filtri <- sensori_modal_input()
     
-    sensori_input <- normalizza_sensori(input$modal_sensori_attivazioni)
-    sensori_forzati <- sensori_schema_apertura()
-    sensori_effettivi <- if (is.null(sensori_forzati)) sensori_input else sensori_forzati
+    if (identical(filtri$apertura_id, isolate(modal_apertura_id()))) {
+      sensori_modal_correnti(filtri$sensori)
+      updatePickerInput(session, "modal_sensori", selected = filtri$sensori)
+    }
+  }, ignoreInit = TRUE)
+  
+  periodo_modal_input <- eventReactive(input$modal_date, {
+    list(
+      apertura_id = isolate(modal_apertura_id()),
+      date = as.Date(input$modal_date)
+    )
+  }, ignoreNULL = TRUE) |>
+    debounce(millis = ritardo_filtri_ms)
+  
+  observeEvent(periodo_modal_input(), {
+    filtri <- periodo_modal_input()
+    
+    if (
+      identical(filtri$apertura_id, isolate(modal_apertura_id())) &&
+      !identical(as.Date(input$date), filtri$date)
+    ) {
+      updateDateRangeInput(
+        session,
+        "date",
+        start = filtri$date[1],
+        end = filtri$date[2]
+      )
+    }
+  }, ignoreInit = TRUE)
+  
+  observeEvent(input$date, {
+    req(input$date)
+    
+    date_corrente <- as.Date(input$date)
+    
+    if (
+      !is.null(input$modal_date) &&
+      !identical(as.Date(input$modal_date), date_corrente)
+    ) {
+      updateDateRangeInput(
+        session,
+        "modal_date",
+        start = date_corrente[1],
+        end = date_corrente[2]
+      )
+    }
+  }, ignoreInit = TRUE)
+  
+  observeEvent(input$modal_granularita_attivazioni, {
+    req(input$modal_granularita_attivazioni)
+    granularita_attivazioni_corrente(input$modal_granularita_attivazioni)
+  }, ignoreNULL = TRUE)
+  
+  observeEvent(input$modal_granularita_nok, {
+    req(input$modal_granularita_nok)
+    granularita_nok_corrente(input$modal_granularita_nok)
+  }, ignoreNULL = TRUE)
+  
+  filtri_attivazioni_modal <- reactive({
+    req(input$macchina, input$date)
     
     list(
       macchina = input$macchina,
-      date = as.Date(input$modal_date_attivazioni),
-      sensori = sensori_effettivi,
-      granularita = input$modal_granularita_attivazioni
+      date = as.Date(input$date),
+      sensori = sensori_modal_correnti(),
+      granularita = granularita_attivazioni_corrente()
     )
-  }) |>
-    debounce(millis = ritardo_filtri_ms)
-  
-  observeEvent(input$modal_sensori_attivazioni, {
-    sensori_forzati <- sensori_schema_apertura()
-    if (
-      !is.null(sensori_forzati) &&
-      identical(normalizza_sensori(input$modal_sensori_attivazioni), sensori_forzati)
-    ) {
-      sensori_schema_apertura(NULL)
-    }
-  }, ignoreInit = FALSE)
+  })
   
   filtri_vita_modal <- reactive({
-    req(identical(input$vista_selezionata, "vita"))
+    req(input$macchina)
     
     list(
       macchina = input$macchina,
-      sensori = normalizza_sensori(input$modal_sensori_vita)
+      sensori = sensori_modal_correnti()
     )
-  }) |>
-    debounce(millis = ritardo_filtri_ms)
+  })
   
   filtri_nok_modal <- reactive({
-    req(
-      identical(input$vista_selezionata, "nok"),
-      input$modal_date_nok,
-      input$modal_granularita_nok
-    )
+    req(input$macchina, input$date)
     
     list(
       macchina = input$macchina,
-      date = as.Date(input$modal_date_nok),
-      sensori = normalizza_sensori(input$modal_sensori_nok),
-      granularita = input$modal_granularita_nok
+      date = as.Date(input$date),
+      sensori = sensori_modal_correnti(),
+      granularita = granularita_nok_corrente()
     )
-  }) |>
-    debounce(millis = ritardo_filtri_ms)
-  
-  applica_filtri_principali <- function(filtri) {
-    sensori_modal_correnti(filtri$sensori)
-    
-    if (!is.null(filtri$date)) {
-      date_modal_correnti(filtri$date)
-      
-      if (!identical(as.Date(input$date), filtri$date)) {
-        updateDateRangeInput(
-          session,
-          "date",
-          start = filtri$date[1],
-          end = filtri$date[2]
-        )
-      }
-    }
-  }
-  
-  observeEvent(filtri_attivazioni_modal(), {
-    filtri <- filtri_attivazioni_modal()
-    granularita_attivazioni_corrente(filtri$granularita)
-    applica_filtri_principali(filtri)
-  }, ignoreInit = TRUE)
-  
-  observeEvent(filtri_vita_modal(), {
-    applica_filtri_principali(filtri_vita_modal())
-  }, ignoreInit = TRUE)
-  
-  observeEvent(filtri_nok_modal(), {
-    filtri <- filtri_nok_modal()
-    granularita_nok_corrente(filtri$granularita)
-    applica_filtri_principali(filtri)
-  }, ignoreInit = TRUE)
+  })
   
   output$modal_panel_dati_attivazioni <- renderUI({
     if (!mostra_dati_attivazioni()) return(NULL)
