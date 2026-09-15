@@ -1,4 +1,3 @@
-
 library(shiny)
 library(dplyr)
 library(tidyr)
@@ -576,20 +575,6 @@ ui <- fluidPage(
                separator = " a ",
                language = "it"
              )
-      ),
-      column(2,
-             pickerInput(
-               "sensori",
-               "Sensori:",
-               choices = NULL,
-               multiple = TRUE,
-               options = pickerOptions(
-                 actionsBox = TRUE,
-                 liveSearch = TRUE,
-                 selectedTextFormat = "count > 3",
-                 countSelectedText = "{0} sensori selezionati"
-               )
-             )
       )
     )
   ),
@@ -674,23 +659,6 @@ server <- function(input, output, session) {
   })
   
   # 3. Quando cambia la macchina, aggiorno i sensori disponibili
-  observeEvent(input$macchina, {
-    
-    req(input$macchina)
-    
-    sensori_macchina <- sensori_lookup |>
-      filter(coupon == input$macchina)
-    
-    updatePickerInput(
-      session,
-      "sensori",
-      choices = setNames(
-        sensori_macchina$cds_name,
-        paste(sensori_macchina$cds_name, sensori_macchina$sensor_description, sep = " - ")
-      ),
-      selected = sensori_macchina$cds_name
-    )
-  })
   
   # Tabelle dati mostrate direttamente all'interno dei modal.
   mostra_dati_attivazioni <- reactiveVal(FALSE)
@@ -717,7 +685,10 @@ server <- function(input, output, session) {
     list(
       macchina = input$macchina,
       date = as.Date(input$date),
-      sensori = normalizza_sensori(input$sensori)
+      sensori = sensori_lookup |>
+        filter(coupon == input$macchina) |>
+        pull(cds_name) |>
+        normalizza_sensori()
     )
   }) |>
     debounce(millis = ritardo_filtri_ms)
@@ -733,7 +704,9 @@ server <- function(input, output, session) {
   # ---------------------------------------------------------------------
   apri_modal <- function(vista_iniziale, sensori_iniziali = NULL) {
     if (is.null(sensori_iniziali)) {
-      sensori_iniziali <- isolate(input$sensori)
+      sensori_iniziali <- sensori_lookup |>
+        filter(coupon == isolate(input$macchina)) |>
+        pull(cds_name)
     }
     
     sensori_modal_correnti(normalizza_sensori(sensori_iniziali))
@@ -799,12 +772,6 @@ server <- function(input, output, session) {
       pull(cds_name)
     
     req(sensore_cliccato %in% sensori_validi)
-    
-    updatePickerInput(
-      session,
-      "sensori",
-      selected = sensore_cliccato
-    )
     
     apri_modal("attivazioni", sensore_cliccato)
   })
@@ -1025,10 +992,6 @@ server <- function(input, output, session) {
   applica_filtri_principali <- function(filtri) {
     sensori_modal_correnti(filtri$sensori)
     
-    if (!identical(normalizza_sensori(input$sensori), filtri$sensori)) {
-      updatePickerInput(session, "sensori", selected = filtri$sensori)
-    }
-    
     if (!is.null(filtri$date)) {
       date_modal_correnti(filtri$date)
       
@@ -1083,7 +1046,7 @@ server <- function(input, output, session) {
   # Reactive condivisi: il valore giornaliero per sensore e la media
   # storica (NMN) vengono calcolati una sola volta e riusati sia dalla
   # tabella NOK sia dal grafico storico, invece di essere ricalcolati
-  # due volte in reactive separati.
+  # due volte in reactive separate.
   # bindCache: se piu' utenti (o la stessa sessione in momenti diversi)
   # scelgono la stessa macchina/sensori, il risultato viene riusato
   # invece di ricalcolato.
