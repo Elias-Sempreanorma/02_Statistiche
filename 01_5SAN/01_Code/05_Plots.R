@@ -216,8 +216,24 @@ ui <- fluidPage(
       .pannello-filtri {
         background-color: #F4F6F8;
         border-radius: 6px;
-        padding: 16px 20px 4px 20px;
-        margin-bottom: 18px;
+        padding: 8px 14px 0 14px;
+        margin-bottom: 8px;
+      }
+      .pannello-filtri .form-group {
+        margin-bottom: 8px;
+      }
+      .pannello-filtri label {
+        margin-bottom: 3px;
+        font-size: 12px;
+      }
+      .pannello-filtri .form-control {
+        height: 32px;
+        padding: 4px 8px;
+        font-size: 13px;
+      }
+      .pannello-filtri .input-group-addon {
+        padding: 4px 8px;
+        font-size: 12px;
       }
       .titolo-sezione {
         color: #4A4A4A;
@@ -228,16 +244,16 @@ ui <- fluidPage(
       .card-home {
         display: block;
         width: 100%;
-        min-height: 132px;
+        min-height: 104px;
         background: #FFFFFF;
         border: 1px solid #E4E7EB;
-        border-radius: 10px;
+        border-radius: 9px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.06);
         transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
         text-align: left;
         white-space: normal;
-        padding: 18px 16px;
-        margin-bottom: 16px;
+        padding: 12px 13px;
+        margin-bottom: 10px;
         color: #4A4A4A;
       }
       .card-home:hover {
@@ -246,16 +262,18 @@ ui <- fluidPage(
         border-color: #7FA6C9;
       }
       .card-home .card-icona {
-        font-size: 25px;
+        font-size: 20px;
         color: #7FA6C9;
-        margin-bottom: 7px;
+        margin-bottom: 4px;
       }
       .card-home h4 {
+        font-size: 15px;
         font-weight: 700;
-        margin: 0 0 6px 0;
+        margin: 0 0 4px 0;
       }
       .card-home p {
-        font-size: 13px;
+        font-size: 11.5px;
+        line-height: 1.3;
         color: #8A94A0;
         margin: 0;
       }
@@ -263,7 +281,7 @@ ui <- fluidPage(
         width: 100%;
         display: flex;
         justify-content: center;
-        margin: 0 0 28px 0;
+        margin: 0;
       }
       .schema-frame {
         position: relative;
@@ -340,15 +358,15 @@ ui <- fluidPage(
       .home-stage {
         position: relative;
         width: 100%;
-        min-height: 820px;
-        margin: 6px 0 28px 0;
+        min-height: 650px;
+        margin: 0 0 12px 0;
       }
       .home-schema-layer {
         position: absolute;
-        top: 34px;
-        right: 8%;
-        bottom: 34px;
-        left: 8%;
+        top: 18px;
+        right: 10%;
+        bottom: 18px;
+        left: 10%;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -358,16 +376,16 @@ ui <- fluidPage(
         margin: 0;
       }
       .home-schema-layer .schema-frame {
-        max-width: 1000px;
+        max-width: 820px;
       }
       .home-corner {
         position: absolute;
         z-index: 10;
-        width: 250px;
+        width: 210px;
       }
       .home-corner .card-home {
         width: 100%;
-        min-height: 132px;
+        min-height: 104px;
         margin-bottom: 0;
       }
       .home-corner-tl {
@@ -588,14 +606,19 @@ ui <- fluidPage(
 
       @media (max-width: 900px) {
         .home-stage {
-          min-height: 660px;
+          min-height: 540px;
         }
         .home-corner {
-          width: 210px;
+          width: 180px;
         }
         .home-schema-layer {
-          right: 4%;
-          left: 4%;
+          top: 14px;
+          right: 6%;
+          bottom: 14px;
+          left: 6%;
+        }
+        .home-schema-layer .schema-frame {
+          max-width: 680px;
         }
       }
 
@@ -668,7 +691,6 @@ ui <- fluidPage(
   ),
   
   # Home unica: menu verticale a sinistra e schema della macchina a destra.
-  br(),
   div(
     class = "home-stage",
 
