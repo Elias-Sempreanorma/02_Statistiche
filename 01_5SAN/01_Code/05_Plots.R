@@ -1420,12 +1420,21 @@ server <- function(input, output, session) {
       )
     })
     
+    image_version <- unname(
+      tools::md5sum(file.path(cds_images_dir, immagine$file_name))
+    )
+
     div(
       class = "schema-home",
       div(
         class = "schema-frame",
         tags$img(
-          src = paste0("cds-images/", immagine$file_name),
+          src = paste0(
+            "cds-images/",
+            immagine$file_name,
+            "?v=",
+            image_version
+          ),
           alt = paste("Schema sensori del progetto", progetto)
         ),
         hotspot
