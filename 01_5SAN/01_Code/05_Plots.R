@@ -337,6 +337,55 @@ ui <- fluidPage(
       .home-menu {
         padding-right: 18px;
       }
+      .home-stage {
+        position: relative;
+        width: 100%;
+        min-height: 820px;
+        margin: 6px 0 28px 0;
+      }
+      .home-schema-layer {
+        position: absolute;
+        top: 34px;
+        right: 8%;
+        bottom: 34px;
+        left: 8%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1;
+      }
+      .home-schema-layer .schema-home {
+        margin: 0;
+      }
+      .home-schema-layer .schema-frame {
+        max-width: 1000px;
+      }
+      .home-corner {
+        position: absolute;
+        z-index: 10;
+        width: 250px;
+      }
+      .home-corner .card-home {
+        width: 100%;
+        min-height: 132px;
+        margin-bottom: 0;
+      }
+      .home-corner-tl {
+        top: 0;
+        left: 0;
+      }
+      .home-corner-tr {
+        top: 0;
+        right: 0;
+      }
+      .home-corner-bl {
+        bottom: 0;
+        left: 0;
+      }
+      .home-corner-br {
+        right: 0;
+        bottom: 0;
+      }
       .modal-filters {
         background: #F4F6F8;
         border-radius: 7px;
@@ -537,9 +586,48 @@ ui <- fluidPage(
         }
       }
 
+      @media (max-width: 900px) {
+        .home-stage {
+          min-height: 660px;
+        }
+        .home-corner {
+          width: 210px;
+        }
+        .home-schema-layer {
+          right: 4%;
+          left: 4%;
+        }
+      }
+
       @media (max-width: 700px) {
         .home-menu {
           padding-right: 15px;
+        }
+        .home-stage {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 12px;
+          min-height: 0;
+        }
+        .home-schema-layer,
+        .home-corner {
+          position: static;
+          width: 100%;
+        }
+        .home-schema-layer {
+          order: 1;
+        }
+        .home-corner-tl {
+          order: 2;
+        }
+        .home-corner-tr {
+          order: 3;
+        }
+        .home-corner-bl {
+          order: 4;
+        }
+        .home-corner-br {
+          order: 5;
         }
         .sensor-hotspot {
           width: 18px;
@@ -581,10 +669,18 @@ ui <- fluidPage(
   
   # Home unica: menu verticale a sinistra e schema della macchina a destra.
   br(),
-  fluidRow(
-    column(
-      3,
-      class = "home-menu",
+  div(
+    class = "home-stage",
+
+    # Se non esiste un'immagine associata al progetto selezionato,
+    # renderUI restituisce NULL e la colonna destra resta vuota.
+    div(
+      class = "home-schema-layer",
+      uiOutput("schema_sensori")
+    ),
+
+    div(
+      class = "home-corner home-corner-tl",
       actionButton(
         "home_attivazioni",
         label = div(
@@ -593,16 +689,11 @@ ui <- fluidPage(
           p("Grafico a barre e trend nel tempo per sensore")
         ),
         class = "card-home"
-      ),
-      actionButton(
-        "home_vita",
-        label = div(
-          icon("gauge", class = "card-icona"),
-          h4("Vita sensori"),
-          p("Stato dei sensori rispetto alle soglie B10dSAN e T10d")
-        ),
-        class = "card-home"
-      ),
+      )
+    ),
+
+    div(
+      class = "home-corner home-corner-tr",
       actionButton(
         "home_nok",
         label = div(
@@ -613,9 +704,32 @@ ui <- fluidPage(
         class = "card-home"
       )
     ),
-    # Se non esiste un'immagine associata al progetto selezionato,
-    # renderUI restituisce NULL e la colonna destra resta vuota.
-    column(9, uiOutput("schema_sensori"))
+
+    div(
+      class = "home-corner home-corner-bl",
+      actionButton(
+        "home_vita",
+        label = div(
+          icon("gauge", class = "card-icona"),
+          h4("Vita sensori"),
+          p("Stato dei sensori rispetto alle soglie B10dSAN e T10d")
+        ),
+        class = "card-home"
+      )
+    ),
+
+    div(
+      class = "home-corner home-corner-br",
+      actionButton(
+        "home_allarmi",
+        label = div(
+          icon("triangle-exclamation", class = "card-icona"),
+          h4("Allarmi e Near Miss"),
+          p("Allarmi e segnalazioni Near Miss")
+        ),
+        class = "card-home"
+      )
+    )
   )
 )
 
@@ -734,7 +848,8 @@ server <- function(input, output, session) {
           choices = c(
             "Conteggio attivazioni" = "attivazioni",
             "Vita sensori"          = "vita",
-            "Storico NOK"           = "nok"
+            "Storico NOK"           = "nok",
+            "Allarmi e Near Miss"    = "allarmi"
           ),
           selected = vista_iniziale,
           status   = "primary",
@@ -760,6 +875,11 @@ server <- function(input, output, session) {
   observeEvent(input$home_nok, {
     req(input$macchina, input$date)
     apri_modal("nok")
+  })
+
+  observeEvent(input$home_allarmi, {
+    req(input$macchina)
+    apri_modal("allarmi")
   })
   
   # Click su un CdS nello schema: seleziona quel sensore e apre la tenda
@@ -923,6 +1043,11 @@ server <- function(input, output, session) {
           actionButton("modal_btn_dati_nok", "Dati", icon = icon("table"), class = "btn-sm btn-default")
         ),
         uiOutput("modal_panel_dati_nok")
+      )
+
+    } else if (vista == "allarmi") {
+      tagList(
+        h4("Allarmi e Near Miss", class = "titolo-sezione")
       )
     }
   })
