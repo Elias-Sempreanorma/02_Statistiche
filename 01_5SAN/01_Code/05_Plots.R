@@ -2295,12 +2295,9 @@ server <- function(input, output, session) {
     
     filtri <- filtri_nok_modal()
     
-    base <- valori_giornalieri_modal_nok() |>
-      filter(
-        !outlier_lof,
-        day >= filtri$date[1],
-        day <= filtri$date[2]
-      ) |>
+    # Base comune: stessi dati filtrati e stesso NMN usati dal NOK.
+    base_completa <- valori_giornalieri_modal_nok() |>
+      filter(!outlier_lof) |>
       left_join(
         nmn_storico_modal_nok(),
         by = c("cds_name", "sensor_description")
@@ -2312,6 +2309,13 @@ server <- function(input, output, session) {
         )
       ) |>
       filter(is.finite(NOK_giornaliero))
+    
+    # Periodo attualmente selezionato.
+    base <- base_completa |>
+      filter(
+        day >= filtri$date[1],
+        day <= filtri$date[2]
+      )
     
     per_sensore <- base |>
       group_by(cds_name, sensor_description) |>
@@ -2343,9 +2347,109 @@ server <- function(input, output, session) {
       NA_real_
     }
     
+    # -------------------------------------------------------------------
+    # Riferimento storico:
+    # - stessa durata del periodo selezionato
+    # - sole finestre precedenti al periodo corrente
+    # - una nuova finestra ogni 7 giorni
+    # -------------------------------------------------------------------
+    durata_giorni <- as.integer(
+      filtri$date[2] - filtri$date[1]
+    ) + 1L
+    
+    calcola_u_finestra <- function(inizio) {
+      fine <- inizio + durata_giorni - 1L
+      
+      dati_finestra <- base_completa |>
+        filter(
+          day >= inizio,
+          day <= fine
+        )
+      
+      if (nrow(dati_finestra) == 0) {
+        return(NA_real_)
+      }
+      
+      u_sensori <- dati_finestra |>
+        group_by(cds_name, sensor_description) |>
+        summarise(
+          media_nok = mean(NOK_giornaliero, na.rm = TRUE),
+          varianza_nok = if (n() >= 2) {
+            var(NOK_giornaliero, na.rm = TRUE)
+          } else {
+            NA_real_
+          },
+          .groups = "drop"
+        ) |>
+        mutate(
+          U_sensore = media_nok * varianza_nok
+        ) |>
+        filter(is.finite(U_sensore)) |>
+        pull(U_sensore)
+      
+      if (length(u_sensori) == 0) {
+        NA_real_
+      } else {
+        mean(u_sensori)
+      }
+    }
+    
+    prima_data <- if (nrow(base_completa) > 0) {
+      min(base_completa$day, na.rm = TRUE)
+    } else {
+      as.Date(NA)
+    }
+    
+    ultima_partenza <- filtri$date[1] - durata_giorni
+    
+    if (
+      is.na(prima_data) ||
+      ultima_partenza < prima_data
+    ) {
+      U_storici <- numeric(0)
+    } else {
+      partenze_storiche <- seq.Date(
+        from = prima_data,
+        to = ultima_partenza,
+        by = "7 days"
+      )
+      
+      U_storici <- vapply(
+        partenze_storiche,
+        calcola_u_finestra,
+        numeric(1)
+      )
+      
+      U_storici <- U_storici[is.finite(U_storici)]
+    }
+    
+    P90_utilizzo <- if (length(U_storici) > 0) {
+      as.numeric(
+        stats::quantile(
+          U_storici,
+          probs = 0.90,
+          na.rm = TRUE,
+          names = FALSE,
+          type = 7
+        )
+      )
+    } else {
+      NA_real_
+    }
+    
+    stato_utilizzo <- case_when(
+      !is.finite(U_macchina) | !is.finite(P90_utilizzo) ~ "N/D",
+      U_macchina > P90_utilizzo ~ "Anomalo",
+      TRUE ~ "Normale"
+    )
+    
     list(
       per_sensore = per_sensore,
-      U_macchina = U_macchina
+      U_macchina = U_macchina,
+      P90_utilizzo = P90_utilizzo,
+      stato_utilizzo = stato_utilizzo,
+      n_finestre_storiche = length(U_storici),
+      durata_giorni = durata_giorni
     )
   }) |>
     bindCache(
@@ -2360,27 +2464,55 @@ server <- function(input, output, session) {
     
     valore <- if (
       length(utilizzo$U_macchina) == 0 ||
-      is.na(utilizzo$U_macchina) ||
-      is.nan(utilizzo$U_macchina) ||
-      is.infinite(utilizzo$U_macchina)
+      !is.finite(utilizzo$U_macchina)
     ) {
       "N/D"
     } else {
       formatC(
         utilizzo$U_macchina,
         format = "f",
-        digits = 4,
+        digits = 2,
         decimal.mark = ","
       )
     }
+    
+    soglia <- if (
+      length(utilizzo$P90_utilizzo) == 0 ||
+      !is.finite(utilizzo$P90_utilizzo)
+    ) {
+      "N/D"
+    } else {
+      formatC(
+        utilizzo$P90_utilizzo,
+        format = "f",
+        digits = 2,
+        decimal.mark = ","
+      )
+    }
+    
+    stato <- utilizzo$stato_utilizzo
+    
+    colore <- switch(
+      stato,
+      "Normale" = "#19764A",
+      "Anomalo" = "#B42318",
+      "#5F6F7F"
+    )
+    
+    sfondo <- switch(
+      stato,
+      "Normale" = "#F2FBF6",
+      "Anomalo" = "#FFF5F4",
+      "#F4F8FB"
+    )
     
     div(
       style = paste0(
         "margin:14px 0 20px 0;",
         "padding:15px 18px;",
-        "border:2px solid #7FA6C9;",
+        "border:2px solid ", colore, ";",
         "border-radius:9px;",
-        "background:#F4F8FB;"
+        "background:", sfondo, ";"
       ),
       span(
         "Utilizzo macchina: ",
@@ -2388,11 +2520,41 @@ server <- function(input, output, session) {
       ),
       span(
         valore,
-        style = "font-size:28px;font-weight:800;color:#24364B;"
+        style = paste0(
+          "font-size:28px;font-weight:800;color:",
+          colore,
+          ";"
+        )
+      ),
+      span(
+        paste0("  ", stato),
+        style = paste0(
+          "margin-left:10px;",
+          "padding:4px 10px;",
+          "border-radius:999px;",
+          "font-size:14px;",
+          "font-weight:800;",
+          "color:#FFFFFF;",
+          "background:",
+          colore,
+          ";"
+        )
       ),
       div(
-        "Indice dell’intensità di utilizzo rispetto al comportamento storico dei sensori. Valori alti indicano uno stress della macchina più elevato o discrepanza nell'utilizzo rispetto allo storico .",
-        style = "margin-top:6px;font-size:13px;color:#5F6F7F;"
+        "Indice dell’intensità di utilizzo rispetto al comportamento storico dei sensori. Valori alti indicano uno stress della macchina più elevato o una discrepanza nell’utilizzo rispetto allo storico.",
+        style = "margin-top:7px;font-size:13px;color:#5F6F7F;"
+      ),
+      div(
+        paste0(
+          "Soglia di anomalia P90: ",
+          soglia,
+          " — riferimento calcolato su ",
+          utilizzo$n_finestre_storiche,
+          " finestre storiche di ",
+          utilizzo$durata_giorni,
+          " giorni, distanziate di 7 giorni."
+        ),
+        style = "margin-top:4px;font-size:12px;color:#718096;"
       )
     )
   })
