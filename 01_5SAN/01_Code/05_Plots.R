@@ -191,45 +191,17 @@ ui <- fluidPage(
           return;
         }
 
-        var stageWidth = stage.clientWidth;
-        var stageHeight = stage.clientHeight;
-
         if (img.naturalWidth > 0 && img.naturalHeight > 0) {
           var rapporto = img.naturalWidth / img.naturalHeight;
+          var stageWidth = stage.clientWidth;
+          var stageHeight = stage.clientHeight;
 
-          // Schema grande al centro, ma lascia sempre spazio sufficiente
-          // ai comandi laterali sui monitor piu' stretti.
-          var maxWidth = Math.min(
-            stageWidth * 0.72,
-            1250,
-            Math.max(560, stageWidth - 320)
-          );
-          var maxHeight = stageHeight * 0.74;
+          var maxWidth = Math.min(stageWidth * 0.74, 1300);
+          var maxHeight = stageHeight * 0.78;
           var targetWidth = Math.min(maxWidth, maxHeight * rapporto);
 
           frame.style.width = Math.max(560, targetWidth) + 'px';
         }
-
-        var stageRect = stage.getBoundingClientRect();
-        var frameRect = frame.getBoundingClientRect();
-        var gap = 8;
-
-        stage.style.setProperty(
-          '--schema-left',
-          Math.max(0, frameRect.left - stageRect.left - gap) + 'px'
-        );
-        stage.style.setProperty(
-          '--schema-right',
-          Math.min(stageRect.width, frameRect.right - stageRect.left + gap) + 'px'
-        );
-        stage.style.setProperty(
-          '--schema-top',
-          Math.max(0, frameRect.top - stageRect.top - gap) + 'px'
-        );
-        stage.style.setProperty(
-          '--schema-bottom',
-          Math.min(stageRect.height, frameRect.bottom - stageRect.top + gap) + 'px'
-        );
       }
 
       function pianificaLayoutHome() {
@@ -265,15 +237,6 @@ ui <- fluidPage(
           pianificaLayoutHome();
         }
       }, true);
-
-      // Le L sono composte da due rettangoli trasparenti ciascuna.
-      // Entrambe le parti richiamano lo stesso actionButton Shiny.
-      $(document).on('click', '.home-l-zone', function () {
-        var target = $(this).attr('data-target');
-        if (target) {
-          $('#' + target).trigger('click');
-        }
-      });
 
       $(document).on('click', '.sensor-hotspot', function () {
         Shiny.setInputValue(
@@ -470,10 +433,6 @@ ui <- fluidPage(
         padding-right: 18px;
       }
       .home-stage {
-        --schema-left: 30%;
-        --schema-right: 70%;
-        --schema-top: 28%;
-        --schema-bottom: 72%;
         position: relative;
         width: 100%;
         height: clamp(600px, calc(100vh - 190px), 760px);
@@ -483,7 +442,7 @@ ui <- fluidPage(
         background: #FFFFFF;
       }
 
-      /* Schema centrale: sempre centrato e molto piu' grande. */
+      /* Schema grande, centrato e sopra ai quattro pulsanti. */
       .home-schema-layer {
         position: absolute;
         inset: 0;
@@ -501,104 +460,71 @@ ui <- fluidPage(
         pointer-events: none;
       }
       .home-schema-layer .schema-frame {
-        width: min(72vw, 1250px);
-        max-width: calc(100% - 320px);
+        width: min(74vw, 1300px);
+        max-width: calc(100% - 280px);
         pointer-events: auto;
       }
 
-      /* --------------------------------------------------------------
-         Quattro aree ad L.
-         Ogni L e' composta da due rettangoli trasparenti: niente enormi
-         button sovrapposti e nessun riempimento grigio della pagina.
-         -------------------------------------------------------------- */
-      .home-l-zone {
-        position: absolute;
-        z-index: 2;
-        background: transparent;
-        cursor: pointer;
-        transition: background-color 0.12s ease;
-      }
-      .home-l-zone:hover {
-        background: rgba(127, 166, 201, 0.08);
-      }
-
-      /* alto sinistra */
-      .home-zone-tl-top {
-        top: 0;
-        left: 0;
-        width: 50%;
-        height: var(--schema-top);
-      }
-      .home-zone-tl-side {
-        top: var(--schema-top);
-        left: 0;
-        width: var(--schema-left);
-        height: calc(50% - var(--schema-top));
-      }
-
-      /* alto destra */
-      .home-zone-tr-top {
-        top: 0;
-        left: 50%;
-        right: 0;
-        height: var(--schema-top);
-      }
-      .home-zone-tr-side {
-        top: var(--schema-top);
-        left: var(--schema-right);
-        right: 0;
-        height: calc(50% - var(--schema-top));
-      }
-
-      /* basso sinistra */
-      .home-zone-bl-side {
-        top: 50%;
-        left: 0;
-        width: var(--schema-left);
-        height: calc(var(--schema-bottom) - 50%);
-      }
-      .home-zone-bl-bottom {
-        top: var(--schema-bottom);
-        left: 0;
-        width: 50%;
-        bottom: 0;
-      }
-
-      /* basso destra */
-      .home-zone-br-side {
-        top: 50%;
-        left: var(--schema-right);
-        right: 0;
-        height: calc(var(--schema-bottom) - 50%);
-      }
-      .home-zone-br-bottom {
-        top: var(--schema-bottom);
-        left: 50%;
-        right: 0;
-        bottom: 0;
-      }
-
-      /* Le card visibili restano piccole negli angoli esterni. */
+      /* Quattro pulsanti rettangolari: ognuno occupa un quarto della pagina. */
       .home-corner {
         position: absolute;
-        z-index: 10;
-        width: clamp(145px, 10vw, 175px);
+        z-index: 1;
+        width: 50%;
+        height: 50%;
       }
+      .home-corner-tl {
+        top: 0;
+        left: 0;
+      }
+      .home-corner-tr {
+        top: 0;
+        right: 0;
+      }
+      .home-corner-bl {
+        bottom: 0;
+        left: 0;
+      }
+      .home-corner-br {
+        right: 0;
+        bottom: 0;
+      }
+
       .home-corner .card-home {
+        position: relative;
         width: 100%;
-        min-height: 78px;
+        height: 100%;
+        min-height: 0;
         margin: 0;
-        padding: 10px 11px;
+        padding: 0;
+        border: 1px solid #EEF1F4;
+        border-radius: 0;
         background: #FFFFFF;
-        border: 1px solid #DDE4EA;
-        border-radius: 9px;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        box-shadow: none;
         text-align: left;
+        transition: background-color 0.15s ease, border-color 0.15s ease;
       }
       .home-corner .card-home:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 14px rgba(0,0,0,0.09);
+        transform: none;
+        background: #F7FAFC;
+        border-color: #DDE4EA;
+        box-shadow: none;
+      }
+
+      /* Descrizione visibile nell'angolo esterno del relativo rettangolo. */
+      .home-corner .card-home > div {
+        position: absolute;
+        width: clamp(145px, 10vw, 175px);
+        min-height: 78px;
+        padding: 10px 11px;
+        border: 1px solid #DDE4EA;
+        border-radius: 9px;
+        background: #FFFFFF;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        z-index: 2;
+      }
+      .home-corner .card-home:hover > div {
         border-color: #7FA6C9;
+        box-shadow: 0 5px 12px rgba(0,0,0,0.09);
       }
       .home-corner .card-home .card-icona {
         font-size: 17px;
@@ -613,19 +539,19 @@ ui <- fluidPage(
         line-height: 1.25;
         margin: 0;
       }
-      .home-corner-tl {
+      .home-corner-tl .card-home > div {
         top: 12px;
         left: 12px;
       }
-      .home-corner-tr {
+      .home-corner-tr .card-home > div {
         top: 12px;
         right: 12px;
       }
-      .home-corner-bl {
+      .home-corner-bl .card-home > div {
         bottom: 12px;
         left: 12px;
       }
-      .home-corner-br {
+      .home-corner-br .card-home > div {
         right: 12px;
         bottom: 12px;
       }
@@ -836,12 +762,10 @@ ui <- fluidPage(
           min-height: 620px;
         }
         .home-schema-layer .schema-frame {
-          max-width: calc(100% - 270px);
+          max-width: calc(100% - 240px);
         }
-        .home-corner {
+        .home-corner .card-home > div {
           width: 132px;
-        }
-        .home-corner .card-home {
           min-height: 70px;
           padding: 9px 10px;
         }
@@ -859,13 +783,11 @@ ui <- fluidPage(
           min-height: 0;
           overflow: visible;
         }
-        .home-l-zone {
-          display: none;
-        }
         .home-schema-layer,
         .home-corner {
           position: static;
           width: 100%;
+          height: auto;
         }
         .home-schema-layer {
           order: 1;
@@ -892,7 +814,20 @@ ui <- fluidPage(
         }
         .home-corner .card-home {
           width: 100%;
+          height: auto;
           min-height: 82px;
+          padding: 10px 12px;
+          border-radius: 9px;
+        }
+        .home-corner .card-home > div {
+          position: static;
+          width: 100%;
+          min-height: 0;
+          padding: 0;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+          box-shadow: none;
         }
         .sensor-hotspot {
           width: 18px;
@@ -942,16 +877,6 @@ ui <- fluidPage(
       class = "home-schema-layer",
       uiOutput("schema_sensori")
     ),
-    
-    # Quattro aree ad L attorno allo schema: due rettangoli per funzione.
-    tags$div(class = "home-l-zone home-zone-tl-top", `data-target` = "home_attivazioni"),
-    tags$div(class = "home-l-zone home-zone-tl-side", `data-target` = "home_attivazioni"),
-    tags$div(class = "home-l-zone home-zone-tr-top", `data-target` = "home_nok"),
-    tags$div(class = "home-l-zone home-zone-tr-side", `data-target` = "home_nok"),
-    tags$div(class = "home-l-zone home-zone-bl-side", `data-target` = "home_vita"),
-    tags$div(class = "home-l-zone home-zone-bl-bottom", `data-target` = "home_vita"),
-    tags$div(class = "home-l-zone home-zone-br-side", `data-target` = "home_allarmi"),
-    tags$div(class = "home-l-zone home-zone-br-bottom", `data-target` = "home_allarmi"),
     
     div(
       class = "home-corner home-corner-tl",
