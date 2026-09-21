@@ -369,9 +369,10 @@ ui <- fluidPage(
         display: block;
         width: 100%;
         height: auto;
-        border: 1px solid #E4E7EB;
-        border-radius: 8px;
+        border: 2px solid #8F9AA5;
+        border-radius: 7px;
         background: #FFFFFF;
+        box-shadow: 0 1px 4px rgba(36,54,75,0.12);
       }
       .sensor-hotspot {
         position: absolute;
@@ -439,7 +440,7 @@ ui <- fluidPage(
         min-height: 600px;
         margin: 0 0 12px 0;
         overflow: hidden;
-        background: #FFFFFF;
+        background: #F4F2E8;
       }
 
       /* Schema grande, centrato e sopra ai quattro pulsanti. */
@@ -496,48 +497,47 @@ ui <- fluidPage(
         min-height: 0;
         margin: 0;
         padding: 0;
-        border: 1px solid #EEF1F4;
+        border: 0;
         border-radius: 0;
-        background: #FFFFFF;
+        background: #F4F2E8;
         box-shadow: none;
         text-align: left;
-        transition: background-color 0.15s ease, border-color 0.15s ease;
+        transition: background-color 0.15s ease;
       }
       .home-corner .card-home:hover {
         transform: none;
-        background: #F7FAFC;
-        border-color: #DDE4EA;
+        background: #EFECDE;
+        border: 0;
         box-shadow: none;
       }
 
       /* Descrizione visibile nell'angolo esterno del relativo rettangolo. */
       .home-corner .card-home .home-card-label {
         position: absolute;
-        width: clamp(150px, 10vw, 180px);
+        width: clamp(165px, 11vw, 195px);
         min-height: 78px;
-        padding: 10px 11px;
-        border: 1px solid #DDE4EA;
+        padding: 11px 13px;
+        border: 0;
         border-radius: 9px;
-        background: #FFFFFF;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        background: #EFECDE;
+        box-shadow: none;
         z-index: 2;
       }
-      .home-corner .card-home:hover > div {
-        border-color: #7FA6C9;
-        box-shadow: 0 5px 12px rgba(0,0,0,0.09);
-      }
-      .home-corner .card-home .card-icona {
-        font-size: 17px;
-        margin-bottom: 3px;
+      .home-corner .card-home:hover .home-card-label {
+        background: #E8E4D3;
+        box-shadow: none;
       }
       .home-corner .card-home h4 {
-        font-size: 13px;
-        margin: 0 0 3px 0;
+        font-size: 15px;
+        font-weight: 700;
+        margin: 0 0 4px 0;
+        color: #24364B;
       }
       .home-corner .card-home p {
-        font-size: 10.5px;
-        line-height: 1.25;
+        font-size: 11.5px;
+        line-height: 1.3;
         margin: 0;
+        color: #68737E;
       }
       .home-corner-tl .home-card-label {
         top: 12px;
@@ -935,7 +935,6 @@ ui <- fluidPage(
         "home_attivazioni",
         label = div(
           class = "home-card-label",
-          icon("chart-bar", class = "card-icona"),
           h4("Conteggio attivazioni"),
           p("Grafico a barre e trend nel tempo per sensore")
         ),
@@ -949,7 +948,6 @@ ui <- fluidPage(
         "home_nok",
         label = div(
           class = "home-card-label",
-          icon("chart-line", class = "card-icona"),
           h4("NOK"),
           p("KPI e andamento storico del NOK per sensore")
         ),
@@ -963,7 +961,6 @@ ui <- fluidPage(
         "home_vita",
         label = div(
           class = "home-card-label",
-          icon("gauge", class = "card-icona"),
           h4("Vita sensori"),
           p("Stato dei sensori rispetto alle soglie B10dSAN e T10d")
         ),
@@ -977,7 +974,6 @@ ui <- fluidPage(
         "home_allarmi",
         label = div(
           class = "home-card-label",
-          icon("triangle-exclamation", class = "card-icona"),
           h4("Allarmi e Near Miss"),
           p("Allarmi e segnalazioni Near Miss")
         ),
@@ -1315,7 +1311,26 @@ server <- function(input, output, session) {
             )
           )
         ),
-        h4("Profilo utilizzo macchina", class = "titolo-sezione"),
+        div(
+          style = paste0(
+            "display:flex;",
+            "align-items:center;",
+            "justify-content:space-between;",
+            "gap:16px;",
+            "margin-top:10px;"
+          ),
+          h4(
+            "Profilo utilizzo macchina",
+            class = "titolo-sezione",
+            style = "margin:0;"
+          ),
+          actionButton(
+            "modal_btn_outlier_nok",
+            "Attivazioni escluse",
+            class = "btn-sm btn-default"
+          )
+        ),
+        uiOutput("modal_panel_outlier_nok"),
         uiOutput("modal_utilizzo_macchina"),
         girafeOutput("modal_utilizzoNokPlot", height = "420px"),
         h4("Utilizzo macchina nel tempo", class = "titolo-sezione"),
@@ -3113,7 +3128,6 @@ server <- function(input, output, session) {
     )
     
     breaks_periodo <- calcola_breaks_periodo(andamento$periodo)
-    max_utilizzo <- max(andamento$U_macchina, na.rm = TRUE)
     
     ggplot(
       andamento,
@@ -3143,13 +3157,11 @@ server <- function(input, output, session) {
         )
       ) +
       scale_y_continuous(
-        breaks = function(limits) {
-          b <- scales::pretty_breaks(n = 8)(limits)
-          sort(unique(c(
-            b,
-            if (is.finite(max_utilizzo)) max_utilizzo
-          )))
-        },
+        breaks = scales::pretty_breaks(n = 6),
+        labels = scales::label_number(
+          accuracy = 0.1,
+          decimal.mark = ","
+        ),
         expand = expansion(mult = c(0.03, 0.06))
       ) +
       labs(
