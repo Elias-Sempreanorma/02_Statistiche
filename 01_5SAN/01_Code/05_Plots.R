@@ -2625,12 +2625,15 @@ server <- function(input, output, session) {
     
     filtri <- filtri_nok_modal()
     
+    durata_giorni <- as.integer(
+      filtri$date[2] - filtri$date[1]
+    ) + 1L
+    
+    periodo_precedente_fine <- filtri$date[1] - 1L
+    periodo_precedente_inizio <- filtri$date[1] - durata_giorni
+    
     base <- valori_giornalieri_modal_nok() |>
-      filter(
-        !outlier_lof,
-        day >= filtri$date[1],
-        day <= filtri$date[2]
-      ) |>
+      filter(!outlier_lof) |>
       left_join(
         nmn_storico_modal_nok(),
         by = c("cds_name", "sensor_description")
@@ -2640,14 +2643,31 @@ server <- function(input, output, session) {
           is.na(daily_value) | is.na(NMN) | NMN == 0 ~ NA_real_,
           TRUE ~ daily_value / NMN
         ),
+        confronto = case_when(
+          day >= periodo_precedente_inizio &
+            day <= periodo_precedente_fine ~ "Periodo precedente",
+          day >= filtri$date[1] &
+            day <= filtri$date[2] ~ "Periodo selezionato",
+          TRUE ~ NA_character_
+        )
+      ) |>
+      filter(
+        !is.na(confronto),
+        is.finite(NOK_giornaliero)
+      ) |>
+      mutate(
+        confronto = factor(
+          confronto,
+          levels = c("Periodo precedente", "Periodo selezionato")
+        ),
         periodo = as.Date(
           periodo_bucket(day, filtri$granularita)
         )
-      ) |>
-      filter(is.finite(NOK_giornaliero))
+      )
     
     base |>
       group_by(
+        confronto,
         periodo,
         cds_name,
         sensor_description
@@ -2665,14 +2685,14 @@ server <- function(input, output, session) {
         U_sensore = media_nok * varianza_nok
       ) |>
       filter(is.finite(U_sensore)) |>
-      group_by(periodo) |>
+      group_by(confronto, periodo) |>
       summarise(
         U_macchina = mean(U_sensore, na.rm = TRUE),
         n_sensori = n_distinct(cds_name),
         .groups = "drop"
       ) |>
       filter(is.finite(U_macchina)) |>
-      arrange(periodo) |>
+      arrange(confronto, periodo) |>
       mutate(
         periodo_label = formatta_periodo_label(
           periodo,
@@ -2721,6 +2741,53 @@ server <- function(input, output, session) {
     
     per_sensore <- base |>
       group_by(cds_name, sensor_description) |>
+      summarise(
+        n_osservazioni = n(),
+        media_nok = mean(NOK_giornaliero, na.rm = TRUE),
+        varianza_nok = if (n() >= 2) {
+          var(NOK_giornaliero, na.rm = TRUE)
+        } else {
+          NA_real_
+        },
+        .groups = "drop"
+      ) |>
+      mutate(
+        U_sensore = media_nok * varianza_nok,
+        banda_min = pmax(0, media_nok - varianza_nok),
+        banda_max = media_nok + varianza_nok,
+        etichetta_sensore = paste(cds_name, sensor_description, sep = " - ")
+      ) |>
+      ordina_naturale()
+    
+    durata_giorni <- as.integer(
+      filtri$date[2] - filtri$date[1]
+    ) + 1L
+    
+    periodo_precedente_fine <- filtri$date[1] - 1L
+    periodo_precedente_inizio <- filtri$date[1] - durata_giorni
+    
+    per_sensore_confronto <- base_completa |>
+      mutate(
+        confronto = case_when(
+          day >= periodo_precedente_inizio &
+            day <= periodo_precedente_fine ~ "Periodo precedente",
+          day >= filtri$date[1] &
+            day <= filtri$date[2] ~ "Periodo selezionato",
+          TRUE ~ NA_character_
+        )
+      ) |>
+      filter(!is.na(confronto)) |>
+      mutate(
+        confronto = factor(
+          confronto,
+          levels = c("Periodo precedente", "Periodo selezionato")
+        )
+      ) |>
+      group_by(
+        confronto,
+        cds_name,
+        sensor_description
+      ) |>
       summarise(
         n_osservazioni = n(),
         media_nok = mean(NOK_giornaliero, na.rm = TRUE),
@@ -2857,6 +2924,7 @@ server <- function(input, output, session) {
     
     list(
       per_sensore = per_sensore,
+      per_sensore_confronto = per_sensore_confronto,
       U_macchina = U_macchina,
       P90_utilizzo = P90_utilizzo,
       stato_utilizzo = stato_utilizzo,
@@ -2970,20 +3038,29 @@ server <- function(input, output, session) {
   render_utilizzo_nok_gg <- function() {
     
     utilizzo <- utilizzo_nok_modal()
-    profilo <- utilizzo$per_sensore |>
+    profilo <- utilizzo$per_sensore_confronto |>
       filter(
         is.finite(media_nok),
         is.finite(varianza_nok)
       )
     
     validate(
-      need(nrow(profilo) > 0, "Dati insufficienti per calcolare media e varianza del NOK")
+      need(
+        nrow(profilo) > 0,
+        "Dati insufficienti per confrontare periodo precedente e periodo selezionato"
+      )
     )
+    
+    sensori_ordinati <- profilo |>
+      distinct(cds_name, sensor_description, etichetta_sensore) |>
+      ordina_naturale() |>
+      pull(etichetta_sensore)
     
     profilo <- profilo |>
       mutate(
-        x = row_number(),
+        x = match(etichetta_sensore, sensori_ordinati),
         tooltip_utilizzo = paste0(
+          "<b>", confronto, "</b><br/>",
           "<b>", etichetta_sensore, "</b><br/>",
           "Media NOK: ", round(media_nok, 4), "<br/>",
           "Varianza NOK: ", round(varianza_nok, 4), "<br/>",
@@ -3006,14 +3083,19 @@ server <- function(input, output, session) {
         aes(
           y = media_nok,
           tooltip = tooltip_utilizzo,
-          data_id = etichetta_sensore
+          data_id = paste(confronto, etichetta_sensore, sep = "__")
         ),
         color = "#2C3E50",
         size = 2.6
       ) +
+      facet_grid(
+        cols = vars(confronto),
+        scales = "free_x",
+        space = "free_x"
+      ) +
       scale_x_continuous(
-        breaks = profilo$x,
-        labels = profilo$etichetta_sensore
+        breaks = seq_along(sensori_ordinati),
+        labels = sensori_ordinati
       ) +
       scale_y_continuous(
         expand = expansion(mult = c(0.02, 0.06))
@@ -3026,8 +3108,17 @@ server <- function(input, output, session) {
       theme(
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank(),
+        strip.background = element_rect(
+          fill = "#F4F2E8",
+          color = "#C8C0A7"
+        ),
+        strip.text = element_text(
+          size = 13,
+          face = "bold",
+          color = "#24364B"
+        ),
         axis.text.x = element_text(
-          size = 11,
+          size = 10,
           angle = 90,
           hjust = 1,
           vjust = 0.5
@@ -3062,11 +3153,9 @@ server <- function(input, output, session) {
     validate(
       need(
         nrow(andamento) > 0,
-        "Dati insufficienti per calcolare l'utilizzo macchina con il raggruppamento selezionato"
+        "Dati insufficienti per confrontare periodo precedente e periodo selezionato"
       )
     )
-    
-    breaks_periodo <- calcola_breaks_periodo(andamento$periodo)
     
     ggplot(
       andamento,
@@ -3079,21 +3168,29 @@ server <- function(input, output, session) {
       geom_point_interactive(
         aes(
           tooltip = paste0(
+            "<b>", confronto, "</b><br/>",
             "<b>", periodo_label, "</b><br/>",
             "Utilizzo macchina: ", round(U_macchina, 2), "<br/>",
             "Sensori valutati: ", n_sensori
           ),
-          data_id = as.character(periodo)
+          data_id = paste(confronto, periodo, sep = "__")
         ),
         color = "#2C3E50",
         size = 2.8
       ) +
+      facet_grid(
+        cols = vars(confronto),
+        scales = "free_x",
+        space = "free_x"
+      ) +
       scale_x_date(
-        breaks = breaks_periodo,
-        labels = formatta_periodo_label(
-          breaks_periodo,
-          granularita
-        )
+        breaks = scales::breaks_pretty(n = 5),
+        labels = function(x) {
+          formatta_periodo_label(
+            as.Date(x, origin = "1970-01-01"),
+            granularita
+          )
+        }
       ) +
       scale_y_continuous(
         breaks = scales::pretty_breaks(n = 6),
@@ -3114,8 +3211,17 @@ server <- function(input, output, session) {
           color = "#B8C4CC",
           linewidth = 0.5
         ),
+        strip.background = element_rect(
+          fill = "#F4F2E8",
+          color = "#C8C0A7"
+        ),
+        strip.text = element_text(
+          size = 13,
+          face = "bold",
+          color = "#24364B"
+        ),
         axis.text.x = element_text(
-          size = 12,
+          size = 11,
           angle = 0,
           face = "bold",
           hjust = 0.5,
@@ -3317,6 +3423,7 @@ server <- function(input, output, session) {
     
     utilizzo_temporale_modal() |>
       transmute(
+        Confronto = as.character(confronto),
         Periodo = periodo_label,
         `Utilizzo macchina` = round(U_macchina, 2),
         `Sensori valutati` = n_sensori
