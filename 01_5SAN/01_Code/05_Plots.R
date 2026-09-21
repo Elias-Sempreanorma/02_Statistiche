@@ -2665,7 +2665,10 @@ server <- function(input, output, session) {
         )
       )
     
-    base |>
+    periodi_presenti <- base |>
+      distinct(confronto, periodo)
+    
+    utilizzo_calcolato <- base |>
       group_by(
         confronto,
         periodo,
@@ -2690,8 +2693,13 @@ server <- function(input, output, session) {
         U_macchina = mean(U_sensore, na.rm = TRUE),
         n_sensori = n_distinct(cds_name),
         .groups = "drop"
+      )
+    
+    periodi_presenti |>
+      left_join(
+        utilizzo_calcolato,
+        by = c("confronto", "periodo")
       ) |>
-      filter(is.finite(U_macchina)) |>
       arrange(confronto, periodo) |>
       mutate(
         periodo_label = formatta_periodo_label(
@@ -3174,7 +3182,8 @@ server <- function(input, output, session) {
     ) +
       geom_line(
         color = "#2C3E50",
-        linewidth = 1
+        linewidth = 1,
+        na.rm = TRUE
       ) +
       geom_point_interactive(
         aes(
@@ -3187,7 +3196,8 @@ server <- function(input, output, session) {
           data_id = paste(confronto, periodo, sep = "__")
         ),
         color = "#2C3E50",
-        size = 2.8
+        size = 2.8,
+        na.rm = TRUE
       ) +
       facet_grid(
         cols = vars(confronto),
@@ -3195,7 +3205,13 @@ server <- function(input, output, session) {
         space = "free_x"
       ) +
       scale_x_date(
-        breaks = scales::breaks_pretty(n = 5),
+        breaks = function(limits) {
+          periodi <- sort(unique(andamento$periodo))
+          periodi[
+            periodi >= limits[1] &
+            periodi <= limits[2]
+          ]
+        },
         labels = function(x) {
           formatta_periodo_label(
             as.Date(x, origin = "1970-01-01"),
@@ -3436,7 +3452,11 @@ server <- function(input, output, session) {
       transmute(
         Confronto = as.character(confronto),
         Periodo = periodo_label,
-        `Utilizzo macchina` = round(U_macchina, 2),
+        `Utilizzo macchina` = ifelse(
+          is.finite(U_macchina),
+          round(U_macchina, 2),
+          NA_real_
+        ),
         `Sensori valutati` = n_sensori
       )
   },
