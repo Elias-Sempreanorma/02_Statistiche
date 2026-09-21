@@ -2960,9 +2960,16 @@ server <- function(input, output, session) {
         by = "7 days"
       )
       
-      partenze_storiche <- partenze_storiche[
-        partenze_storiche != filtri$date[1]
-      ]
+      if (includi_periodo_nella_soglia) {
+        partenze_storiche <- sort(unique(c(
+          partenze_storiche,
+          filtri$date[1]
+        )))
+      } else {
+        partenze_storiche <- partenze_storiche[
+          partenze_storiche != filtri$date[1]
+        ]
+      }
       
       U_storici_raw <- vapply(
         partenze_storiche,
@@ -3023,21 +3030,55 @@ server <- function(input, output, session) {
       TRUE ~ "Normale"
     )
     
-    storico_utilizzo_grafico <- bind_rows(
-      storico_utilizzo |>
-        transmute(
-          inizio_finestra,
-          U_macchina,
-          tipo = "Riferimento",
-          stato = "Storico"
+    # Grafico storico utilizzo: sempre settimana per settimana,
+    # indipendente dalla durata delle finestre usate per P10/P90.
+    storico_utilizzo_grafico <- base_completa |>
+      mutate(
+        inizio_finestra = as.Date(
+          lubridate::floor_date(
+            day,
+            "week",
+            week_start = 1
+          )
+        )
+      ) |>
+      group_by(
+        inizio_finestra,
+        cds_name,
+        sensor_description
+      ) |>
+      summarise(
+        media_nok = mean(NOK_giornaliero, na.rm = TRUE),
+        varianza_nok = if (n() >= 2) {
+          var(NOK_giornaliero, na.rm = TRUE)
+        } else {
+          NA_real_
+        },
+        .groups = "drop"
+      ) |>
+      mutate(
+        U_sensore = media_nok * varianza_nok
+      ) |>
+      filter(is.finite(U_sensore)) |>
+      group_by(inizio_finestra) |>
+      summarise(
+        U_macchina = mean(U_sensore, na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      mutate(
+        fine_settimana = inizio_finestra + 6L,
+        tipo = if_else(
+          fine_settimana >= filtri$date[1] &
+            inizio_finestra <= filtri$date[2],
+          "Periodo selezionato",
+          "Riferimento"
         ),
-      tibble(
-        inizio_finestra = filtri$date[1],
-        U_macchina = U_macchina,
-        tipo = "Periodo selezionato",
-        stato = stato_utilizzo
-      )
-    ) |>
+        stato = if_else(
+          tipo == "Periodo selezionato",
+          stato_utilizzo,
+          "Storico"
+        )
+      ) |>
       filter(is.finite(U_macchina)) |>
       arrange(inizio_finestra)
     
@@ -3208,11 +3249,11 @@ server <- function(input, output, session) {
           "<b>",
           ifelse(
             tipo == "Periodo selezionato",
-            "Periodo selezionato",
-            "Finestra storica"
+            "Settimana nel periodo selezionato",
+            "Settimana storica"
           ),
           "</b><br/>",
-          "Inizio: ",
+          "Settimana dal: ",
           format(inizio_finestra, "%d-%m-%Y"),
           "<br/>",
           "Utilizzo macchina: ",
