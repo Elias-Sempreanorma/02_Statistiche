@@ -1329,8 +1329,18 @@ server <- function(input, output, session) {
             minPts = k
           )
           
+          mediana_attivazioni <- stats::median(x[validi], na.rm = TRUE)
+          divario_ampio <- (
+            x[validi] >= mediana_attivazioni * 5 &
+            (x[validi] - mediana_attivazioni) >= 10
+          )
+          
           .x$lof_score[validi] <- score
-          .x$outlier_lof[validi] <- !is.na(score) & score > 2
+          .x$outlier_lof[validi] <- (
+            !is.na(score) &
+            score > 2 &
+            divario_ampio
+          )
         }
         
         .x
