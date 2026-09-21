@@ -1070,7 +1070,7 @@ server <- function(input, output, session) {
   sensori_modal_correnti <- reactiveVal(character(0))
   modal_apertura_id <- reactiveVal(0)
   granularita_attivazioni_corrente <- reactiveVal("Giorno")
-  granularita_nok_corrente <- reactiveVal("Settimana")
+  granularita_nok_corrente <- reactiveVal("Giorno")
   
   filtri_principali <- reactive({
     req(input$macchina, input$date)
@@ -1119,7 +1119,7 @@ server <- function(input, output, session) {
     }
     
     granularita_attivazioni_corrente("Giorno")
-    granularita_nok_corrente("Settimana")
+    granularita_nok_corrente("Giorno")
     
     modal_apertura_id(isolate(modal_apertura_id()) + 1)
     
@@ -1361,11 +1361,11 @@ server <- function(input, output, session) {
         uiOutput("modal_panel_outlier_nok"),
         uiOutput("modal_utilizzo_macchina"),
         girafeOutput("modal_utilizzoNokPlot", height = "420px"),
-        h4("Utilizzo macchina nel tempo", class = "titolo-sezione"),
+        h4("Andamento NOK nel tempo", class = "titolo-sezione"),
         radioButtons(
           "modal_granularita_nok",
           "Raggruppamento:",
-          choices = c("Settimana", "Mese", "Trimestre", "Anno"),
+          choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
           selected = isolate(granularita_nok_corrente()),
           inline = TRUE
         ),
@@ -2621,7 +2621,7 @@ server <- function(input, output, session) {
   # Utilizzo macchina nel tempo.
   # Il raggruppamento vale solo per questo grafico.
   # ---------------------------------------------------------------------
-  utilizzo_temporale_modal <- reactive({
+  nok_temporale_confronto_modal <- reactive({
     
     filtri <- filtri_nok_modal()
     
@@ -2665,10 +2665,7 @@ server <- function(input, output, session) {
         )
       )
     
-    periodi_presenti <- base |>
-      distinct(confronto, periodo)
-    
-    utilizzo_calcolato <- base |>
+    per_sensore <- base |>
       group_by(
         confronto,
         periodo,
@@ -2676,37 +2673,40 @@ server <- function(input, output, session) {
         sensor_description
       ) |>
       summarise(
-        media_nok = mean(NOK_giornaliero, na.rm = TRUE),
-        varianza_nok = if (n() >= 2) {
-          var(NOK_giornaliero, na.rm = TRUE)
-        } else {
-          NA_real_
-        },
+        NOK = mean(NOK_giornaliero, na.rm = TRUE),
         .groups = "drop"
       ) |>
+      filter(is.finite(NOK)) |>
       mutate(
-        U_sensore = media_nok * varianza_nok
-      ) |>
-      filter(is.finite(U_sensore)) |>
-      group_by(confronto, periodo) |>
-      summarise(
-        U_macchina = mean(U_sensore, na.rm = TRUE),
-        n_sensori = n_distinct(cds_name),
-        .groups = "drop"
-      )
-    
-    periodi_presenti |>
-      left_join(
-        utilizzo_calcolato,
-        by = c("confronto", "periodo")
-      ) |>
-      arrange(confronto, periodo) |>
-      mutate(
+        etichetta_sensore = paste(
+          cds_name,
+          sensor_description,
+          sep = " - "
+        ),
         periodo_label = formatta_periodo_label(
           periodo,
           filtri$granularita
         )
       )
+    
+    media_macchina <- per_sensore |>
+      group_by(confronto, periodo) |>
+      summarise(
+        NOK = mean(NOK, na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      mutate(
+        etichetta_sensore = "Media macchina",
+        periodo_label = formatta_periodo_label(
+          periodo,
+          filtri$granularita
+        )
+      )
+    
+    list(
+      sensori = per_sensore,
+      media_macchina = media_macchina
+    )
   }) |>
     bindCache(
       filtri_nok_modal()$macchina,
@@ -3164,40 +3164,88 @@ server <- function(input, output, session) {
     )
   })
   
-  render_utilizzo_tempo_gg <- function() {
+  render_nok_tempo_gg <- function() {
     
-    andamento <- utilizzo_temporale_modal()
+    andamento <- nok_temporale_confronto_modal()
+    sensori <- andamento$sensori
+    media_macchina <- andamento$media_macchina
     granularita <- filtri_nok_modal()$granularita
     
     validate(
       need(
-        nrow(andamento) > 0,
-        "Dati insufficienti per confrontare periodo precedente e periodo selezionato"
+        nrow(sensori) > 0,
+        "Nessun dato NOK disponibile per il periodo selezionato"
       )
     )
     
-    ggplot(
-      andamento,
-      aes(x = periodo, y = U_macchina)
-    ) +
+    ggplot() +
       geom_line(
-        color = "#2C3E50",
-        linewidth = 1,
-        na.rm = TRUE
+        data = sensori,
+        aes(
+          x = periodo,
+          y = NOK,
+          group = interaction(confronto, etichetta_sensore)
+        ),
+        color = "#C7CDD3",
+        linewidth = 0.75,
+        alpha = 0.75
       ) +
       geom_point_interactive(
+        data = sensori,
         aes(
+          x = periodo,
+          y = NOK,
           tooltip = paste0(
-            "<b>", confronto, "</b><br/>",
-            "<b>", periodo_label, "</b><br/>",
-            "Utilizzo macchina: ", round(U_macchina, 2), "<br/>",
-            "Sensori valutati: ", n_sensori
+            "<b>", etichetta_sensore, "</b><br/>",
+            "Periodo: ", periodo_label, "<br/>",
+            "NOK: ", round(NOK, 3)
           ),
-          data_id = paste(confronto, periodo, sep = "__")
+          data_id = paste(
+            confronto,
+            etichetta_sensore,
+            periodo,
+            sep = "__"
+          )
         ),
-        color = "#2C3E50",
-        size = 2.8,
-        na.rm = TRUE
+        color = "#C7CDD3",
+        size = 1.6,
+        alpha = 0.75
+      ) +
+      geom_line(
+        data = media_macchina,
+        aes(
+          x = periodo,
+          y = NOK,
+          group = confronto
+        ),
+        color = "#24364B",
+        linewidth = 1.5
+      ) +
+      geom_point_interactive(
+        data = media_macchina,
+        aes(
+          x = periodo,
+          y = NOK,
+          tooltip = paste0(
+            "<b>Media macchina</b><br/>",
+            "Periodo: ", periodo_label, "<br/>",
+            "NOK medio: ", round(NOK, 3)
+          ),
+          data_id = paste(
+            confronto,
+            "media_macchina",
+            periodo,
+            sep = "__"
+          )
+        ),
+        color = "#24364B",
+        size = 2.8
+      ) +
+      geom_hline(
+        yintercept = 1,
+        linetype = "dashed",
+        color = "#9AA5B1",
+        linewidth = 0.7
       ) +
       facet_grid(
         cols = vars(confronto),
@@ -3205,13 +3253,7 @@ server <- function(input, output, session) {
         space = "free_x"
       ) +
       scale_x_date(
-        breaks = function(limits) {
-          periodi <- sort(unique(andamento$periodo))
-          periodi[
-            periodi >= limits[1] &
-            periodi <= limits[2]
-          ]
-        },
+        breaks = scales::breaks_pretty(n = 7),
         labels = function(x) {
           formatta_periodo_label(
             as.Date(x, origin = "1970-01-01"),
@@ -3220,7 +3262,7 @@ server <- function(input, output, session) {
         }
       ) +
       scale_y_continuous(
-        breaks = scales::pretty_breaks(n = 6),
+        breaks = scales::pretty_breaks(n = 7),
         labels = scales::label_number(
           accuracy = 0.1,
           decimal.mark = ","
@@ -3229,14 +3271,14 @@ server <- function(input, output, session) {
       ) +
       labs(
         x = NULL,
-        y = "Utilizzo macchina"
+        y = "NOK"
       ) +
       theme_minimal(base_size = 13) +
       theme(
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_line(
-          color = "#B8C4CC",
-          linewidth = 0.5
+          color = "#D7DDE2",
+          linewidth = 0.4
         ),
         strip.background = element_rect(
           fill = "#F4F2E8",
@@ -3248,10 +3290,9 @@ server <- function(input, output, session) {
           color = "#24364B"
         ),
         axis.text.x = element_text(
-          size = 11,
-          angle = 0,
-          face = "bold",
-          hjust = 0.5,
+          size = 10,
+          angle = 90,
+          hjust = 1,
           vjust = 0.5
         ),
         axis.text.y = element_text(size = 11)
@@ -3263,7 +3304,7 @@ server <- function(input, output, session) {
       input$modal_px_width else 1100
     
     girafe(
-      ggobj = render_utilizzo_tempo_gg(),
+      ggobj = render_nok_tempo_gg(),
       width_svg = w_px / 72,
       height_svg = 360 / 72,
       options = list(
@@ -3448,17 +3489,27 @@ server <- function(input, output, session) {
   
   output$modal_tabella_dati_nok <- renderDT({
     
-    utilizzo_temporale_modal() |>
-      transmute(
-        Confronto = as.character(confronto),
-        Periodo = periodo_label,
-        `Utilizzo macchina` = ifelse(
-          is.finite(U_macchina),
-          round(U_macchina, 2),
-          NA_real_
-        ),
-        `Sensori valutati` = n_sensori
-      )
+    {
+      andamento <- nok_temporale_confronto_modal()
+      
+      bind_rows(
+        andamento$sensori |>
+          transmute(
+            Confronto = as.character(confronto),
+            Periodo = periodo_label,
+            Serie = etichetta_sensore,
+            NOK = round(NOK, 3)
+          ),
+        andamento$media_macchina |>
+          transmute(
+            Confronto = as.character(confronto),
+            Periodo = periodo_label,
+            Serie = "Media macchina",
+            NOK = round(NOK, 3)
+          )
+      ) |>
+        arrange(Confronto, Periodo, Serie)
+    }
   },
   rownames = FALSE,
   options = list(pageLength = 25, dom = "tip"))
