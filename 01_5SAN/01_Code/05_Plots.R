@@ -196,8 +196,8 @@ ui <- fluidPage(
           var stageWidth = stage.clientWidth;
           var stageHeight = stage.clientHeight;
 
-          var maxWidth = Math.min(stageWidth * 0.74, 1300);
-          var maxHeight = stageHeight * 0.78;
+          var maxWidth = Math.min(stageWidth * 0.84, 1500);
+          var maxHeight = stageHeight * 0.86;
           var targetWidth = Math.min(maxWidth, maxHeight * rapporto);
 
           frame.style.width = Math.max(560, targetWidth) + 'px';
@@ -460,8 +460,8 @@ ui <- fluidPage(
         pointer-events: none;
       }
       .home-schema-layer .schema-frame {
-        width: min(74vw, 1300px);
-        max-width: calc(100% - 280px);
+        width: min(84vw, 1500px);
+        max-width: calc(100% - 180px);
         pointer-events: auto;
       }
 
@@ -511,9 +511,9 @@ ui <- fluidPage(
       }
 
       /* Descrizione visibile nell'angolo esterno del relativo rettangolo. */
-      .home-corner .card-home > div {
+      .home-corner .card-home .home-card-label {
         position: absolute;
-        width: clamp(145px, 10vw, 175px);
+        width: clamp(150px, 10vw, 180px);
         min-height: 78px;
         padding: 10px 11px;
         border: 1px solid #DDE4EA;
@@ -539,19 +539,19 @@ ui <- fluidPage(
         line-height: 1.25;
         margin: 0;
       }
-      .home-corner-tl .card-home > div {
+      .home-corner-tl .home-card-label {
         top: 12px;
         left: 12px;
       }
-      .home-corner-tr .card-home > div {
+      .home-corner-tr .home-card-label {
         top: 12px;
         right: 12px;
       }
-      .home-corner-bl .card-home > div {
+      .home-corner-bl .home-card-label {
         bottom: 12px;
         left: 12px;
       }
-      .home-corner-br .card-home > div {
+      .home-corner-br .home-card-label {
         right: 12px;
         bottom: 12px;
       }
@@ -762,9 +762,9 @@ ui <- fluidPage(
           min-height: 620px;
         }
         .home-schema-layer .schema-frame {
-          max-width: calc(100% - 240px);
+          max-width: calc(100% - 170px);
         }
-        .home-corner .card-home > div {
+        .home-corner .card-home .home-card-label {
           width: 132px;
           min-height: 70px;
           padding: 9px 10px;
@@ -819,7 +819,7 @@ ui <- fluidPage(
           padding: 10px 12px;
           border-radius: 9px;
         }
-        .home-corner .card-home > div {
+        .home-corner .card-home .home-card-label {
           position: static;
           width: 100%;
           min-height: 0;
@@ -883,6 +883,7 @@ ui <- fluidPage(
       actionButton(
         "home_attivazioni",
         label = div(
+          class = "home-card-label",
           icon("chart-bar", class = "card-icona"),
           h4("Conteggio attivazioni"),
           p("Grafico a barre e trend nel tempo per sensore")
@@ -896,6 +897,7 @@ ui <- fluidPage(
       actionButton(
         "home_nok",
         label = div(
+          class = "home-card-label",
           icon("chart-line", class = "card-icona"),
           h4("Storico NOK"),
           p("KPI e andamento storico del NOK per sensore")
@@ -909,6 +911,7 @@ ui <- fluidPage(
       actionButton(
         "home_vita",
         label = div(
+          class = "home-card-label",
           icon("gauge", class = "card-icona"),
           h4("Vita sensori"),
           p("Stato dei sensori rispetto alle soglie B10dSAN e T10d")
@@ -922,6 +925,7 @@ ui <- fluidPage(
       actionButton(
         "home_allarmi",
         label = div(
+          class = "home-card-label",
           icon("triangle-exclamation", class = "card-icona"),
           h4("Allarmi e Near Miss"),
           p("Allarmi e segnalazioni Near Miss")
