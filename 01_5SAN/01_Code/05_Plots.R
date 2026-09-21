@@ -2906,7 +2906,6 @@ server <- function(input, output, session) {
         ),
         style = "margin-top:4px;font-size:12px;color:#718096;"
       )
-      )
     )
   })
   
