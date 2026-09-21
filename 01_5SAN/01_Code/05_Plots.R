@@ -3322,7 +3322,13 @@ server <- function(input, output, session) {
         space = "free_x"
       ) +
       scale_x_date(
-        breaks = scales::breaks_pretty(n = 7),
+        breaks = function(limits) {
+          periodi <- sort(unique(sensori$periodo))
+          periodi[
+            periodi >= as.Date(limits[1], origin = "1970-01-01") &
+            periodi <= as.Date(limits[2], origin = "1970-01-01")
+          ]
+        },
         labels = function(x) {
           formatta_periodo_label(
             as.Date(x, origin = "1970-01-01"),
