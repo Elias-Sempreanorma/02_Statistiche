@@ -25,7 +25,8 @@ RUN install2.r --error --skipinstalled \
     RPostgres \
     DBI \
     purrr \
-    DT
+    DT \
+    dbscan 
 
 RUN rm -rf /srv/shiny-server/*
 

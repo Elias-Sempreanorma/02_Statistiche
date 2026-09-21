@@ -10,6 +10,7 @@ library(stringr)
 library(lubridate)
 library(scales)
 library(DT)
+library(dbscan)
 
 # Le immagini non sono nella cartella www: le espongo a Shiny con un
 # resource path dedicato. Se la cartella non esiste, l'app continua comunque
@@ -94,12 +95,12 @@ mappa_sensori <- bind_rows(
       "FCM9", "FCM12", "FCM11", "FCM10", "BIM1"
     ),
     x = c(
-    536, 556, 96, 86, 129, 144, 159, 324, 341, 372,
-    62, 62, 473, 457, 371, 172, 324, 341, 169
+      536, 556, 96, 86, 129, 144, 159, 324, 341, 372,
+      62, 62, 473, 457, 371, 172, 324, 341, 169
     ),
     y = c(
-    29, 78, 121, 142, 161, 161, 160, 171, 170, 188,
-    200, 223, 231, 236, 252, 255, 268, 268, 277
+      29, 78, 121, 142, 161, 161, 160, 171, 170, 188,
+      200, 223, 231, 236, 252, 255, 268, 268, 277
     )
   ),
   data.frame(
@@ -109,12 +110,12 @@ mappa_sensori <- bind_rows(
       "SM1", "FCM1", "MB1", "PE1", "RE1", "MB5", "MB6", "SM4"
     ),
     x = c(
-    662, 701, 346, 370, 439, 444, 548, 581, 747, 704,
-    740, 448, 539, 345, 375, 275
+      662, 701, 346, 370, 439, 444, 548, 581, 747, 704,
+      740, 448, 539, 345, 375, 275
     ),
     y = c(
-    35, 35, 132, 133, 122, 200, 171, 219, 374, 408,
-    416, 438, 437, 455, 454, 441
+      35, 35, 132, 133, 122, 200, 171, 219, 374, 408,
+      416, 438, 437, 455, 454, 441
     )
   ),
   data.frame(
@@ -127,16 +128,16 @@ mappa_sensori <- bind_rows(
       "FMEe1", "MB1", "MB2", "FMEe2", "EML", "REG"
     ),
     x = c(
-    60, 168, 402, 461, 265, 310, 444, 554, 499, 498,
-    498, 554, 461, 402, 436, 453, 423, 365, 405, 226,
-    246, 300, 323, 365, 310, 282, 199, 177, 60, 99,
-    139, 166, 719, 749
+      60, 168, 402, 461, 265, 310, 444, 554, 499, 498,
+      498, 554, 461, 402, 436, 453, 423, 365, 405, 226,
+      246, 300, 323, 365, 310, 282, 199, 177, 60, 99,
+      139, 166, 719, 749
     ),
     y = c(
-    36, 36, 46, 46, 99, 129, 100, 139, 137, 155,
-    194, 217, 290, 290, 214, 239, 224, 130, 105, 163,
-    183, 158, 178, 178, 217, 142, 213, 250, 222, 222,
-    222, 214, 349, 378
+      36, 36, 46, 46, 99, 129, 100, 139, 137, 155,
+      194, 217, 290, 290, 214, 239, 224, 130, 105, 163,
+      183, 158, 178, 178, 217, 142, 213, 250, 222, 222,
+      222, 214, 349, 378
     )
   ),
   data.frame(
@@ -146,12 +147,12 @@ mappa_sensori <- bind_rows(
       "SM2", "R3", "PE1", "FCM1", "FTC1", "MB1", "SM1"
     ),
     x = c(
-    302, 263, 412, 234, 234, 595, 595, 223, 598, 576,
-    233, 180, 535, 502, 602
+      302, 263, 412, 234, 234, 595, 595, 223, 598, 576,
+      233, 180, 535, 502, 602
     ),
     y = c(
-    97, 97, 173, 195, 216, 194, 212, 278, 278, 381,
-    386, 419, 435, 484, 462
+      97, 97, 173, 195, 216, 194, 212, 278, 278, 381,
+      386, 419, 435, 484, 462
     )
   )
 ) |>
@@ -711,14 +712,14 @@ ui <- fluidPage(
   # Home unica: menu verticale a sinistra e schema della macchina a destra.
   div(
     class = "home-stage",
-
+    
     # Se non esiste un'immagine associata al progetto selezionato,
     # renderUI restituisce NULL e la colonna destra resta vuota.
     div(
       class = "home-schema-layer",
       uiOutput("schema_sensori")
     ),
-
+    
     div(
       class = "home-corner home-corner-tl",
       actionButton(
@@ -731,7 +732,7 @@ ui <- fluidPage(
         class = "card-home"
       )
     ),
-
+    
     div(
       class = "home-corner home-corner-tr",
       actionButton(
@@ -744,7 +745,7 @@ ui <- fluidPage(
         class = "card-home"
       )
     ),
-
+    
     div(
       class = "home-corner home-corner-bl",
       actionButton(
@@ -757,7 +758,7 @@ ui <- fluidPage(
         class = "card-home"
       )
     ),
-
+    
     div(
       class = "home-corner home-corner-br",
       actionButton(
@@ -916,7 +917,7 @@ server <- function(input, output, session) {
     req(input$macchina, input$date)
     apri_modal("nok")
   })
-
+  
   observeEvent(input$home_allarmi, {
     req(input$macchina)
     apri_modal("allarmi")
@@ -1076,6 +1077,9 @@ server <- function(input, output, session) {
         ),
         h4("NOK per sensore", class = "titolo-sezione"),
         tableOutput("modal_nok_table"),
+        uiOutput("modal_utilizzo_macchina"),
+        h4("Profilo utilizzo macchina", class = "titolo-sezione"),
+        girafeOutput("modal_utilizzoNokPlot", height = "420px"),
         h4("Andamento storico del NOK", class = "titolo-sezione"),
         girafeOutput("modal_nokPlot", height = "520px"),
         div(
@@ -1084,7 +1088,7 @@ server <- function(input, output, session) {
         ),
         uiOutput("modal_panel_dati_nok")
       )
-
+      
     } else if (vista == "allarmi") {
       tagList(
         h4("Allarmi e Near Miss", class = "titolo-sezione")
@@ -1296,7 +1300,7 @@ server <- function(input, output, session) {
       mutate(
         NOK = case_when(
           is.na(NMN) | is.na(NMM) | NMM == 0 ~ NA_real_,
-          TRUE ~ NMN / NMM
+          TRUE ~ NMM / NMN
         )
       ) |>
       ordina_naturale()
@@ -1439,7 +1443,7 @@ server <- function(input, output, session) {
     image_version <- unname(
       tools::md5sum(file.path(cds_images_dir, immagine$file_name))
     )
-
+    
     div(
       class = "schema-home",
       div(
@@ -1500,7 +1504,7 @@ server <- function(input, output, session) {
       mutate(
         NOK = case_when(
           is.na(NMN) | is.na(NMM) | NMM == 0 ~ NA_real_,
-          TRUE ~ NMN / NMM
+          TRUE ~ NMM / NMN
         )
       ) |>
       ordina_naturale()
@@ -2028,6 +2032,222 @@ server <- function(input, output, session) {
       arrange(periodo)
   }) |>
     bindCache(filtri_nok_modal())
+  
+  # ---------------------------------------------------------------------
+  # Utilizzo macchina dal NOK.
+  # Riusa i valori giornalieri e l'NMN gia' esistenti: nessuna seconda
+  # pipeline NOK. LOF viene applicato solo a questo calcolo, sensore per
+  # sensore, sui NOK giornalieri del periodo selezionato.
+  #
+  # U_sensore  = media(NOK) * varianza(NOK)
+  # U_macchina = media(U_sensore)
+  # ---------------------------------------------------------------------
+  utilizzo_nok_modal <- reactive({
+    
+    filtri <- filtri_nok_modal()
+    
+    base <- valori_giornalieri_modal_nok() |>
+      filter(
+        day >= filtri$date[1],
+        day <= filtri$date[2]
+      ) |>
+      left_join(
+        nmn_storico_modal_nok(),
+        by = c("cds_name", "sensor_description")
+      ) |>
+      mutate(
+        NOK_giornaliero = case_when(
+          is.na(daily_value) | is.na(NMN) | NMN == 0 ~ NA_real_,
+          TRUE ~ daily_value / NMN
+        )
+      ) |>
+      filter(is.finite(NOK_giornaliero)) |>
+      group_by(cds_name, sensor_description) |>
+      group_modify(~ {
+        x <- .x$NOK_giornaliero
+        n <- length(x)
+        
+        # Con pochi punti il LOF e' instabile: in quel caso non si elimina nulla.
+        if (n < 6L || dplyr::n_distinct(x) < 3L) {
+          .x$lof_score <- NA_real_
+          .x$outlier_lof <- FALSE
+          return(.x)
+        }
+        
+        k <- min(4L, n - 1L)
+        score <- dbscan::lof(matrix(x, ncol = 1), minPts = k)
+        
+        .x$lof_score <- score
+        .x$outlier_lof <- !is.na(score) & score > 2
+        .x
+      }) |>
+      ungroup()
+    
+    per_sensore <- base |>
+      group_by(cds_name, sensor_description) |>
+      summarise(
+        n_osservazioni = n(),
+        n_outlier_lof = sum(outlier_lof, na.rm = TRUE),
+        media_nok = {
+          x <- NOK_giornaliero[!outlier_lof]
+          if (length(x) > 0) mean(x, na.rm = TRUE) else NA_real_
+        },
+        varianza_nok = {
+          x <- NOK_giornaliero[!outlier_lof]
+          if (length(x) >= 2) var(x, na.rm = TRUE) else NA_real_
+        },
+        .groups = "drop"
+      ) |>
+      mutate(
+        U_sensore = media_nok * varianza_nok,
+        banda_min = pmax(0, media_nok - varianza_nok),
+        banda_max = media_nok + varianza_nok,
+        etichetta_sensore = paste(cds_name, sensor_description, sep = " - ")
+      ) |>
+      ordina_naturale()
+    
+    valori_u <- per_sensore$U_sensore[
+      is.finite(per_sensore$U_sensore)
+    ]
+    
+    U_macchina <- if (length(valori_u) > 0) {
+      mean(valori_u)
+    } else {
+      NA_real_
+    }
+    
+    list(
+      per_sensore = per_sensore,
+      U_macchina = U_macchina
+    )
+  }) |>
+    bindCache(
+      filtri_nok_modal()$macchina,
+      filtri_nok_modal()$date,
+      filtri_nok_modal()$sensori
+    )
+  
+  output$modal_utilizzo_macchina <- renderUI({
+    
+    utilizzo <- utilizzo_nok_modal()
+    
+    valore <- if (
+      length(utilizzo$U_macchina) == 0 ||
+      is.na(utilizzo$U_macchina) ||
+      is.nan(utilizzo$U_macchina) ||
+      is.infinite(utilizzo$U_macchina)
+    ) {
+      "N/D"
+    } else {
+      formatC(
+        utilizzo$U_macchina,
+        format = "f",
+        digits = 4,
+        decimal.mark = ","
+      )
+    }
+    
+    div(
+      style = paste0(
+        "margin:12px 0 18px 0;",
+        "padding:12px 16px;",
+        "border:1px solid #DDE4EA;",
+        "border-radius:8px;",
+        "background:#F8FAFB;"
+      ),
+      span("Utilizzo macchina: ", style = "font-weight:600;color:#4A4A4A;"),
+      span(valore, style = "font-size:20px;font-weight:700;color:#24364B;"),
+      div(
+        "Media sui sensori di media(NOK) × varianza(NOK), dopo filtro LOF.",
+        style = "margin-top:4px;font-size:12px;color:#718096;"
+      )
+    )
+  })
+  
+  render_utilizzo_nok_gg <- function() {
+    
+    utilizzo <- utilizzo_nok_modal()
+    profilo <- utilizzo$per_sensore |>
+      filter(
+        is.finite(media_nok),
+        is.finite(varianza_nok)
+      )
+    
+    validate(
+      need(nrow(profilo) > 0, "Dati insufficienti per calcolare media e varianza del NOK")
+    )
+    
+    profilo <- profilo |>
+      mutate(
+        x = row_number(),
+        tooltip_utilizzo = paste0(
+          "<b>", etichetta_sensore, "</b><br/>",
+          "Media NOK: ", round(media_nok, 4), "<br/>",
+          "Varianza NOK: ", round(varianza_nok, 4), "<br/>",
+          "U sensore: ", round(U_sensore, 4), "<br/>",
+          "Outlier LOF esclusi: ", n_outlier_lof
+        )
+      )
+    
+    ggplot(profilo, aes(x = x)) +
+      geom_ribbon(
+        aes(ymin = banda_min, ymax = banda_max),
+        fill = "#7FA6C9",
+        alpha = 0.22
+      ) +
+      geom_line(
+        aes(y = media_nok),
+        color = "#2C3E50",
+        linewidth = 1
+      ) +
+      geom_point_interactive(
+        aes(
+          y = media_nok,
+          tooltip = tooltip_utilizzo,
+          data_id = etichetta_sensore
+        ),
+        color = "#2C3E50",
+        size = 2.6
+      ) +
+      scale_x_continuous(
+        breaks = profilo$x,
+        labels = profilo$etichetta_sensore
+      ) +
+      scale_y_continuous(
+        expand = expansion(mult = c(0.02, 0.06))
+      ) +
+      labs(
+        x = NULL,
+        y = "NOK medio"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank(),
+        axis.text.x = element_text(
+          size = 11,
+          angle = 90,
+          hjust = 1,
+          vjust = 0.5
+        ),
+        axis.text.y = element_text(size = 11)
+      )
+  }
+  
+  output$modal_utilizzoNokPlot <- renderGirafe({
+    w_px <- if (!is.null(input$modal_px_width) && input$modal_px_width > 0)
+      input$modal_px_width else 1100
+    
+    girafe(
+      ggobj = render_utilizzo_nok_gg(),
+      width_svg = w_px / 72,
+      height_svg = 360 / 72,
+      options = list(
+        opts_tooltip(css = tooltip_css, use_fill = FALSE),
+        opts_hover(css = "opacity:0.8;cursor:pointer;")
+      )
+    )
+  })
   
   render_nok_history_gg <- function() {
     
