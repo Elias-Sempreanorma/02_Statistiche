@@ -1265,7 +1265,36 @@ server <- function(input, output, session) {
       
     } else if (vista == "allarmi") {
       tagList(
-        h4("Allarmi e Near Miss", class = "titolo-sezione")
+        div(
+          class = "modal-filters",
+          fluidRow(
+            column(4,
+                   dateRangeInput(
+                     "modal_date", "Periodo:",
+                     start = date_selezionate[1], end = date_selezionate[2],
+                     min = data_min, max = data_max,
+                     format = "dd-mm-yyyy", separator = " a ", language = "it"
+                   )
+            ),
+            column(8,
+                   pickerInput(
+                     "modal_sensori", "Sensori:",
+                     choices = scelte_sensori, selected = sensori_selezionati,
+                     multiple = TRUE, options = picker_opts
+                   )
+            )
+          )
+        ),
+        h4("Attivazioni anomale", class = "titolo-sezione"),
+        p(
+          "Giornate escluse dal calcolo del NOK perché individuate come anomalie nel conteggio delle attivazioni."
+        ),
+        DTOutput("modal_allarmi_attivazioni"),
+        h4("NOK fuori dall'intervallo ±3σ", class = "titolo-sezione"),
+        p(
+          "Giornate in cui il NOK giornaliero del sensore è fuori dai limiti media storica ± 3σ."
+        ),
+        DTOutput("modal_allarmi_nok")
       )
     }
   })
@@ -1736,6 +1765,39 @@ server <- function(input, output, session) {
       summarise(NMN = mean(daily_value, na.rm = TRUE), .groups = "drop")
   })
   
+  # Statistiche storiche del NOK giornaliero per sensore.
+  # Limiti di riferimento: media storica +/- 3 sigma.
+  statistiche_nok_storiche_modal <- reactive({
+    
+    valori_giornalieri_modal_nok() |>
+      filter(!outlier_lof) |>
+      left_join(
+        nmn_storico_modal_nok(),
+        by = c("cds_name", "sensor_description")
+      ) |>
+      mutate(
+        NOK_giornaliero = case_when(
+          is.na(daily_value) | is.na(NMN) | NMN == 0 ~ NA_real_,
+          TRUE ~ daily_value / NMN
+        )
+      ) |>
+      filter(is.finite(NOK_giornaliero)) |>
+      group_by(cds_name, sensor_description) |>
+      summarise(
+        media_nok_storico = mean(NOK_giornaliero, na.rm = TRUE),
+        sigma_nok_storico = if (n() >= 2) {
+          sd(NOK_giornaliero, na.rm = TRUE)
+        } else {
+          NA_real_
+        },
+        .groups = "drop"
+      ) |>
+      mutate(
+        limite_nok_inf = media_nok_storico - 3 * sigma_nok_storico,
+        limite_nok_sup = media_nok_storico + 3 * sigma_nok_storico
+      )
+  })
+  
   kpi_nok_modal <- reactive({
     
     filtri <- filtri_nok_modal()
@@ -1751,10 +1813,21 @@ server <- function(input, output, session) {
     
     nmn_storico_modal_nok() |>
       left_join(nmm_per_sensore, by = c("cds_name", "sensor_description")) |>
+      left_join(
+        statistiche_nok_storiche_modal(),
+        by = c("cds_name", "sensor_description")
+      ) |>
       mutate(
         NOK = case_when(
           is.na(NMN) | is.na(NMM) | NMM == 0 ~ NA_real_,
           TRUE ~ NMM / NMN
+        ),
+        stato_nok = case_when(
+          !is.finite(NOK) |
+            !is.finite(limite_nok_inf) |
+            !is.finite(limite_nok_sup) ~ "N/D",
+          NOK < limite_nok_inf | NOK > limite_nok_sup ~ "Anomalo",
+          TRUE ~ "Normale"
         )
       ) |>
       ordina_naturale()
@@ -1768,18 +1841,136 @@ server <- function(input, output, session) {
       need(nrow(kpi) > 0, "Nessun dato disponibile per i filtri scelti")
     )
     
-    # Tabella orizzontale: un sensore per colonna, un'unica riga di valori NOK
     kpi |>
       transmute(
         Sensore = paste(cds_name, sensor_description, sep = " - "),
-        NOK = ifelse(
-          is.na(NOK) | is.infinite(NOK),
-          "N/D",
-          format(round(NOK, 3), nsmall = 3)
+        NOK = case_when(
+          is.na(NOK) | is.infinite(NOK) ~
+            "<span style='color:#718096;font-weight:800;'>N/D</span>",
+          stato_nok == "Anomalo" ~
+            paste0(
+              "<span style='color:#B42318;font-weight:800;'>",
+              format(round(NOK, 3), nsmall = 3),
+              "</span>"
+            ),
+          TRUE ~
+            paste0(
+              "<span style='color:#19764A;font-weight:800;'>",
+              format(round(NOK, 3), nsmall = 3),
+              "</span>"
+            )
         )
       ) |>
       pivot_wider(names_from = Sensore, values_from = NOK)
-  }, striped = TRUE, hover = TRUE, bordered = TRUE, spacing = "s", align = "c")
+  },
+  striped = TRUE,
+  hover = TRUE,
+  bordered = TRUE,
+  spacing = "s",
+  align = "c",
+  sanitize.text.function = function(x) x)
+  
+  # ---------------------------------------------------------------------
+  # Allarmi automatici nel periodo selezionato.
+  # 1) anomalie sulle attivazioni: giornate escluse dal LOF;
+  # 2) anomalie NOK: NOK giornaliero fuori da media storica +/- 3 sigma.
+  # ---------------------------------------------------------------------
+  allarmi_attivazioni_modal <- reactive({
+    
+    filtri <- filtri_nok_modal()
+    
+    valori_giornalieri_modal_nok() |>
+      filter(
+        outlier_lof,
+        day >= filtri$date[1],
+        day <= filtri$date[2]
+      ) |>
+      arrange(day, cds_name) |>
+      transmute(
+        Sensore = paste(cds_name, sensor_description, sep = " - "),
+        Data = day,
+        Attivazioni = round(daily_count)
+      )
+  })
+  
+  allarmi_nok_modal <- reactive({
+    
+    filtri <- filtri_nok_modal()
+    
+    valori_giornalieri_modal_nok() |>
+      filter(
+        !outlier_lof,
+        day >= filtri$date[1],
+        day <= filtri$date[2]
+      ) |>
+      left_join(
+        nmn_storico_modal_nok(),
+        by = c("cds_name", "sensor_description")
+      ) |>
+      left_join(
+        statistiche_nok_storiche_modal(),
+        by = c("cds_name", "sensor_description")
+      ) |>
+      mutate(
+        NOK_giornaliero = case_when(
+          is.na(daily_value) | is.na(NMN) | NMN == 0 ~ NA_real_,
+          TRUE ~ daily_value / NMN
+        ),
+        Direzione = case_when(
+          NOK_giornaliero < limite_nok_inf ~ "Sotto limite",
+          NOK_giornaliero > limite_nok_sup ~ "Sopra limite",
+          TRUE ~ NA_character_
+        )
+      ) |>
+      filter(
+        is.finite(NOK_giornaliero),
+        is.finite(limite_nok_inf),
+        is.finite(limite_nok_sup),
+        NOK_giornaliero < limite_nok_inf |
+          NOK_giornaliero > limite_nok_sup
+      ) |>
+      arrange(day, cds_name) |>
+      transmute(
+        Sensore = paste(cds_name, sensor_description, sep = " - "),
+        Data = day,
+        NOK = round(NOK_giornaliero, 3),
+        `Limite inferiore` = round(limite_nok_inf, 3),
+        `Limite superiore` = round(limite_nok_sup, 3),
+        Direzione
+      )
+  })
+  
+  output$modal_allarmi_attivazioni <- renderDT({
+    tabella <- allarmi_attivazioni_modal()
+    
+    validate(
+      need(
+        nrow(tabella) > 0,
+        "Nessuna anomalia nelle attivazioni nel periodo selezionato."
+      )
+    )
+    
+    tabella |>
+      mutate(Data = format(Data, "%d-%m-%Y"))
+  },
+  rownames = FALSE,
+  options = list(pageLength = 15, dom = "tip"))
+  
+  output$modal_allarmi_nok <- renderDT({
+    tabella <- allarmi_nok_modal()
+    
+    validate(
+      need(
+        nrow(tabella) > 0,
+        "Nessun NOK giornaliero fuori dall'intervallo ±3σ nel periodo selezionato."
+      )
+    )
+    
+    tabella |>
+      mutate(Data = format(Data, "%d-%m-%Y"))
+  },
+  rownames = FALSE,
+  options = list(pageLength = 15, dom = "tip"))
   
   # Dati per i serbatoi: stato attuale (non dipende dal periodo selezionato,
   # rappresenta il valore cumulato/corrente del sensore)
@@ -2400,10 +2591,17 @@ server <- function(input, output, session) {
       as.Date(NA)
     }
     
-    ultima_partenza <- filtri$date[1] - durata_giorni
+    ultima_data <- if (nrow(base_completa) > 0) {
+      max(base_completa$day, na.rm = TRUE)
+    } else {
+      as.Date(NA)
+    }
+    
+    ultima_partenza <- ultima_data - durata_giorni + 1L
     
     if (
       is.na(prima_data) ||
+      is.na(ultima_data) ||
       ultima_partenza < prima_data
     ) {
       U_storici <- numeric(0)
@@ -2413,6 +2611,10 @@ server <- function(input, output, session) {
         to = ultima_partenza,
         by = "7 days"
       )
+      
+      partenze_storiche <- partenze_storiche[
+        partenze_storiche != filtri$date[1]
+      ]
       
       U_storici <- vapply(
         partenze_storiche,
