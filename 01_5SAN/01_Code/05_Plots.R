@@ -3236,15 +3236,40 @@ server <- function(input, output, session) {
       )
     )
     
+    selezionato <- storico |>
+      filter(tipo == "Periodo selezionato")
+    
+    validate(
+      need(
+        nrow(selezionato) > 0,
+        "Nessuna settimana disponibile nel periodo selezionato"
+      )
+    )
+    
+    stato <- utilizzo$stato_utilizzo
+    
+    colore_periodo <- switch(
+      stato,
+      "Normale" = "#19764A",
+      "Elevato" = "#A65A52",
+      "Basso" = "#58758F",
+      "#5F6F7F"
+    )
+    
+    sfondo_periodo <- switch(
+      stato,
+      "Normale" = "#EAF6EF",
+      "Elevato" = "#F7EDEA",
+      "Basso" = "#EAF0F5",
+      "#F1F3F5"
+    )
+    
+    inizio_area <- min(selezionato$inizio_finestra, na.rm = TRUE)
+    fine_area <- max(selezionato$inizio_finestra, na.rm = TRUE) + 6L
+    media_periodo <- mean(selezionato$U_macchina, na.rm = TRUE)
+    
     storico <- storico |>
       mutate(
-        colore_gruppo = case_when(
-          tipo == "Riferimento" ~ "Storico",
-          stato == "Normale" ~ "Normale",
-          stato == "Elevato" ~ "Elevato",
-          stato == "Basso" ~ "Basso",
-          TRUE ~ "N/D"
-        ),
         tooltip_utilizzo = paste0(
           "<b>",
           ifelse(
@@ -3265,13 +3290,25 @@ server <- function(input, output, session) {
       storico,
       aes(x = inizio_finestra, y = U_macchina)
     ) +
+      geom_rect(
+        aes(
+          xmin = inizio_area,
+          xmax = fine_area,
+          ymin = -Inf,
+          ymax = Inf
+        ),
+        inherit.aes = FALSE,
+        fill = sfondo_periodo,
+        alpha = 0.75
+      ) +
       geom_line(
-        color = "#B7BEC5",
+        aes(color = "Storico"),
         linewidth = 0.9
       ) +
       geom_point_interactive(
+        data = storico |> filter(tipo == "Riferimento"),
         aes(
-          color = colore_gruppo,
+          color = "Storico",
           tooltip = tooltip_utilizzo,
           data_id = paste(
             tipo,
@@ -3279,17 +3316,62 @@ server <- function(input, output, session) {
             sep = "__"
           )
         ),
-        size = 3
+        size = 2.8
+      ) +
+      geom_line(
+        data = selezionato,
+        aes(
+          x = inizio_finestra,
+          y = U_macchina,
+          color = "Periodo selezionato"
+        ),
+        linewidth = 1.5
+      ) +
+      geom_point_interactive(
+        data = selezionato,
+        aes(
+          x = inizio_finestra,
+          y = U_macchina,
+          color = "Periodo selezionato",
+          tooltip = tooltip_utilizzo,
+          data_id = paste(
+            tipo,
+            inizio_finestra,
+            sep = "__"
+          )
+        ),
+        size = 3.2
+      ) +
+      geom_segment(
+        aes(
+          x = inizio_area,
+          xend = fine_area,
+          y = media_periodo,
+          yend = media_periodo,
+          color = "Media periodo",
+          linetype = "Media periodo"
+        ),
+        inherit.aes = FALSE,
+        linewidth = 1
       ) +
       scale_color_manual(
         values = c(
           "Storico" = "#B7BEC5",
-          "Normale" = "#19764A",
-          "Elevato" = "#A65A52",
-          "Basso" = "#58758F",
-          "N/D" = "#6E7781"
+          "Periodo selezionato" = colore_periodo,
+          "Media periodo" = colore_periodo
         ),
-        guide = "none"
+        breaks = c(
+          "Storico",
+          "Periodo selezionato",
+          "Media periodo"
+        ),
+        name = NULL
+      ) +
+      scale_linetype_manual(
+        values = c(
+          "Media periodo" = "dashed"
+        ),
+        name = NULL
       ) +
       scale_x_date(
         breaks = storico$inizio_finestra,
@@ -3325,7 +3407,9 @@ server <- function(input, output, session) {
           hjust = 1,
           vjust = 0.5
         ),
-        axis.text.y = element_text(size = 10)
+        axis.text.y = element_text(size = 10),
+        legend.position = "top",
+        legend.justification = "left"
       )
   }
   
