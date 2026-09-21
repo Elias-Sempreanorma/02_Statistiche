@@ -1058,6 +1058,7 @@ server <- function(input, output, session) {
   mostra_dati_tank <- reactiveVal(FALSE)
   mostra_dati_nok <- reactiveVal(FALSE)
   mostra_dati_profilo_nok <- reactiveVal(FALSE)
+  mostra_storico_utilizzo_nok <- reactiveVal(FALSE)
   mostra_outlier_nok <- reactiveVal(FALSE)
   
   # I filtri vengono applicati solo dopo una breve pausa dall'ultima scelta.
@@ -1129,6 +1130,7 @@ server <- function(input, output, session) {
     mostra_dati_tank(FALSE)
     mostra_dati_nok(FALSE)
     mostra_dati_profilo_nok(FALSE)
+    mostra_storico_utilizzo_nok(FALSE)
     
     showModal(modalDialog(
       title = NULL,
@@ -1215,6 +1217,7 @@ server <- function(input, output, session) {
     mostra_dati_tank(FALSE)
     mostra_dati_nok(FALSE)
     mostra_dati_profilo_nok(FALSE)
+    mostra_storico_utilizzo_nok(FALSE)
     mostra_outlier_nok(FALSE)
     
   }, ignoreInit = TRUE)
@@ -1363,6 +1366,7 @@ server <- function(input, output, session) {
         ),
         uiOutput("modal_panel_outlier_nok"),
         uiOutput("modal_utilizzo_macchina"),
+        uiOutput("modal_panel_storico_utilizzo_nok"),
         girafeOutput("modal_utilizzoNokPlot", height = "420px"),
         div(
           class = "modal-data-button",
@@ -1453,6 +1457,12 @@ server <- function(input, output, session) {
   
   observeEvent(input$modal_btn_dati_profilo_nok, {
     mostra_dati_profilo_nok(!mostra_dati_profilo_nok())
+  })
+  
+  observeEvent(input$modal_btn_storico_utilizzo_nok, {
+    mostra_storico_utilizzo_nok(
+      !mostra_storico_utilizzo_nok()
+    )
   })
   
   observeEvent(input$modal_btn_outlier_nok, {
@@ -1591,6 +1601,18 @@ server <- function(input, output, session) {
     div(
       class = "modal-data-panel",
       DTOutput("modal_tabella_dati_profilo_nok")
+    )
+  })
+  
+  output$modal_panel_storico_utilizzo_nok <- renderUI({
+    if (!mostra_storico_utilizzo_nok()) return(NULL)
+    
+    div(
+      class = "modal-data-panel",
+      girafeOutput(
+        "modal_storicoUtilizzoPlot",
+        height = "300px"
+      )
     )
   })
   
@@ -2942,13 +2964,26 @@ server <- function(input, output, session) {
         partenze_storiche != filtri$date[1]
       ]
       
-      U_storici <- vapply(
+      U_storici_raw <- vapply(
         partenze_storiche,
         calcola_u_finestra,
         numeric(1)
       )
       
-      U_storici <- U_storici[is.finite(U_storici)]
+      storico_utilizzo <- tibble(
+        inizio_finestra = partenze_storiche,
+        U_macchina = U_storici_raw
+      ) |>
+        filter(is.finite(U_macchina))
+      
+      U_storici <- storico_utilizzo$U_macchina
+    }
+    
+    if (!exists("storico_utilizzo")) {
+      storico_utilizzo <- tibble(
+        inizio_finestra = as.Date(character(0)),
+        U_macchina = numeric(0)
+      )
     }
     
     P10_utilizzo <- if (length(U_storici) > 0) {
@@ -2988,6 +3023,24 @@ server <- function(input, output, session) {
       TRUE ~ "Normale"
     )
     
+    storico_utilizzo_grafico <- bind_rows(
+      storico_utilizzo |>
+        transmute(
+          inizio_finestra,
+          U_macchina,
+          tipo = "Riferimento",
+          stato = "Storico"
+        ),
+      tibble(
+        inizio_finestra = filtri$date[1],
+        U_macchina = U_macchina,
+        tipo = "Periodo selezionato",
+        stato = stato_utilizzo
+      )
+    ) |>
+      filter(is.finite(U_macchina)) |>
+      arrange(inizio_finestra)
+    
     list(
       per_sensore = per_sensore,
       per_sensore_confronto = per_sensore_confronto,
@@ -2995,6 +3048,7 @@ server <- function(input, output, session) {
       P10_utilizzo = P10_utilizzo,
       P90_utilizzo = P90_utilizzo,
       stato_utilizzo = stato_utilizzo,
+      storico_utilizzo_grafico = storico_utilizzo_grafico,
       n_finestre_storiche = length(U_storici),
       n_settimane_storiche = length(U_storici),
       durata_finestra_giorni = durata_giorni,
@@ -3107,6 +3161,12 @@ server <- function(input, output, session) {
           ";"
         )
       ),
+      actionButton(
+        "modal_btn_storico_utilizzo_nok",
+        "Storico utilizzo",
+        class = "btn-sm btn-default",
+        style = "margin-left:12px;"
+      ),
       div(
         "Indice dell’intensità di utilizzo rispetto al comportamento storico dei sensori. Valori alti indicano uno stress della macchina più elevato o una discrepanza nell’utilizzo rispetto allo storico.",
         style = "margin-top:7px;font-size:13px;color:#5F6F7F;"
@@ -3119,6 +3179,129 @@ server <- function(input, output, session) {
           soglia_alta
         ),
         style = "margin-top:4px;font-size:12px;color:#718096;"
+      )
+    )
+  })
+  
+  render_storico_utilizzo_nok_gg <- function() {
+    
+    utilizzo <- utilizzo_nok_modal()
+    storico <- utilizzo$storico_utilizzo_grafico
+    
+    validate(
+      need(
+        nrow(storico) > 0,
+        "Nessun dato storico disponibile per l'utilizzo"
+      )
+    )
+    
+    storico <- storico |>
+      mutate(
+        colore_gruppo = case_when(
+          tipo == "Riferimento" ~ "Storico",
+          stato == "Normale" ~ "Normale",
+          stato == "Elevato" ~ "Elevato",
+          stato == "Basso" ~ "Basso",
+          TRUE ~ "N/D"
+        ),
+        tooltip_utilizzo = paste0(
+          "<b>",
+          ifelse(
+            tipo == "Periodo selezionato",
+            "Periodo selezionato",
+            "Finestra storica"
+          ),
+          "</b><br/>",
+          "Inizio: ",
+          format(inizio_finestra, "%d-%m-%Y"),
+          "<br/>",
+          "Utilizzo macchina: ",
+          round(U_macchina, 3)
+        )
+      )
+    
+    ggplot(
+      storico,
+      aes(x = inizio_finestra, y = U_macchina)
+    ) +
+      geom_line(
+        color = "#B7BEC5",
+        linewidth = 0.9
+      ) +
+      geom_point_interactive(
+        aes(
+          color = colore_gruppo,
+          tooltip = tooltip_utilizzo,
+          data_id = paste(
+            tipo,
+            inizio_finestra,
+            sep = "__"
+          )
+        ),
+        size = 3
+      ) +
+      scale_color_manual(
+        values = c(
+          "Storico" = "#B7BEC5",
+          "Normale" = "#19764A",
+          "Elevato" = "#A65A52",
+          "Basso" = "#58758F",
+          "N/D" = "#6E7781"
+        ),
+        guide = "none"
+      ) +
+      scale_x_date(
+        breaks = storico$inizio_finestra,
+        labels = function(x) {
+          format(
+            as.Date(x, origin = "1970-01-01"),
+            "%d-%m-%Y"
+          )
+        }
+      ) +
+      scale_y_continuous(
+        breaks = scales::pretty_breaks(n = 6),
+        labels = scales::label_number(
+          accuracy = 0.1,
+          decimal.mark = ","
+        ),
+        expand = expansion(mult = c(0.03, 0.06))
+      ) +
+      labs(
+        x = NULL,
+        y = "Utilizzo macchina"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_line(
+          color = "#E1E6EA",
+          linewidth = 0.4
+        ),
+        axis.text.x = element_text(
+          size = 9,
+          angle = 90,
+          hjust = 1,
+          vjust = 0.5
+        ),
+        axis.text.y = element_text(size = 10)
+      )
+  }
+  
+  output$modal_storicoUtilizzoPlot <- renderGirafe({
+    w_px <- if (!is.null(input$modal_px_width) && input$modal_px_width > 0)
+      input$modal_px_width else 1100
+    
+    girafe(
+      ggobj = render_storico_utilizzo_nok_gg(),
+      width_svg = w_px / 72,
+      height_svg = 260 / 72,
+      options = list(
+        opts_tooltip(css = tooltip_css, use_fill = FALSE),
+        opts_hover(css = "opacity:0.85;cursor:pointer;"),
+        opts_toolbar(
+          hidden = c("selection", "zoom", "misc")
+        )
       )
     )
   })
