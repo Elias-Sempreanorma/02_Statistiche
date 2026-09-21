@@ -2816,91 +2816,100 @@ server <- function(input, output, session) {
       NA_real_
     }
     
-    # Soglia P90 su settimane storiche.
-    # Normalmente usa tutte le settimane precedenti al periodo selezionato.
-    # Se il periodo selezionato copre oltre il 75% dello storico disponibile,
-    # include anche le settimane comprese nel periodo selezionato.
+    # Soglia P90 su finestre della stessa durata del periodo selezionato.
+    # Le finestre partono ogni 7 giorni.
+    # Normalmente vengono usate solo finestre completamente precedenti
+    # al periodo selezionato. Se il periodo selezionato copre oltre il 75%
+    # dello storico disponibile, vengono ammesse anche finestre che ricadono
+    # nel periodo selezionato, escludendo comunque la finestra identica
+    # a quella corrente.
     prima_data_storica <- min(base_completa$day, na.rm = TRUE)
     ultima_data_storica <- max(base_completa$day, na.rm = TRUE)
     
-    giorni_storico_totale <- as.integer(
-      ultima_data_storica - prima_data_storica
+    durata_giorni <- as.integer(
+      filtri$date[2] - filtri$date[1]
     ) + 1L
     
-    giorni_periodo_selezionato <- as.integer(
-      filtri$date[2] - filtri$date[1]
+    giorni_storico_totale <- as.integer(
+      ultima_data_storica - prima_data_storica
     ) + 1L
     
     quota_storico_selezionata <- if (
       is.finite(giorni_storico_totale) &&
       giorni_storico_totale > 0
     ) {
-      giorni_periodo_selezionato / giorni_storico_totale
+      durata_giorni / giorni_storico_totale
     } else {
       0
     }
     
     includi_periodo_nella_soglia <- quota_storico_selezionata > 0.75
     
-    inizio_settimana_corrente <- as.Date(
-      lubridate::floor_date(
-        filtri$date[1],
-        "week",
-        week_start = 1
+    calcola_u_finestra <- function(inizio_finestra) {
+      fine_finestra <- inizio_finestra + durata_giorni - 1L
+      
+      dati_finestra <- base_completa |>
+        filter(
+          day >= inizio_finestra,
+          day <= fine_finestra
+        ) |>
+        group_by(cds_name, sensor_description) |>
+        summarise(
+          media_nok = mean(NOK_giornaliero, na.rm = TRUE),
+          varianza_nok = if (n() >= 2) {
+            var(NOK_giornaliero, na.rm = TRUE)
+          } else {
+            NA_real_
+          },
+          .groups = "drop"
+        ) |>
+        mutate(
+          U_sensore = media_nok * varianza_nok
+        ) |>
+        filter(is.finite(U_sensore))
+      
+      if (nrow(dati_finestra) == 0) {
+        return(NA_real_)
+      }
+      
+      mean(dati_finestra$U_sensore, na.rm = TRUE)
+    }
+    
+    ultima_partenza_precedente <- filtri$date[1] - durata_giorni
+    ultima_partenza_disponibile <- ultima_data_storica - durata_giorni + 1L
+    
+    ultima_partenza <- if (includi_periodo_nella_soglia) {
+      ultima_partenza_disponibile
+    } else {
+      ultima_partenza_precedente
+    }
+    
+    if (
+      !is.finite(as.numeric(prima_data_storica)) ||
+      !is.finite(as.numeric(ultima_partenza)) ||
+      ultima_partenza < prima_data_storica
+    ) {
+      partenze_storiche <- as.Date(character(0))
+      U_storici <- numeric(0)
+    } else {
+      partenze_storiche <- seq.Date(
+        from = prima_data_storica,
+        to = ultima_partenza,
+        by = "7 days"
       )
-    )
-    
-    fine_settimana_corrente <- as.Date(
-      lubridate::floor_date(
-        filtri$date[2],
-        "week",
-        week_start = 1
+      
+      partenze_storiche <- partenze_storiche[
+        partenze_storiche != filtri$date[1]
+      ]
+      
+      U_storici <- vapply(
+        partenze_storiche,
+        calcola_u_finestra,
+        numeric(1)
       )
-    )
-    
-    storico_settimanale <- base_completa |>
-      mutate(
-        settimana = as.Date(
-          lubridate::floor_date(
-            day,
-            "week",
-            week_start = 1
-          )
-        )
-      ) |>
-      filter(
-        if (includi_periodo_nella_soglia) {
-          settimana <= fine_settimana_corrente
-        } else {
-          settimana < inizio_settimana_corrente
-        }
-      ) |>
-      group_by(
-        settimana,
-        cds_name,
-        sensor_description
-      ) |>
-      summarise(
-        media_nok = mean(NOK_giornaliero, na.rm = TRUE),
-        varianza_nok = if (n() >= 2) {
-          var(NOK_giornaliero, na.rm = TRUE)
-        } else {
-          NA_real_
-        },
-        .groups = "drop"
-      ) |>
-      mutate(
-        U_sensore = media_nok * varianza_nok
-      ) |>
-      filter(is.finite(U_sensore)) |>
-      group_by(settimana) |>
-      summarise(
-        U_macchina = mean(U_sensore, na.rm = TRUE),
-        .groups = "drop"
-      ) |>
-      filter(is.finite(U_macchina))
-    
-    U_storici <- storico_settimanale$U_macchina
+      
+      U_storici <- U_storici[is.finite(U_storici)]
+    }
     
     P90_utilizzo <- if (length(U_storici) > 0) {
       as.numeric(
@@ -2928,7 +2937,9 @@ server <- function(input, output, session) {
       U_macchina = U_macchina,
       P90_utilizzo = P90_utilizzo,
       stato_utilizzo = stato_utilizzo,
+      n_finestre_storiche = length(U_storici),
       n_settimane_storiche = length(U_storici),
+      durata_finestra_giorni = durata_giorni,
       quota_storico_selezionata = quota_storico_selezionata,
       includi_periodo_nella_soglia = includi_periodo_nella_soglia
     )
