@@ -592,6 +592,38 @@ ui <- fluidPage(
         border-radius: 7px;
         background: #FFFFFF;
       }
+      .modal-machine-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin: 0 0 12px 0;
+        padding: 2px 0 10px 0;
+      }
+      .modal-machine-title {
+        color: #24364B;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1.25;
+      }
+      .modal-close-x {
+        flex-shrink: 0;
+        border: 0;
+        background: transparent;
+        color: #4A4A4A;
+        font-size: 31px;
+        font-weight: 400;
+        line-height: 1;
+        padding: 0 5px;
+        cursor: pointer;
+        opacity: 0.72;
+      }
+      .modal-close-x:hover,
+      .modal-close-x:focus {
+        color: #24364B;
+        opacity: 1;
+        outline: none;
+      }
       .modal-nav-bar {
         margin-bottom: 20px;
         padding-bottom: 14px;
@@ -1014,7 +1046,7 @@ server <- function(input, output, session) {
   sensori_modal_correnti <- reactiveVal(character(0))
   modal_apertura_id <- reactiveVal(0)
   granularita_attivazioni_corrente <- reactiveVal("Giorno")
-  granularita_nok_corrente <- reactiveVal("Giorno")
+  granularita_nok_corrente <- reactiveVal("Settimana")
   
   filtri_principali <- reactive({
     req(input$macchina, input$date)
@@ -1047,8 +1079,23 @@ server <- function(input, output, session) {
     }
     
     sensori_modal_correnti(normalizza_sensori(sensori_iniziali))
+    
+    macchina_corrente <- macchine_lookup |>
+      filter(coupon == isolate(input$macchina)) |>
+      slice_head(n = 1)
+    
+    riferimento_macchina <- if (nrow(macchina_corrente) > 0) {
+      paste(
+        macchina_corrente$project,
+        macchina_corrente$machine_name,
+        sep = " – "
+      )
+    } else {
+      as.character(isolate(input$macchina))
+    }
+    
     granularita_attivazioni_corrente("Giorno")
-    granularita_nok_corrente("Giorno")
+    granularita_nok_corrente("Settimana")
     
     modal_apertura_id(isolate(modal_apertura_id()) + 1)
     
@@ -1061,7 +1108,22 @@ server <- function(input, output, session) {
       title = NULL,
       size = "xl",
       easyClose = TRUE,
-      footer = modalButton("Chiudi"),
+      footer = NULL,
+      
+      div(
+        class = "modal-machine-header",
+        div(
+          paste0("Macchina: ", riferimento_macchina),
+          class = "modal-machine-title"
+        ),
+        tags$button(
+          type = "button",
+          class = "modal-close-x",
+          `data-dismiss` = "modal",
+          `aria-label` = "Chiudi",
+          HTML("&times;")
+        )
+      ),
       
       div(
         class = "modal-nav-bar",
@@ -1251,35 +1313,20 @@ server <- function(input, output, session) {
                      multiple = TRUE, options = picker_opts
                    )
             )
-          ),
-          radioButtons(
-            "modal_granularita_nok", "Raggruppamento:",
-            choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
-            selected = isolate(granularita_nok_corrente()), inline = TRUE
           )
         ),
-        h4("NOK per sensore", class = "titolo-sezione"),
-        tableOutput("modal_nok_table"),
-        div(
-          class = "modal-data-button",
-          actionButton(
-            "modal_btn_outlier_nok",
-            "Attivazioni escluse",
-            icon = icon("circle-info"),
-            class = "btn-sm btn-default"
-          )
-        ),
-        uiOutput("modal_panel_outlier_nok"),
-        uiOutput("modal_utilizzo_macchina"),
         h4("Profilo utilizzo macchina", class = "titolo-sezione"),
+        uiOutput("modal_utilizzo_macchina"),
         girafeOutput("modal_utilizzoNokPlot", height = "420px"),
-        h4("Andamento storico del NOK", class = "titolo-sezione"),
-        girafeOutput("modal_nokPlot", height = "520px"),
-        div(
-          class = "modal-data-button",
-          actionButton("modal_btn_dati_nok", "Dati", icon = icon("table"), class = "btn-sm btn-default")
+        h4("Utilizzo macchina nel tempo", class = "titolo-sezione"),
+        radioButtons(
+          "modal_granularita_nok",
+          "Raggruppamento:",
+          choices = c("Settimana", "Mese", "Trimestre", "Anno"),
+          selected = isolate(granularita_nok_corrente()),
+          inline = TRUE
         ),
-        uiOutput("modal_panel_dati_nok")
+        girafeOutput("modal_utilizzoTempoPlot", height = "420px")
       )
       
     } else if (vista == "allarmi") {
@@ -2513,6 +2560,76 @@ server <- function(input, output, session) {
     bindCache(filtri_nok_modal())
   
   # ---------------------------------------------------------------------
+  # Utilizzo macchina nel tempo.
+  # Il raggruppamento vale solo per questo grafico.
+  # ---------------------------------------------------------------------
+  utilizzo_temporale_modal <- reactive({
+    
+    filtri <- filtri_nok_modal()
+    
+    base <- valori_giornalieri_modal_nok() |>
+      filter(
+        !outlier_lof,
+        day >= filtri$date[1],
+        day <= filtri$date[2]
+      ) |>
+      left_join(
+        nmn_storico_modal_nok(),
+        by = c("cds_name", "sensor_description")
+      ) |>
+      mutate(
+        NOK_giornaliero = case_when(
+          is.na(daily_value) | is.na(NMN) | NMN == 0 ~ NA_real_,
+          TRUE ~ daily_value / NMN
+        ),
+        periodo = as.Date(
+          periodo_bucket(day, filtri$granularita)
+        )
+      ) |>
+      filter(is.finite(NOK_giornaliero))
+    
+    base |>
+      group_by(
+        periodo,
+        cds_name,
+        sensor_description
+      ) |>
+      summarise(
+        media_nok = mean(NOK_giornaliero, na.rm = TRUE),
+        varianza_nok = if (n() >= 2) {
+          var(NOK_giornaliero, na.rm = TRUE)
+        } else {
+          NA_real_
+        },
+        .groups = "drop"
+      ) |>
+      mutate(
+        U_sensore = media_nok * varianza_nok
+      ) |>
+      filter(is.finite(U_sensore)) |>
+      group_by(periodo) |>
+      summarise(
+        U_macchina = mean(U_sensore, na.rm = TRUE),
+        n_sensori = n_distinct(cds_name),
+        .groups = "drop"
+      ) |>
+      filter(is.finite(U_macchina)) |>
+      arrange(periodo) |>
+      mutate(
+        periodo_label = formatta_periodo_label(
+          periodo,
+          filtri$granularita
+        )
+      )
+  }) |>
+    bindCache(
+      filtri_nok_modal()$macchina,
+      filtri_nok_modal()$date,
+      filtri_nok_modal()$sensori,
+      filtri_nok_modal()$granularita
+    )
+  
+  # ---------------------------------------------------------------------
   # Utilizzo macchina dal NOK.
   # Usa gli stessi dati giornalieri gia' filtrati per il calcolo del NOK.
   #
@@ -2830,7 +2947,7 @@ server <- function(input, output, session) {
         "background:", sfondo, ";"
       ),
       span(
-        "Utilizzo macchina: ",
+        "Utilizzo periodo: ",
         style = "font-size:16px;font-weight:700;color:#4A4A4A;"
       ),
       span(
@@ -2974,6 +3091,95 @@ server <- function(input, output, session) {
     
     girafe(
       ggobj = render_utilizzo_nok_gg(),
+      width_svg = w_px / 72,
+      height_svg = 360 / 72,
+      options = list(
+        opts_tooltip(css = tooltip_css, use_fill = FALSE),
+        opts_hover(css = "opacity:0.8;cursor:pointer;")
+      )
+    )
+  })
+  
+  render_utilizzo_tempo_gg <- function() {
+    
+    andamento <- utilizzo_temporale_modal()
+    granularita <- filtri_nok_modal()$granularita
+    
+    validate(
+      need(
+        nrow(andamento) > 0,
+        "Dati insufficienti per calcolare l'utilizzo macchina con il raggruppamento selezionato"
+      )
+    )
+    
+    breaks_periodo <- calcola_breaks_periodo(andamento$periodo)
+    max_utilizzo <- max(andamento$U_macchina, na.rm = TRUE)
+    
+    ggplot(
+      andamento,
+      aes(x = periodo, y = U_macchina)
+    ) +
+      geom_line(
+        color = "#2C3E50",
+        linewidth = 1
+      ) +
+      geom_point_interactive(
+        aes(
+          tooltip = paste0(
+            "<b>", periodo_label, "</b><br/>",
+            "Utilizzo macchina: ", round(U_macchina, 2), "<br/>",
+            "Sensori valutati: ", n_sensori
+          ),
+          data_id = as.character(periodo)
+        ),
+        color = "#2C3E50",
+        size = 2.8
+      ) +
+      scale_x_date(
+        breaks = breaks_periodo,
+        labels = formatta_periodo_label(
+          breaks_periodo,
+          granularita
+        )
+      ) +
+      scale_y_continuous(
+        breaks = function(limits) {
+          b <- scales::pretty_breaks(n = 8)(limits)
+          sort(unique(c(
+            b,
+            if (is.finite(max_utilizzo)) max_utilizzo
+          )))
+        },
+        expand = expansion(mult = c(0.03, 0.06))
+      ) +
+      labs(
+        x = NULL,
+        y = "Utilizzo macchina"
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_line(
+          color = "#B8C4CC",
+          linewidth = 0.5
+        ),
+        axis.text.x = element_text(
+          size = 12,
+          angle = 90,
+          face = "bold",
+          hjust = 1,
+          vjust = 0.5
+        ),
+        axis.text.y = element_text(size = 11)
+      )
+  }
+  
+  output$modal_utilizzoTempoPlot <- renderGirafe({
+    w_px <- if (!is.null(input$modal_px_width) && input$modal_px_width > 0)
+      input$modal_px_width else 1100
+    
+    girafe(
+      ggobj = render_utilizzo_tempo_gg(),
       width_svg = w_px / 72,
       height_svg = 360 / 72,
       options = list(
