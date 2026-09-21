@@ -2851,10 +2851,11 @@ server <- function(input, output, session) {
     # Soglia P90 su finestre della stessa durata del periodo selezionato.
     # Le finestre partono ogni 7 giorni.
     # Normalmente vengono usate solo finestre completamente precedenti
-    # al periodo selezionato. Se il periodo selezionato copre oltre il 75%
-    # dello storico disponibile, vengono ammesse anche finestre che ricadono
-    # nel periodo selezionato, escludendo comunque la finestra identica
-    # a quella corrente.
+    # al periodo selezionato. Se il periodo selezionato copre oltre il 50%
+    # dello storico disponibile, oppure non esiste alcuna finestra completa
+    # precedente per mancanza di giorni, vengono usate tutte le finestre
+    # disponibili nello storico, escludendo comunque quella identica
+    # al periodo corrente.
     prima_data_storica <- min(base_completa$day, na.rm = TRUE)
     ultima_data_storica <- max(base_completa$day, na.rm = TRUE)
     
@@ -2875,7 +2876,14 @@ server <- function(input, output, session) {
       0
     }
     
-    includi_periodo_nella_soglia <- quota_storico_selezionata > 0.75
+    manca_finestra_precedente <- (
+      filtri$date[1] - durata_giorni
+    ) < prima_data_storica
+    
+    includi_periodo_nella_soglia <- (
+      quota_storico_selezionata > 0.50 ||
+      manca_finestra_precedente
+    )
     
     calcola_u_finestra <- function(inizio_finestra) {
       fine_finestra <- inizio_finestra + durata_giorni - 1L
@@ -2991,6 +2999,7 @@ server <- function(input, output, session) {
       n_settimane_storiche = length(U_storici),
       durata_finestra_giorni = durata_giorni,
       quota_storico_selezionata = quota_storico_selezionata,
+      manca_finestra_precedente = manca_finestra_precedente,
       includi_periodo_nella_soglia = includi_periodo_nella_soglia
     )
   }) |>
