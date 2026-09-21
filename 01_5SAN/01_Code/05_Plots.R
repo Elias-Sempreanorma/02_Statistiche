@@ -1332,7 +1332,7 @@ server <- function(input, output, session) {
           mediana_attivazioni <- stats::median(x[validi], na.rm = TRUE)
           divario_ampio <- (
             x[validi] >= mediana_attivazioni * 5 &
-            (x[validi] - mediana_attivazioni) >= 10
+            (x[validi] - mediana_attivazioni) >= 49
           )
           
           .x$lof_score[validi] <- score
