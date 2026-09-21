@@ -524,9 +524,9 @@ ui <- fluidPage(
       /* Descrizione visibile nell'angolo esterno del relativo rettangolo. */
       .home-corner .card-home .home-card-label {
         position: absolute;
-        width: clamp(165px, 11vw, 195px);
-        min-height: 78px;
-        padding: 11px 13px;
+        width: clamp(180px, 12vw, 215px);
+        min-height: 86px;
+        padding: 13px 15px;
         border: 0;
         border-radius: 9px;
         background: #EFECDE;
@@ -538,14 +538,14 @@ ui <- fluidPage(
         box-shadow: none;
       }
       .home-corner .card-home h4 {
-        font-size: 15px;
+        font-size: 17px;
         font-weight: 700;
-        margin: 0 0 4px 0;
+        margin: 0 0 5px 0;
         color: #24364B;
       }
       .home-corner .card-home p {
-        font-size: 11.5px;
-        line-height: 1.3;
+        font-size: 12.5px;
+        line-height: 1.35;
         margin: 0;
         color: #68737E;
       }
@@ -640,9 +640,27 @@ ui <- fluidPage(
         border-bottom: 2px solid #E4E7EB;
       }
       .modal-nav-bar .btn-group .btn {
-        font-weight: 600;
+        font-weight: 700;
         font-size: 14px;
-        padding: 8px 18px;
+        padding: 9px 19px;
+        color: #24364B !important;
+        background: #EFECDE !important;
+        border-color: #D3CBAF !important;
+        box-shadow: none !important;
+      }
+      .modal-nav-bar .btn-group .btn:hover,
+      .modal-nav-bar .btn-group .btn:focus {
+        color: #24364B !important;
+        background: #E4DEC8 !important;
+        border-color: #C5B995 !important;
+      }
+      .modal-nav-bar .btn-group .btn.active,
+      .modal-nav-bar .btn-group .btn.active:hover,
+      .modal-nav-bar .btn-group .btn.active:focus {
+        color: #24364B !important;
+        background: #D8CEAB !important;
+        border-color: #BBAE82 !important;
+        box-shadow: inset 0 1px 3px rgba(36,54,75,0.12) !important;
       }
 
       /* ------------------------------------------------------------------
@@ -2731,11 +2749,43 @@ server <- function(input, output, session) {
       NA_real_
     }
     
-    # Soglia fissa: P90 degli utilizzi macchina di tutte le settimane
-    # di calendario precedenti alla settimana di inizio del periodo scelto.
+    # Soglia P90 su settimane storiche.
+    # Normalmente usa tutte le settimane precedenti al periodo selezionato.
+    # Se il periodo selezionato copre oltre il 75% dello storico disponibile,
+    # include anche le settimane comprese nel periodo selezionato.
+    prima_data_storica <- min(base_completa$day, na.rm = TRUE)
+    ultima_data_storica <- max(base_completa$day, na.rm = TRUE)
+    
+    giorni_storico_totale <- as.integer(
+      ultima_data_storica - prima_data_storica
+    ) + 1L
+    
+    giorni_periodo_selezionato <- as.integer(
+      filtri$date[2] - filtri$date[1]
+    ) + 1L
+    
+    quota_storico_selezionata <- if (
+      is.finite(giorni_storico_totale) &&
+      giorni_storico_totale > 0
+    ) {
+      giorni_periodo_selezionato / giorni_storico_totale
+    } else {
+      0
+    }
+    
+    includi_periodo_nella_soglia <- quota_storico_selezionata > 0.75
+    
     inizio_settimana_corrente <- as.Date(
       lubridate::floor_date(
         filtri$date[1],
+        "week",
+        week_start = 1
+      )
+    )
+    
+    fine_settimana_corrente <- as.Date(
+      lubridate::floor_date(
+        filtri$date[2],
         "week",
         week_start = 1
       )
@@ -2751,7 +2801,13 @@ server <- function(input, output, session) {
           )
         )
       ) |>
-      filter(settimana < inizio_settimana_corrente) |>
+      filter(
+        if (includi_periodo_nella_soglia) {
+          settimana <= fine_settimana_corrente
+        } else {
+          settimana < inizio_settimana_corrente
+        }
+      ) |>
       group_by(
         settimana,
         cds_name,
@@ -2804,7 +2860,9 @@ server <- function(input, output, session) {
       U_macchina = U_macchina,
       P90_utilizzo = P90_utilizzo,
       stato_utilizzo = stato_utilizzo,
-      n_settimane_storiche = length(U_storici)
+      n_settimane_storiche = length(U_storici),
+      quota_storico_selezionata = quota_storico_selezionata,
+      includi_periodo_nella_soglia = includi_periodo_nella_soglia
     )
   }) |>
     bindCache(
