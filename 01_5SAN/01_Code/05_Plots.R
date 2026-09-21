@@ -506,9 +506,19 @@ ui <- fluidPage(
       }
       .home-corner .card-home:hover {
         transform: none;
-        background: #EFECDE;
+        background: #E7E0C8;
         border: 0;
-        box-shadow: none;
+        box-shadow: inset 0 0 0 2px rgba(161, 148, 103, 0.12);
+      }
+      .home-corner-tl .card-home {
+        border-right: 2px solid #C8C0A7;
+        border-bottom: 2px solid #C8C0A7;
+      }
+      .home-corner-tr .card-home {
+        border-bottom: 2px solid #C8C0A7;
+      }
+      .home-corner-bl .card-home {
+        border-right: 2px solid #C8C0A7;
       }
 
       /* Descrizione visibile nell'angolo esterno del relativo rettangolo. */
@@ -524,7 +534,7 @@ ui <- fluidPage(
         z-index: 2;
       }
       .home-corner .card-home:hover .home-card-label {
-        background: #E8E4D3;
+        background: #DED5B8;
         box-shadow: none;
       }
       .home-corner .card-home h4 {
@@ -1341,7 +1351,16 @@ server <- function(input, output, session) {
           selected = isolate(granularita_nok_corrente()),
           inline = TRUE
         ),
-        girafeOutput("modal_utilizzoTempoPlot", height = "420px")
+        girafeOutput("modal_utilizzoTempoPlot", height = "420px"),
+        div(
+          class = "modal-data-button",
+          actionButton(
+            "modal_btn_dati_nok",
+            "Dati",
+            class = "btn-sm btn-default"
+          )
+        ),
+        uiOutput("modal_panel_dati_nok")
       )
       
     } else if (vista == "allarmi") {
@@ -2522,7 +2541,10 @@ server <- function(input, output, session) {
       height_svg = 380 / 72,
       options    = list(
         opts_tooltip(css = tooltip_css, use_fill = FALSE),
-        opts_hover(css = "opacity:0.8;cursor:pointer;")
+        opts_hover(css = "opacity:0.8;cursor:pointer;"),
+        opts_toolbar(
+          hidden = c("selection", "zoom", "misc")
+        )
       )
     )
   })
@@ -2536,7 +2558,10 @@ server <- function(input, output, session) {
       height_svg = 380 / 72,
       options    = list(
         opts_tooltip(css = tooltip_css, use_fill = FALSE),
-        opts_hover(css = "opacity:0.8;cursor:pointer;")
+        opts_hover(css = "opacity:0.8;cursor:pointer;"),
+        opts_toolbar(
+          hidden = c("selection", "zoom", "misc")
+        )
       )
     )
   })
@@ -2655,7 +2680,6 @@ server <- function(input, output, session) {
     
     filtri <- filtri_nok_modal()
     
-    # Base comune: stessi dati filtrati e stesso NMN usati dal NOK.
     base_completa <- valori_giornalieri_modal_nok() |>
       filter(!outlier_lof) |>
       left_join(
@@ -2670,7 +2694,7 @@ server <- function(input, output, session) {
       ) |>
       filter(is.finite(NOK_giornaliero))
     
-    # Periodo attualmente selezionato.
+    # Utilizzo del periodo selezionato: invariato.
     base <- base_completa |>
       filter(
         day >= filtri$date[1],
@@ -2707,93 +2731,53 @@ server <- function(input, output, session) {
       NA_real_
     }
     
-    # -------------------------------------------------------------------
-    # Riferimento storico:
-    # - stessa durata del periodo selezionato
-    # - nuova finestra ogni 7 giorni
-    # - esclusa l'eventuale finestra identica a quella corrente
-    # -------------------------------------------------------------------
-    durata_giorni <- as.integer(
-      filtri$date[2] - filtri$date[1]
-    ) + 1L
+    # Soglia fissa: P90 degli utilizzi macchina di tutte le settimane
+    # di calendario precedenti alla settimana di inizio del periodo scelto.
+    inizio_settimana_corrente <- as.Date(
+      lubridate::floor_date(
+        filtri$date[1],
+        "week",
+        week_start = 1
+      )
+    )
     
-    calcola_componenti_finestra <- function(inizio) {
-      fine <- inizio + durata_giorni - 1L
-      
-      base_completa |>
-        filter(
-          day >= inizio,
-          day <= fine
-        ) |>
-        group_by(cds_name, sensor_description) |>
-        summarise(
-          media_nok = mean(NOK_giornaliero, na.rm = TRUE),
-          varianza_nok = if (n() >= 2) {
-            var(NOK_giornaliero, na.rm = TRUE)
-          } else {
-            NA_real_
-          },
-          .groups = "drop"
-        ) |>
-        mutate(
-          U_sensore = media_nok * varianza_nok,
-          inizio_finestra = inizio
-        ) |>
-        filter(
-          is.finite(media_nok),
-          is.finite(varianza_nok),
-          is.finite(U_sensore)
+    storico_settimanale <- base_completa |>
+      mutate(
+        settimana = as.Date(
+          lubridate::floor_date(
+            day,
+            "week",
+            week_start = 1
+          )
         )
-    }
+      ) |>
+      filter(settimana < inizio_settimana_corrente) |>
+      group_by(
+        settimana,
+        cds_name,
+        sensor_description
+      ) |>
+      summarise(
+        media_nok = mean(NOK_giornaliero, na.rm = TRUE),
+        varianza_nok = if (n() >= 2) {
+          var(NOK_giornaliero, na.rm = TRUE)
+        } else {
+          NA_real_
+        },
+        .groups = "drop"
+      ) |>
+      mutate(
+        U_sensore = media_nok * varianza_nok
+      ) |>
+      filter(is.finite(U_sensore)) |>
+      group_by(settimana) |>
+      summarise(
+        U_macchina = mean(U_sensore, na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      filter(is.finite(U_macchina))
     
-    prima_data <- if (nrow(base_completa) > 0) {
-      min(base_completa$day, na.rm = TRUE)
-    } else {
-      as.Date(NA)
-    }
-    
-    ultima_data <- if (nrow(base_completa) > 0) {
-      max(base_completa$day, na.rm = TRUE)
-    } else {
-      as.Date(NA)
-    }
-    
-    ultima_partenza <- ultima_data - durata_giorni + 1L
-    
-    if (
-      is.na(prima_data) ||
-      is.na(ultima_data) ||
-      ultima_partenza < prima_data
-    ) {
-      componenti_storici <- tibble()
-      U_storici <- numeric(0)
-    } else {
-      partenze_storiche <- seq.Date(
-        from = prima_data,
-        to = ultima_partenza,
-        by = "7 days"
-      )
-      
-      partenze_storiche <- partenze_storiche[
-        partenze_storiche != filtri$date[1]
-      ]
-      
-      lista_componenti <- lapply(
-        partenze_storiche,
-        calcola_componenti_finestra
-      )
-      
-      componenti_storici <- bind_rows(lista_componenti)
-      
-      U_storici <- componenti_storici |>
-        group_by(inizio_finestra) |>
-        summarise(
-          U_macchina = mean(U_sensore, na.rm = TRUE),
-          .groups = "drop"
-        ) |>
-        filter(is.finite(U_macchina)) |>
-        pull(U_macchina)
-    }
+    U_storici <- storico_settimanale$U_macchina
     
     P90_utilizzo <- if (length(U_storici) > 0) {
       as.numeric(
@@ -2815,88 +2799,12 @@ server <- function(input, output, session) {
       TRUE ~ "Normale"
     )
     
-    # -------------------------------------------------------------------
-    # Attribuzione della causa dell'anomalia.
-    # Per U = media * varianza, la differenza rispetto al riferimento
-    # storico viene scomposta esattamente in due contributi simmetrici:
-    # uno dovuto alla media NOK e uno dovuto alla varianza NOK.
-    # -------------------------------------------------------------------
-    causa_anomalia <- NA_character_
-    contributo_media <- NA_real_
-    contributo_varianza <- NA_real_
-    
-    if (
-      identical(stato_utilizzo, "Anomalo") &&
-      nrow(componenti_storici) > 0
-    ) {
-      riferimento_sensori <- componenti_storici |>
-        group_by(cds_name, sensor_description) |>
-        summarise(
-          media_nok_rif = mean(media_nok, na.rm = TRUE),
-          varianza_nok_rif = mean(varianza_nok, na.rm = TRUE),
-          .groups = "drop"
-        )
-      
-      decomposizione <- per_sensore |>
-        inner_join(
-          riferimento_sensori,
-          by = c("cds_name", "sensor_description")
-        ) |>
-        filter(
-          is.finite(media_nok),
-          is.finite(varianza_nok),
-          is.finite(media_nok_rif),
-          is.finite(varianza_nok_rif)
-        ) |>
-        mutate(
-          contributo_media = (
-            media_nok - media_nok_rif
-          ) * (
-            varianza_nok + varianza_nok_rif
-          ) / 2,
-          contributo_varianza = (
-            varianza_nok - varianza_nok_rif
-          ) * (
-            media_nok + media_nok_rif
-          ) / 2
-        )
-      
-      if (nrow(decomposizione) > 0) {
-        contributo_media <- mean(
-          decomposizione$contributo_media,
-          na.rm = TRUE
-        )
-        contributo_varianza <- mean(
-          decomposizione$contributo_varianza,
-          na.rm = TRUE
-        )
-        
-        pos_media <- max(contributo_media, 0)
-        pos_varianza <- max(contributo_varianza, 0)
-        totale_positivo <- pos_media + pos_varianza
-        
-        if (totale_positivo > 0) {
-          quota_media <- pos_media / totale_positivo
-          
-          causa_anomalia <- case_when(
-            quota_media >= 0.70 ~ "aumento dell'utilizzo",
-            quota_media <= 0.30 ~ "aumento della varianza",
-            TRUE ~ "aumento dell'utilizzo e della varianza"
-          )
-        }
-      }
-    }
-    
     list(
       per_sensore = per_sensore,
       U_macchina = U_macchina,
       P90_utilizzo = P90_utilizzo,
       stato_utilizzo = stato_utilizzo,
-      causa_anomalia = causa_anomalia,
-      contributo_media = contributo_media,
-      contributo_varianza = contributo_varianza,
-      n_finestre_storiche = length(U_storici),
-      durata_giorni = durata_giorni
+      n_settimane_storiche = length(U_storici)
     )
   }) |>
     bindCache(
@@ -2992,41 +2900,12 @@ server <- function(input, output, session) {
         style = "margin-top:7px;font-size:13px;color:#5F6F7F;"
       ),
       div(
-        {
-          n_finestre <- utilizzo$n_finestre_storiche
-          testo_finestre <- if (identical(n_finestre, 1L)) {
-            "1 finestra storica"
-          } else {
-            paste0(n_finestre, " finestre storiche")
-          }
-          
-          causa <- if (
-            identical(stato, "Anomalo") &&
-            !is.null(utilizzo$causa_anomalia) &&
-            length(utilizzo$causa_anomalia) > 0 &&
-            !is.na(utilizzo$causa_anomalia)
-          ) {
-            paste0(
-              ", anomalia dovuta a un ",
-              utilizzo$causa_anomalia
-            )
-          } else {
-            ""
-          }
-          
-          paste0(
-            "Soglia di anomalia: ",
-            soglia,
-            " — riferimento calcolato su ",
-            testo_finestre,
-            " di ",
-            utilizzo$durata_giorni,
-            " giorni",
-            causa,
-            "."
-          )
-        },
+        paste0(
+          "Soglia di anomalia: ",
+          soglia
+        ),
         style = "margin-top:4px;font-size:12px;color:#718096;"
+      )
       )
     )
   })
@@ -3110,7 +2989,10 @@ server <- function(input, output, session) {
       height_svg = 360 / 72,
       options = list(
         opts_tooltip(css = tooltip_css, use_fill = FALSE),
-        opts_hover(css = "opacity:0.8;cursor:pointer;")
+        opts_hover(css = "opacity:0.8;cursor:pointer;"),
+        opts_toolbar(
+          hidden = c("selection", "zoom", "misc")
+        )
       )
     )
   })
@@ -3177,9 +3059,9 @@ server <- function(input, output, session) {
         ),
         axis.text.x = element_text(
           size = 12,
-          angle = 90,
+          angle = 0,
           face = "bold",
-          hjust = 1,
+          hjust = 0.5,
           vjust = 0.5
         ),
         axis.text.y = element_text(size = 11)
@@ -3196,7 +3078,10 @@ server <- function(input, output, session) {
       height_svg = 360 / 72,
       options = list(
         opts_tooltip(css = tooltip_css, use_fill = FALSE),
-        opts_hover(css = "opacity:0.8;cursor:pointer;")
+        opts_hover(css = "opacity:0.8;cursor:pointer;"),
+        opts_toolbar(
+          hidden = c("selection", "zoom", "misc")
+        )
       )
     )
   })
@@ -3297,7 +3182,10 @@ server <- function(input, output, session) {
       height_svg = 420 / 72,
       options    = list(
         opts_tooltip(css = tooltip_css, use_fill = FALSE),
-        opts_hover(css = "opacity:0.8;cursor:pointer;")
+        opts_hover(css = "opacity:0.8;cursor:pointer;"),
+        opts_toolbar(
+          hidden = c("selection", "zoom", "misc")
+        )
       )
     )
   })
@@ -3369,19 +3257,16 @@ server <- function(input, output, session) {
   }, rownames = FALSE, options = list(pageLength = 25, dom = "tip"))
   
   output$modal_tabella_dati_nok <- renderDT({
-    granularita <- filtri_nok_modal()$granularita
     
-    kpi_nok_storico_modal() |>
+    utilizzo_temporale_modal() |>
       transmute(
-        Periodo = formatta_periodo_label(
-          periodo,
-          granularita
-        ),
-        Sensore = etichetta_sensore,
-        NOK     = round(NOK_periodo, 3)
-      ) |>
-      arrange(Periodo, Sensore)
-  }, rownames = FALSE, options = list(pageLength = 25, dom = "tip"))
+        Periodo = periodo_label,
+        `Utilizzo macchina` = round(U_macchina, 2),
+        `Sensori valutati` = n_sensori
+      )
+  },
+  rownames = FALSE,
+  options = list(pageLength = 25, dom = "tip"))
 }
 
 shinyApp(ui, server)
