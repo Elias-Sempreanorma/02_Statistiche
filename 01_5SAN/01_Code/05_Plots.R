@@ -556,6 +556,25 @@ ui <- fluidPage(
         bottom: 12px;
       }
 
+      .alarm-section {
+        margin: 0 0 28px 0;
+        padding: 0 0 24px 0;
+        border-bottom: 1px solid #E4E7EB;
+      }
+      .alarm-section:last-child {
+        border-bottom: 0;
+        margin-bottom: 0;
+        padding-bottom: 0;
+      }
+      .alarm-empty {
+        margin-top: 10px;
+        padding: 12px 14px;
+        border: 1px solid #DDE4EA;
+        border-radius: 7px;
+        background: #F8FAFB;
+        color: #5F6F7F;
+        font-size: 13px;
+      }
       .modal-filters {
         background: #F4F6F8;
         border-radius: 7px;
@@ -899,7 +918,7 @@ ui <- fluidPage(
         label = div(
           class = "home-card-label",
           icon("chart-line", class = "card-icona"),
-          h4("Storico NOK"),
+          h4("NOK"),
           p("KPI e andamento storico del NOK per sensore")
         ),
         class = "card-home"
@@ -1052,7 +1071,7 @@ server <- function(input, output, session) {
           choices = c(
             "Conteggio attivazioni" = "attivazioni",
             "Vita sensori"          = "vita",
-            "Storico NOK"           = "nok",
+            "NOK"                   = "nok",
             "Allarmi e Near Miss"    = "allarmi"
           ),
           selected = vista_iniziale,
@@ -1285,16 +1304,22 @@ server <- function(input, output, session) {
             )
           )
         ),
-        h4("Attivazioni anomale", class = "titolo-sezione"),
-        p(
-          "Giornate escluse dal calcolo del NOK perché individuate come anomalie nel conteggio delle attivazioni."
+        div(
+          class = "alarm-section",
+          h4("Attivazioni anomale", class = "titolo-sezione"),
+          p(
+            "Giornate escluse dal calcolo del NOK perché individuate come anomalie nel conteggio delle attivazioni."
+          ),
+          uiOutput("modal_allarmi_attivazioni_panel")
         ),
-        DTOutput("modal_allarmi_attivazioni"),
-        h4("NOK fuori dall'intervallo ±3σ", class = "titolo-sezione"),
-        p(
-          "Giornate in cui il NOK giornaliero del sensore è fuori dai limiti media storica ± 3σ."
-        ),
-        DTOutput("modal_allarmi_nok")
+        div(
+          class = "alarm-section",
+          h4("Valori NOK anomali", class = "titolo-sezione"),
+          p(
+            "Giornate in cui il NOK giornaliero del sensore è fuori dai limiti media storica ± 3σ."
+          ),
+          uiOutput("modal_allarmi_nok_panel")
+        )
       )
     }
   })
@@ -1940,33 +1965,45 @@ server <- function(input, output, session) {
       )
   })
   
-  output$modal_allarmi_attivazioni <- renderDT({
+  output$modal_allarmi_attivazioni_panel <- renderUI({
     tabella <- allarmi_attivazioni_modal()
     
-    validate(
-      need(
-        nrow(tabella) > 0,
-        "Nessuna anomalia nelle attivazioni nel periodo selezionato."
+    if (nrow(tabella) == 0) {
+      return(
+        div(
+          class = "alarm-empty",
+          "Nessuna anomalia nelle attivazioni nel periodo selezionato."
+        )
       )
-    )
+    }
     
-    tabella |>
+    DTOutput("modal_allarmi_attivazioni")
+  })
+  
+  output$modal_allarmi_nok_panel <- renderUI({
+    tabella <- allarmi_nok_modal()
+    
+    if (nrow(tabella) == 0) {
+      return(
+        div(
+          class = "alarm-empty",
+          "Nessun valore NOK anomalo nel periodo selezionato."
+        )
+      )
+    }
+    
+    DTOutput("modal_allarmi_nok")
+  })
+  
+  output$modal_allarmi_attivazioni <- renderDT({
+    allarmi_attivazioni_modal() |>
       mutate(Data = format(Data, "%d-%m-%Y"))
   },
   rownames = FALSE,
   options = list(pageLength = 15, dom = "tip"))
   
   output$modal_allarmi_nok <- renderDT({
-    tabella <- allarmi_nok_modal()
-    
-    validate(
-      need(
-        nrow(tabella) > 0,
-        "Nessun NOK giornaliero fuori dall'intervallo ±3σ nel periodo selezionato."
-      )
-    )
-    
-    tabella |>
+    allarmi_nok_modal() |>
       mutate(Data = format(Data, "%d-%m-%Y"))
   },
   rownames = FALSE,
@@ -2541,27 +2578,21 @@ server <- function(input, output, session) {
     # -------------------------------------------------------------------
     # Riferimento storico:
     # - stessa durata del periodo selezionato
-    # - sole finestre precedenti al periodo corrente
-    # - una nuova finestra ogni 7 giorni
+    # - nuova finestra ogni 7 giorni
+    # - esclusa l'eventuale finestra identica a quella corrente
     # -------------------------------------------------------------------
     durata_giorni <- as.integer(
       filtri$date[2] - filtri$date[1]
     ) + 1L
     
-    calcola_u_finestra <- function(inizio) {
+    calcola_componenti_finestra <- function(inizio) {
       fine <- inizio + durata_giorni - 1L
       
-      dati_finestra <- base_completa |>
+      base_completa |>
         filter(
           day >= inizio,
           day <= fine
-        )
-      
-      if (nrow(dati_finestra) == 0) {
-        return(NA_real_)
-      }
-      
-      u_sensori <- dati_finestra |>
+        ) |>
         group_by(cds_name, sensor_description) |>
         summarise(
           media_nok = mean(NOK_giornaliero, na.rm = TRUE),
@@ -2573,16 +2604,14 @@ server <- function(input, output, session) {
           .groups = "drop"
         ) |>
         mutate(
-          U_sensore = media_nok * varianza_nok
+          U_sensore = media_nok * varianza_nok,
+          inizio_finestra = inizio
         ) |>
-        filter(is.finite(U_sensore)) |>
-        pull(U_sensore)
-      
-      if (length(u_sensori) == 0) {
-        NA_real_
-      } else {
-        mean(u_sensori)
-      }
+        filter(
+          is.finite(media_nok),
+          is.finite(varianza_nok),
+          is.finite(U_sensore)
+        )
     }
     
     prima_data <- if (nrow(base_completa) > 0) {
@@ -2604,6 +2633,7 @@ server <- function(input, output, session) {
       is.na(ultima_data) ||
       ultima_partenza < prima_data
     ) {
+      componenti_storici <- tibble()
       U_storici <- numeric(0)
     } else {
       partenze_storiche <- seq.Date(
@@ -2616,13 +2646,21 @@ server <- function(input, output, session) {
         partenze_storiche != filtri$date[1]
       ]
       
-      U_storici <- vapply(
+      lista_componenti <- lapply(
         partenze_storiche,
-        calcola_u_finestra,
-        numeric(1)
+        calcola_componenti_finestra
       )
       
-      U_storici <- U_storici[is.finite(U_storici)]
+      componenti_storici <- bind_rows(lista_componenti)
+      
+      U_storici <- componenti_storici |>
+        group_by(inizio_finestra) |>
+        summarise(
+          U_macchina = mean(U_sensore, na.rm = TRUE),
+          .groups = "drop"
+        ) |>
+        filter(is.finite(U_macchina)) |>
+        pull(U_macchina)
     }
     
     P90_utilizzo <- if (length(U_storici) > 0) {
@@ -2645,11 +2683,86 @@ server <- function(input, output, session) {
       TRUE ~ "Normale"
     )
     
+    # -------------------------------------------------------------------
+    # Attribuzione della causa dell'anomalia.
+    # Per U = media * varianza, la differenza rispetto al riferimento
+    # storico viene scomposta esattamente in due contributi simmetrici:
+    # uno dovuto alla media NOK e uno dovuto alla varianza NOK.
+    # -------------------------------------------------------------------
+    causa_anomalia <- NA_character_
+    contributo_media <- NA_real_
+    contributo_varianza <- NA_real_
+    
+    if (
+      identical(stato_utilizzo, "Anomalo") &&
+      nrow(componenti_storici) > 0
+    ) {
+      riferimento_sensori <- componenti_storici |>
+        group_by(cds_name, sensor_description) |>
+        summarise(
+          media_nok_rif = mean(media_nok, na.rm = TRUE),
+          varianza_nok_rif = mean(varianza_nok, na.rm = TRUE),
+          .groups = "drop"
+        )
+      
+      decomposizione <- per_sensore |>
+        inner_join(
+          riferimento_sensori,
+          by = c("cds_name", "sensor_description")
+        ) |>
+        filter(
+          is.finite(media_nok),
+          is.finite(varianza_nok),
+          is.finite(media_nok_rif),
+          is.finite(varianza_nok_rif)
+        ) |>
+        mutate(
+          contributo_media = (
+            media_nok - media_nok_rif
+          ) * (
+            varianza_nok + varianza_nok_rif
+          ) / 2,
+          contributo_varianza = (
+            varianza_nok - varianza_nok_rif
+          ) * (
+            media_nok + media_nok_rif
+          ) / 2
+        )
+      
+      if (nrow(decomposizione) > 0) {
+        contributo_media <- mean(
+          decomposizione$contributo_media,
+          na.rm = TRUE
+        )
+        contributo_varianza <- mean(
+          decomposizione$contributo_varianza,
+          na.rm = TRUE
+        )
+        
+        pos_media <- max(contributo_media, 0)
+        pos_varianza <- max(contributo_varianza, 0)
+        totale_positivo <- pos_media + pos_varianza
+        
+        if (totale_positivo > 0) {
+          quota_media <- pos_media / totale_positivo
+          
+          causa_anomalia <- case_when(
+            quota_media >= 0.70 ~ "aumento dell'utilizzo",
+            quota_media <= 0.30 ~ "aumento della varianza",
+            TRUE ~ "aumento dell'utilizzo e della varianza"
+          )
+        }
+      }
+    }
+    
     list(
       per_sensore = per_sensore,
       U_macchina = U_macchina,
       P90_utilizzo = P90_utilizzo,
       stato_utilizzo = stato_utilizzo,
+      causa_anomalia = causa_anomalia,
+      contributo_media = contributo_media,
+      contributo_varianza = contributo_varianza,
       n_finestre_storiche = length(U_storici),
       durata_giorni = durata_giorni
     )
@@ -2747,15 +2860,40 @@ server <- function(input, output, session) {
         style = "margin-top:7px;font-size:13px;color:#5F6F7F;"
       ),
       div(
-        paste0(
-          "Soglia di anomalia P90: ",
-          soglia,
-          " — riferimento calcolato su ",
-          utilizzo$n_finestre_storiche,
-          " finestre storiche di ",
-          utilizzo$durata_giorni,
-          " giorni, distanziate di 7 giorni."
-        ),
+        {
+          n_finestre <- utilizzo$n_finestre_storiche
+          testo_finestre <- if (identical(n_finestre, 1L)) {
+            "1 finestra storica"
+          } else {
+            paste0(n_finestre, " finestre storiche")
+          }
+          
+          causa <- if (
+            identical(stato, "Anomalo") &&
+            !is.null(utilizzo$causa_anomalia) &&
+            length(utilizzo$causa_anomalia) > 0 &&
+            !is.na(utilizzo$causa_anomalia)
+          ) {
+            paste0(
+              ", anomalia dovuta a un ",
+              utilizzo$causa_anomalia
+            )
+          } else {
+            ""
+          }
+          
+          paste0(
+            "Soglia di anomalia: ",
+            soglia,
+            " — riferimento calcolato su ",
+            testo_finestre,
+            " di ",
+            utilizzo$durata_giorni,
+            " giorni",
+            causa,
+            "."
+          )
+        },
         style = "margin-top:4px;font-size:12px;color:#718096;"
       )
     )
