@@ -196,21 +196,23 @@ ui <- fluidPage(
 
         if (img.naturalWidth > 0 && img.naturalHeight > 0) {
           var rapporto = img.naturalWidth / img.naturalHeight;
-          var maxWidth = Math.min(
-            stageWidth * 0.70,
-            1120,
-            Math.max(420, stageWidth - 340)
-          );
-          var maxHeight = stageHeight * 0.76;
-          var widthByHeight = maxHeight * rapporto;
-          var targetWidth = Math.min(maxWidth, widthByHeight);
 
-          frame.style.width = Math.max(420, targetWidth) + 'px';
+          // Schema grande al centro, ma lascia sempre spazio sufficiente
+          // ai comandi laterali sui monitor piu' stretti.
+          var maxWidth = Math.min(
+            stageWidth * 0.72,
+            1250,
+            Math.max(560, stageWidth - 320)
+          );
+          var maxHeight = stageHeight * 0.74;
+          var targetWidth = Math.min(maxWidth, maxHeight * rapporto);
+
+          frame.style.width = Math.max(560, targetWidth) + 'px';
         }
 
         var stageRect = stage.getBoundingClientRect();
         var frameRect = frame.getBoundingClientRect();
-        var gap = 10;
+        var gap = 8;
 
         stage.style.setProperty(
           '--schema-left',
@@ -263,6 +265,15 @@ ui <- fluidPage(
           pianificaLayoutHome();
         }
       }, true);
+
+      // Le L sono composte da due rettangoli trasparenti ciascuna.
+      // Entrambe le parti richiamano lo stesso actionButton Shiny.
+      $(document).on('click', '.home-l-zone', function () {
+        var target = $(this).attr('data-target');
+        if (target) {
+          $('#' + target).trigger('click');
+        }
+      });
 
       $(document).on('click', '.sensor-hotspot', function () {
         Shiny.setInputValue(
@@ -459,79 +470,135 @@ ui <- fluidPage(
         padding-right: 18px;
       }
       .home-stage {
-        --schema-left: 32%;
-        --schema-right: 68%;
+        --schema-left: 30%;
+        --schema-right: 70%;
         --schema-top: 28%;
         --schema-bottom: 72%;
         position: relative;
         width: 100%;
-        height: clamp(640px, calc(100vh - 205px), 820px);
-        min-height: 640px;
+        height: clamp(600px, calc(100vh - 190px), 760px);
+        min-height: 600px;
         margin: 0 0 12px 0;
         overflow: hidden;
         background: #FFFFFF;
       }
+
+      /* Schema centrale: sempre centrato e molto piu' grande. */
       .home-schema-layer {
         position: absolute;
         inset: 0;
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 6;
+        z-index: 5;
+        pointer-events: none;
       }
       .home-schema-layer .schema-home {
         width: 100%;
         margin: 0;
         display: flex;
         justify-content: center;
-      }
-      .home-schema-layer .schema-frame {
-        width: min(70vw, 1120px);
-        max-width: calc(100% - 340px);
-      }
-      .home-corner {
-        position: absolute;
-        inset: 0;
-        z-index: 2;
-        width: auto;
         pointer-events: none;
       }
-      .home-corner .card-home {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        min-height: 0;
-        margin: 0;
-        padding: 0;
-        border: 0;
-        border-radius: 0;
-        background: #F8FAFB;
-        box-shadow: none;
-        color: #4A4A4A;
-        text-align: left;
+      .home-schema-layer .schema-frame {
+        width: min(72vw, 1250px);
+        max-width: calc(100% - 320px);
         pointer-events: auto;
-        transition: background-color 0.15s ease;
       }
-      .home-corner .card-home:hover {
-        transform: none;
-        background: #EEF4F8;
-        box-shadow: none;
-        border-color: transparent;
-      }
-      .home-corner .card-home > div {
+
+      /* --------------------------------------------------------------
+         Quattro aree ad L.
+         Ogni L e' composta da due rettangoli trasparenti: niente enormi
+         button sovrapposti e nessun riempimento grigio della pagina.
+         -------------------------------------------------------------- */
+      .home-l-zone {
         position: absolute;
-        width: clamp(135px, 9.5vw, 168px);
-        min-height: 74px;
+        z-index: 2;
+        background: transparent;
+        cursor: pointer;
+        transition: background-color 0.12s ease;
+      }
+      .home-l-zone:hover {
+        background: rgba(127, 166, 201, 0.08);
+      }
+
+      /* alto sinistra */
+      .home-zone-tl-top {
+        top: 0;
+        left: 0;
+        width: 50%;
+        height: var(--schema-top);
+      }
+      .home-zone-tl-side {
+        top: var(--schema-top);
+        left: 0;
+        width: var(--schema-left);
+        height: calc(50% - var(--schema-top));
+      }
+
+      /* alto destra */
+      .home-zone-tr-top {
+        top: 0;
+        left: 50%;
+        right: 0;
+        height: var(--schema-top);
+      }
+      .home-zone-tr-side {
+        top: var(--schema-top);
+        left: var(--schema-right);
+        right: 0;
+        height: calc(50% - var(--schema-top));
+      }
+
+      /* basso sinistra */
+      .home-zone-bl-side {
+        top: 50%;
+        left: 0;
+        width: var(--schema-left);
+        height: calc(var(--schema-bottom) - 50%);
+      }
+      .home-zone-bl-bottom {
+        top: var(--schema-bottom);
+        left: 0;
+        width: 50%;
+        bottom: 0;
+      }
+
+      /* basso destra */
+      .home-zone-br-side {
+        top: 50%;
+        left: var(--schema-right);
+        right: 0;
+        height: calc(var(--schema-bottom) - 50%);
+      }
+      .home-zone-br-bottom {
+        top: var(--schema-bottom);
+        left: 50%;
+        right: 0;
+        bottom: 0;
+      }
+
+      /* Le card visibili restano piccole negli angoli esterni. */
+      .home-corner {
+        position: absolute;
+        z-index: 10;
+        width: clamp(145px, 10vw, 175px);
+      }
+      .home-corner .card-home {
+        width: 100%;
+        min-height: 78px;
+        margin: 0;
         padding: 10px 11px;
+        background: #FFFFFF;
         border: 1px solid #DDE4EA;
         border-radius: 9px;
-        background: #FFFFFF;
         box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        text-align: left;
       }
-      .home-corner .card-home:hover > div {
+      .home-corner .card-home:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 14px rgba(0,0,0,0.09);
         border-color: #7FA6C9;
-        box-shadow: 0 5px 12px rgba(0,0,0,0.09);
       }
       .home-corner .card-home .card-icona {
         font-size: 17px;
@@ -539,68 +606,30 @@ ui <- fluidPage(
       }
       .home-corner .card-home h4 {
         font-size: 13px;
-        margin-bottom: 3px;
+        margin: 0 0 3px 0;
       }
       .home-corner .card-home p {
         font-size: 10.5px;
         line-height: 1.25;
+        margin: 0;
       }
-      .home-corner-tl .card-home {
-        clip-path: polygon(
-          0 0,
-          50% 0,
-          50% var(--schema-top),
-          var(--schema-left) var(--schema-top),
-          var(--schema-left) 50%,
-          0 50%
-        );
+      .home-corner-tl {
+        top: 12px;
+        left: 12px;
       }
-      .home-corner-tr .card-home {
-        clip-path: polygon(
-          50% 0,
-          100% 0,
-          100% 50%,
-          var(--schema-right) 50%,
-          var(--schema-right) var(--schema-top),
-          50% var(--schema-top)
-        );
+      .home-corner-tr {
+        top: 12px;
+        right: 12px;
       }
-      .home-corner-bl .card-home {
-        clip-path: polygon(
-          0 50%,
-          var(--schema-left) 50%,
-          var(--schema-left) var(--schema-bottom),
-          50% var(--schema-bottom),
-          50% 100%,
-          0 100%
-        );
+      .home-corner-bl {
+        bottom: 12px;
+        left: 12px;
       }
-      .home-corner-br .card-home {
-        clip-path: polygon(
-          var(--schema-right) 50%,
-          100% 50%,
-          100% 100%,
-          50% 100%,
-          50% var(--schema-bottom),
-          var(--schema-right) var(--schema-bottom)
-        );
+      .home-corner-br {
+        right: 12px;
+        bottom: 12px;
       }
-      .home-corner-tl .card-home > div {
-        top: 14px;
-        left: 14px;
-      }
-      .home-corner-tr .card-home > div {
-        top: 14px;
-        right: 14px;
-      }
-      .home-corner-bl .card-home > div {
-        bottom: 14px;
-        left: 14px;
-      }
-      .home-corner-br .card-home > div {
-        right: 14px;
-        bottom: 14px;
-      }
+
       .modal-filters {
         background: #F4F6F8;
         border-radius: 7px;
@@ -803,14 +832,16 @@ ui <- fluidPage(
 
       @media (max-width: 1050px) {
         .home-stage {
-          height: 640px;
-          min-height: 640px;
+          height: 620px;
+          min-height: 620px;
         }
         .home-schema-layer .schema-frame {
-          max-width: calc(100% - 280px);
+          max-width: calc(100% - 270px);
         }
-        .home-corner .card-home > div {
+        .home-corner {
           width: 132px;
+        }
+        .home-corner .card-home {
           min-height: 70px;
           padding: 9px 10px;
         }
@@ -827,16 +858,21 @@ ui <- fluidPage(
           height: auto;
           min-height: 0;
           overflow: visible;
-          background: transparent;
+        }
+        .home-l-zone {
+          display: none;
         }
         .home-schema-layer,
         .home-corner {
           position: static;
           width: 100%;
-          pointer-events: auto;
         }
         .home-schema-layer {
           order: 1;
+          pointer-events: auto;
+        }
+        .home-schema-layer .schema-home {
+          pointer-events: auto;
         }
         .home-schema-layer .schema-frame {
           width: 100% !important;
@@ -855,26 +891,8 @@ ui <- fluidPage(
           order: 5;
         }
         .home-corner .card-home {
-          position: static;
           width: 100%;
-          height: auto;
           min-height: 82px;
-          padding: 10px 12px;
-          border: 1px solid #E4E7EB;
-          border-radius: 9px;
-          background: #FFFFFF;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.06);
-          clip-path: none !important;
-        }
-        .home-corner .card-home > div {
-          position: static;
-          width: 100%;
-          min-height: 0;
-          padding: 0;
-          border: 0;
-          border-radius: 0;
-          background: transparent;
-          box-shadow: none;
         }
         .sensor-hotspot {
           width: 18px;
@@ -924,6 +942,16 @@ ui <- fluidPage(
       class = "home-schema-layer",
       uiOutput("schema_sensori")
     ),
+    
+    # Quattro aree ad L attorno allo schema: due rettangoli per funzione.
+    tags$div(class = "home-l-zone home-zone-tl-top", `data-target` = "home_attivazioni"),
+    tags$div(class = "home-l-zone home-zone-tl-side", `data-target` = "home_attivazioni"),
+    tags$div(class = "home-l-zone home-zone-tr-top", `data-target` = "home_nok"),
+    tags$div(class = "home-l-zone home-zone-tr-side", `data-target` = "home_nok"),
+    tags$div(class = "home-l-zone home-zone-bl-side", `data-target` = "home_vita"),
+    tags$div(class = "home-l-zone home-zone-bl-bottom", `data-target` = "home_vita"),
+    tags$div(class = "home-l-zone home-zone-br-side", `data-target` = "home_allarmi"),
+    tags$div(class = "home-l-zone home-zone-br-bottom", `data-target` = "home_allarmi"),
     
     div(
       class = "home-corner home-corner-tl",
