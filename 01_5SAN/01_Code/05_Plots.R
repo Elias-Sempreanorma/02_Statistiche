@@ -1057,6 +1057,7 @@ server <- function(input, output, session) {
   mostra_dati_trend <- reactiveVal(FALSE)
   mostra_dati_tank <- reactiveVal(FALSE)
   mostra_dati_nok <- reactiveVal(FALSE)
+  mostra_dati_profilo_nok <- reactiveVal(FALSE)
   mostra_outlier_nok <- reactiveVal(FALSE)
   
   # I filtri vengono applicati solo dopo una breve pausa dall'ultima scelta.
@@ -1127,6 +1128,7 @@ server <- function(input, output, session) {
     mostra_dati_trend(FALSE)
     mostra_dati_tank(FALSE)
     mostra_dati_nok(FALSE)
+    mostra_dati_profilo_nok(FALSE)
     
     showModal(modalDialog(
       title = NULL,
@@ -1212,6 +1214,7 @@ server <- function(input, output, session) {
     mostra_dati_trend(FALSE)
     mostra_dati_tank(FALSE)
     mostra_dati_nok(FALSE)
+    mostra_dati_profilo_nok(FALSE)
     mostra_outlier_nok(FALSE)
     
   }, ignoreInit = TRUE)
@@ -1361,6 +1364,15 @@ server <- function(input, output, session) {
         uiOutput("modal_panel_outlier_nok"),
         uiOutput("modal_utilizzo_macchina"),
         girafeOutput("modal_utilizzoNokPlot", height = "420px"),
+        div(
+          class = "modal-data-button",
+          actionButton(
+            "modal_btn_dati_profilo_nok",
+            "Dati",
+            class = "btn-sm btn-default"
+          )
+        ),
+        uiOutput("modal_panel_dati_profilo_nok"),
         h4("Andamento NOK nel tempo", class = "titolo-sezione"),
         radioButtons(
           "modal_granularita_nok",
@@ -1437,6 +1449,10 @@ server <- function(input, output, session) {
   
   observeEvent(input$modal_btn_dati_nok, {
     mostra_dati_nok(!mostra_dati_nok())
+  })
+  
+  observeEvent(input$modal_btn_dati_profilo_nok, {
+    mostra_dati_profilo_nok(!mostra_dati_profilo_nok())
   })
   
   observeEvent(input$modal_btn_outlier_nok, {
@@ -1568,6 +1584,14 @@ server <- function(input, output, session) {
   output$modal_panel_dati_nok <- renderUI({
     if (!mostra_dati_nok()) return(NULL)
     div(class = "modal-data-panel", DTOutput("modal_tabella_dati_nok"))
+  })
+  
+  output$modal_panel_dati_profilo_nok <- renderUI({
+    if (!mostra_dati_profilo_nok()) return(NULL)
+    div(
+      class = "modal-data-panel",
+      DTOutput("modal_tabella_dati_profilo_nok")
+    )
   })
   
   output$modal_panel_outlier_nok <- renderUI({
@@ -2919,6 +2943,20 @@ server <- function(input, output, session) {
       U_storici <- U_storici[is.finite(U_storici)]
     }
     
+    P10_utilizzo <- if (length(U_storici) > 0) {
+      as.numeric(
+        stats::quantile(
+          U_storici,
+          probs = 0.10,
+          na.rm = TRUE,
+          names = FALSE,
+          type = 7
+        )
+      )
+    } else {
+      NA_real_
+    }
+    
     P90_utilizzo <- if (length(U_storici) > 0) {
       as.numeric(
         stats::quantile(
@@ -2934,8 +2972,11 @@ server <- function(input, output, session) {
     }
     
     stato_utilizzo <- case_when(
-      !is.finite(U_macchina) | !is.finite(P90_utilizzo) ~ "N/D",
-      U_macchina > P90_utilizzo ~ "Anomalo",
+      !is.finite(U_macchina) |
+        !is.finite(P10_utilizzo) |
+        !is.finite(P90_utilizzo) ~ "N/D",
+      U_macchina < P10_utilizzo ~ "Basso",
+      U_macchina > P90_utilizzo ~ "Elevato",
       TRUE ~ "Normale"
     )
     
@@ -2943,6 +2984,7 @@ server <- function(input, output, session) {
       per_sensore = per_sensore,
       per_sensore_confronto = per_sensore_confronto,
       U_macchina = U_macchina,
+      P10_utilizzo = P10_utilizzo,
       P90_utilizzo = P90_utilizzo,
       stato_utilizzo = stato_utilizzo,
       n_finestre_storiche = length(U_storici),
@@ -2976,7 +3018,21 @@ server <- function(input, output, session) {
       )
     }
     
-    soglia <- if (
+    soglia_bassa <- if (
+      length(utilizzo$P10_utilizzo) == 0 ||
+      !is.finite(utilizzo$P10_utilizzo)
+    ) {
+      "N/D"
+    } else {
+      formatC(
+        utilizzo$P10_utilizzo,
+        format = "f",
+        digits = 2,
+        decimal.mark = ","
+      )
+    }
+    
+    soglia_alta <- if (
       length(utilizzo$P90_utilizzo) == 0 ||
       !is.finite(utilizzo$P90_utilizzo)
     ) {
@@ -2995,14 +3051,16 @@ server <- function(input, output, session) {
     colore <- switch(
       stato,
       "Normale" = "#19764A",
-      "Anomalo" = "#B42318",
+      "Elevato" = "#A65A52",
+      "Basso" = "#58758F",
       "#5F6F7F"
     )
     
     sfondo <- switch(
       stato,
       "Normale" = "#F2FBF6",
-      "Anomalo" = "#FFF5F4",
+      "Elevato" = "#FBF3F2",
+      "Basso" = "#F2F6FA",
       "#F4F8FB"
     )
     
@@ -3046,8 +3104,10 @@ server <- function(input, output, session) {
       ),
       div(
         paste0(
-          "Soglia di anomalia: ",
-          soglia
+          "Intervallo normale: ",
+          soglia_bassa,
+          " – ",
+          soglia_alta
         ),
         style = "margin-top:4px;font-size:12px;color:#718096;"
       )
@@ -3486,6 +3546,21 @@ server <- function(input, output, session) {
     
     esclusi
   }, rownames = FALSE, options = list(pageLength = 25, dom = "tip"))
+  
+  output$modal_tabella_dati_profilo_nok <- renderDT({
+    
+    utilizzo_nok_modal()$per_sensore_confronto |>
+      transmute(
+        Confronto = as.character(confronto),
+        Sensore = etichetta_sensore,
+        `Media NOK` = round(media_nok, 3),
+        `Varianza NOK` = round(varianza_nok, 3),
+        `Utilizzo sensore` = round(U_sensore, 3)
+      ) |>
+      arrange(Confronto, Sensore)
+  },
+  rownames = FALSE,
+  options = list(pageLength = 25, dom = "tip"))
   
   output$modal_tabella_dati_nok <- renderDT({
     
