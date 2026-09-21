@@ -68,6 +68,7 @@ sensori_lookup <- dati |>
 
 data_min <- min(dati$day, na.rm = TRUE)
 data_max <- max(dati$day, na.rm = TRUE)
+data_start_default <- max(data_min, data_max - 13)
 
 # ---------------------------------------------------------------------------
 # Immagini disponibili e coordinate dei punti interattivi.
@@ -213,11 +214,13 @@ ui <- fluidPage(
         overflow-y: auto;
       }
 
-      #nok_table table {
+      #nok_table table,
+      #modal_nok_table table {
         width: 100%;
         border-collapse: collapse;
       }
-      #nok_table th {
+      #nok_table th,
+      #modal_nok_table th {
         background-color: #E9EDF1;
         color: #4A4A4A;
         font-weight: 600;
@@ -225,12 +228,14 @@ ui <- fluidPage(
         padding: 8px 10px;
         border-bottom: 2px solid #D5DBE0;
       }
-      #nok_table td {
+      #nok_table td,
+      #modal_nok_table td {
         text-align: center !important;
-        padding: 8px 10px;
+        padding: 10px 12px;
         border-bottom: 1px solid #E4E7EB;
-        font-weight: 600;
-        font-size: 15px;
+        color: #24364B;
+        font-weight: 700;
+        font-size: 18px;
       }
       .pannello-filtri {
         background-color: #F4F6F8;
@@ -697,7 +702,7 @@ ui <- fluidPage(
              dateRangeInput(
                "date",
                "Periodo:",
-               start = data_min,
+               start = data_start_default,
                end = data_max,
                min = data_min,
                max = data_max,
@@ -820,6 +825,7 @@ server <- function(input, output, session) {
   mostra_dati_trend <- reactiveVal(FALSE)
   mostra_dati_tank <- reactiveVal(FALSE)
   mostra_dati_nok <- reactiveVal(FALSE)
+  mostra_outlier_nok <- reactiveVal(FALSE)
   
   # I filtri vengono applicati solo dopo una breve pausa dall'ultima scelta.
   # In questo modo una selezione multipla genera un solo aggiornamento.
@@ -944,6 +950,7 @@ server <- function(input, output, session) {
     mostra_dati_trend(FALSE)
     mostra_dati_tank(FALSE)
     mostra_dati_nok(FALSE)
+    mostra_outlier_nok(FALSE)
     
   }, ignoreInit = TRUE)
   
@@ -1077,6 +1084,16 @@ server <- function(input, output, session) {
         ),
         h4("NOK per sensore", class = "titolo-sezione"),
         tableOutput("modal_nok_table"),
+        div(
+          class = "modal-data-button",
+          actionButton(
+            "modal_btn_outlier_nok",
+            "Attivazioni escluse",
+            icon = icon("circle-info"),
+            class = "btn-sm btn-default"
+          )
+        ),
+        uiOutput("modal_panel_outlier_nok"),
         uiOutput("modal_utilizzo_macchina"),
         h4("Profilo utilizzo macchina", class = "titolo-sezione"),
         girafeOutput("modal_utilizzoNokPlot", height = "420px"),
@@ -1110,6 +1127,10 @@ server <- function(input, output, session) {
   
   observeEvent(input$modal_btn_dati_nok, {
     mostra_dati_nok(!mostra_dati_nok())
+  })
+  
+  observeEvent(input$modal_btn_outlier_nok, {
+    mostra_outlier_nok(!mostra_outlier_nok())
   })
   
   # ---------------------------------------------------------------------
@@ -1239,6 +1260,20 @@ server <- function(input, output, session) {
     div(class = "modal-data-panel", DTOutput("modal_tabella_dati_nok"))
   })
   
+  output$modal_panel_outlier_nok <- renderUI({
+    if (!mostra_outlier_nok()) return(NULL)
+    
+    div(
+      class = "modal-data-panel",
+      p(
+        "Attivazioni giornaliere escluse dal calcolo del NOK nel periodo selezionato. ",
+        "Il filtro statistico viene applicato al conteggio giornaliero delle attivazioni, ",
+        "separatamente per ciascun sensore."
+      ),
+      DTOutput("modal_tabella_outlier_nok")
+    )
+  })
+  
   # ---------------------------------------------------------------------
   # Reactive condivisi: il valore giornaliero per sensore e la media
   # storica (NMN) vengono calcolati una sola volta e riusati sia dalla
@@ -1248,24 +1283,76 @@ server <- function(input, output, session) {
   # scelgono la stessa macchina/sensori, il risultato viene riusato
   # invece di ricalcolato.
   # ---------------------------------------------------------------------
+  # Unica funzione per preparare i dati giornalieri usati dal NOK.
+  # Il LOF viene calcolato sul CONTEGGIO GIORNALIERO delle attivazioni
+  # (non sul NOK), separatamente per ciascun sensore.
+  prepara_valori_giornalieri_nok <- function(macchina, sensori) {
+    
+    dati |>
+      ungroup() |>
+      filter(
+        coupon == macchina,
+        cds_name %in% sensori
+      ) |>
+      group_by(cds_name, sensor_description, day) |>
+      summarise(
+        daily_count = sum(increment, na.rm = TRUE),
+        daily_uptime = if (all(is.na(daily_uptime))) {
+          NA_real_
+        } else {
+          max(daily_uptime, na.rm = TRUE)
+        },
+        .groups = "drop"
+      ) |>
+      mutate(
+        daily_value = case_when(
+          is.na(daily_uptime) | daily_uptime <= 0 ~ NA_real_,
+          TRUE ~ daily_count / daily_uptime
+        )
+      ) |>
+      group_by(cds_name, sensor_description) |>
+      group_modify(~ {
+        x <- .x$daily_count
+        validi <- is.finite(x)
+        
+        .x$lof_score <- NA_real_
+        .x$outlier_lof <- FALSE
+        
+        n_validi <- sum(validi)
+        
+        # Con pochi dati il LOF non e' sufficientemente stabile:
+        # in quel caso non viene esclusa alcuna giornata.
+        if (n_validi >= 6L && dplyr::n_distinct(x[validi]) >= 3L) {
+          k <- min(4L, n_validi - 1L)
+          score <- dbscan::lof(
+            matrix(x[validi], ncol = 1),
+            minPts = k
+          )
+          
+          .x$lof_score[validi] <- score
+          .x$outlier_lof[validi] <- !is.na(score) & score > 2
+        }
+        
+        .x
+      }) |>
+      ungroup()
+  }
+  
   valori_giornalieri <- reactive({
     
     filtri <- filtri_principali()
     req(length(filtri$sensori) > 0)
     
-    dati |>
-      ungroup() |>
-      filter(
-        coupon == filtri$macchina,
-        cds_name %in% filtri$sensori
-      ) |>
-      group_by(cds_name, sensor_description, day) |>
-      summarise(daily_value = sum(increment, na.rm = TRUE) / unique(daily_uptime), .groups = "drop")
+    prepara_valori_giornalieri_nok(
+      filtri$macchina,
+      filtri$sensori
+    )
   }) |>
     bindCache(filtri_principali()$macchina, filtri_principali()$sensori)
   
   nmn_storico <- reactive({
     valori_giornalieri() |>
+      filter(!outlier_lof) |>
       group_by(cds_name, sensor_description) |>
       summarise(NMN = mean(daily_value, na.rm = TRUE), .groups = "drop")
   })
@@ -1289,6 +1376,7 @@ server <- function(input, output, session) {
     
     nmm_per_sensore <- valori_giornalieri() |>
       filter(
+        !outlier_lof,
         day >= filtri$date[1],
         day <= filtri$date[2]
       ) |>
@@ -1467,22 +1555,16 @@ server <- function(input, output, session) {
     filtri <- filtri_nok_modal()
     req(length(filtri$sensori) > 0)
     
-    dati |>
-      ungroup() |>
-      filter(
-        coupon == filtri$macchina,
-        cds_name %in% filtri$sensori
-      ) |>
-      group_by(cds_name, sensor_description, day) |>
-      summarise(
-        daily_value = sum(increment, na.rm = TRUE) / unique(daily_uptime),
-        .groups = "drop"
-      )
+    prepara_valori_giornalieri_nok(
+      filtri$macchina,
+      filtri$sensori
+    )
   }) |>
     bindCache(filtri_nok_modal()$macchina, filtri_nok_modal()$sensori)
   
   nmn_storico_modal_nok <- reactive({
     valori_giornalieri_modal_nok() |>
+      filter(!outlier_lof) |>
       group_by(cds_name, sensor_description) |>
       summarise(NMN = mean(daily_value, na.rm = TRUE), .groups = "drop")
   })
@@ -1493,6 +1575,7 @@ server <- function(input, output, session) {
     
     nmm_per_sensore <- valori_giornalieri_modal_nok() |>
       filter(
+        !outlier_lof,
         day >= filtri$date[1],
         day <= filtri$date[2]
       ) |>
@@ -2010,6 +2093,7 @@ server <- function(input, output, session) {
     
     valori_giornalieri_modal_nok() |>
       filter(
+        !outlier_lof,
         day >= filtri$date[1],
         day <= filtri$date[2]
       ) |>
@@ -2035,9 +2119,7 @@ server <- function(input, output, session) {
   
   # ---------------------------------------------------------------------
   # Utilizzo macchina dal NOK.
-  # Riusa i valori giornalieri e l'NMN gia' esistenti: nessuna seconda
-  # pipeline NOK. LOF viene applicato solo a questo calcolo, sensore per
-  # sensore, sui NOK giornalieri del periodo selezionato.
+  # Usa gli stessi dati giornalieri gia' filtrati per il calcolo del NOK.
   #
   # U_sensore  = media(NOK) * varianza(NOK)
   # U_macchina = media(U_sensore)
@@ -2048,6 +2130,7 @@ server <- function(input, output, session) {
     
     base <- valori_giornalieri_modal_nok() |>
       filter(
+        !outlier_lof,
         day >= filtri$date[1],
         day <= filtri$date[2]
       ) |>
@@ -2061,40 +2144,17 @@ server <- function(input, output, session) {
           TRUE ~ daily_value / NMN
         )
       ) |>
-      filter(is.finite(NOK_giornaliero)) |>
-      group_by(cds_name, sensor_description) |>
-      group_modify(~ {
-        x <- .x$NOK_giornaliero
-        n <- length(x)
-        
-        # Con pochi punti il LOF e' instabile: in quel caso non si elimina nulla.
-        if (n < 6L || dplyr::n_distinct(x) < 3L) {
-          .x$lof_score <- NA_real_
-          .x$outlier_lof <- FALSE
-          return(.x)
-        }
-        
-        k <- min(4L, n - 1L)
-        score <- dbscan::lof(matrix(x, ncol = 1), minPts = k)
-        
-        .x$lof_score <- score
-        .x$outlier_lof <- !is.na(score) & score > 2
-        .x
-      }) |>
-      ungroup()
+      filter(is.finite(NOK_giornaliero))
     
     per_sensore <- base |>
       group_by(cds_name, sensor_description) |>
       summarise(
         n_osservazioni = n(),
-        n_outlier_lof = sum(outlier_lof, na.rm = TRUE),
-        media_nok = {
-          x <- NOK_giornaliero[!outlier_lof]
-          if (length(x) > 0) mean(x, na.rm = TRUE) else NA_real_
-        },
-        varianza_nok = {
-          x <- NOK_giornaliero[!outlier_lof]
-          if (length(x) >= 2) var(x, na.rm = TRUE) else NA_real_
+        media_nok = mean(NOK_giornaliero, na.rm = TRUE),
+        varianza_nok = if (n() >= 2) {
+          var(NOK_giornaliero, na.rm = TRUE)
+        } else {
+          NA_real_
         },
         .groups = "drop"
       ) |>
@@ -2149,17 +2209,23 @@ server <- function(input, output, session) {
     
     div(
       style = paste0(
-        "margin:12px 0 18px 0;",
-        "padding:12px 16px;",
-        "border:1px solid #DDE4EA;",
-        "border-radius:8px;",
-        "background:#F8FAFB;"
+        "margin:14px 0 20px 0;",
+        "padding:15px 18px;",
+        "border:2px solid #7FA6C9;",
+        "border-radius:9px;",
+        "background:#F4F8FB;"
       ),
-      span("Utilizzo macchina: ", style = "font-weight:600;color:#4A4A4A;"),
-      span(valore, style = "font-size:20px;font-weight:700;color:#24364B;"),
+      span(
+        "Utilizzo macchina: ",
+        style = "font-size:16px;font-weight:700;color:#4A4A4A;"
+      ),
+      span(
+        valore,
+        style = "font-size:28px;font-weight:800;color:#24364B;"
+      ),
       div(
-        "Media sui sensori di media(NOK) × varianza(NOK), dopo filtro LOF.",
-        style = "margin-top:4px;font-size:12px;color:#718096;"
+        "Indice dell’intensità di utilizzo rispetto al comportamento storico dei sensori. Valori alti indicano uno stress della macchina più elevato rispetto allo storico.",
+        style = "margin-top:6px;font-size:13px;color:#5F6F7F;"
       )
     )
   })
@@ -2184,8 +2250,7 @@ server <- function(input, output, session) {
           "<b>", etichetta_sensore, "</b><br/>",
           "Media NOK: ", round(media_nok, 4), "<br/>",
           "Varianza NOK: ", round(varianza_nok, 4), "<br/>",
-          "U sensore: ", round(U_sensore, 4), "<br/>",
-          "Outlier LOF esclusi: ", n_outlier_lof
+          "U sensore: ", round(U_sensore, 4)
         )
       )
     
@@ -2388,6 +2453,33 @@ server <- function(input, output, session) {
         )
       )
   }, rownames = FALSE, options = list(pageLength = 25, dom = "t"))
+  
+  output$modal_tabella_outlier_nok <- renderDT({
+    
+    filtri <- filtri_nok_modal()
+    
+    esclusi <- valori_giornalieri_modal_nok() |>
+      filter(
+        outlier_lof,
+        day >= filtri$date[1],
+        day <= filtri$date[2]
+      ) |>
+      arrange(day, cds_name) |>
+      transmute(
+        Sensore = paste(cds_name, sensor_description, sep = " - "),
+        Data = format(day, "%d-%m-%Y"),
+        Attivazioni = round(daily_count)
+      )
+    
+    validate(
+      need(
+        nrow(esclusi) > 0,
+        "Nessuna attivazione esclusa nel periodo selezionato."
+      )
+    )
+    
+    esclusi
+  }, rownames = FALSE, options = list(pageLength = 25, dom = "tip"))
   
   output$modal_tabella_dati_nok <- renderDT({
     granularita <- filtri_nok_modal()$granularita
