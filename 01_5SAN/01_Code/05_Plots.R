@@ -2224,7 +2224,7 @@ server <- function(input, output, session) {
         style = "font-size:28px;font-weight:800;color:#24364B;"
       ),
       div(
-        "Indice dell’intensità di utilizzo rispetto al comportamento storico dei sensori. Valori alti indicano uno stress della macchina più elevato rispetto allo storico.",
+        "Indice dell’intensità di utilizzo rispetto al comportamento storico dei sensori. Valori alti indicano uno stress della macchina più elevato o discrepanza nell'utilizzo rispetto allo storico .",
         style = "margin-top:6px;font-size:13px;color:#5F6F7F;"
       )
     )
