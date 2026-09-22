@@ -3236,16 +3236,6 @@ server <- function(input, output, session) {
       )
     )
     
-    selezionato <- storico |>
-      filter(tipo == "Periodo selezionato")
-    
-    validate(
-      need(
-        nrow(selezionato) > 0,
-        "Nessuna settimana disponibile nel periodo selezionato"
-      )
-    )
-    
     stato <- utilizzo$stato_utilizzo
     
     colore_periodo <- switch(
@@ -3264,10 +3254,6 @@ server <- function(input, output, session) {
       "#F1F3F5"
     )
     
-    inizio_area <- min(selezionato$inizio_finestra, na.rm = TRUE)
-    fine_area <- max(selezionato$inizio_finestra, na.rm = TRUE) + 6L
-    media_periodo <- mean(selezionato$U_macchina, na.rm = TRUE)
-    
     storico <- storico |>
       mutate(
         tooltip_utilizzo = paste0(
@@ -3285,6 +3271,20 @@ server <- function(input, output, session) {
           round(U_macchina, 3)
         )
       )
+    
+    selezionato <- storico |>
+      filter(tipo == "Periodo selezionato")
+    
+    validate(
+      need(
+        nrow(selezionato) > 0,
+        "Nessuna settimana disponibile nel periodo selezionato"
+      )
+    )
+    
+    inizio_area <- min(selezionato$inizio_finestra, na.rm = TRUE)
+    fine_area <- max(selezionato$inizio_finestra, na.rm = TRUE) + 6L
+    media_periodo <- mean(selezionato$U_macchina, na.rm = TRUE)
     
     ggplot(
       storico,
