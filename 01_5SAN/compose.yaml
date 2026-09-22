@@ -5,6 +5,7 @@ services:
     image: san-dashboard:latest
     restart: unless-stopped
     ports:
+      - "3837:3838"
       - "3838:3838"
       - "3839:3838"
     volumes:
