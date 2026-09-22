@@ -1468,7 +1468,7 @@ server <- function(input, output, session) {
           class = "alarm-section",
           h4("Attivazioni anomale", class = "titolo-sezione"),
           p(
-            "Giornate escluse dal calcolo del NOK perché individuate come anomalie nel conteggio delle attivazioni, incluse le giornate a 0 per sensori normalmente attivi."
+            "Giornate escluse dal calcolo del NOK perché individuate come anomalie nel conteggio delle attivazioni, inclusi valori negativi e giornate a 0 per sensori normalmente attivi."
           ),
           uiOutput("modal_allarmi_attivazioni_panel")
         ),
@@ -1687,7 +1687,7 @@ server <- function(input, output, session) {
       class = "modal-data-panel",
       p(
         "Attivazioni giornaliere escluse dal calcolo del NOK nel periodo selezionato. ",
-        "Sono considerate anomale anche le giornate con 0 attivazioni quando il sensore ha una media giornaliera storica maggiore di 0."
+        "I conteggi negativi non vengono considerati nei conteggi e sono sempre esclusi dal NOK; sono inoltre anomale le giornate con 0 attivazioni quando il sensore ha una media giornaliera storica maggiore di 0."
       ),
       DTOutput("modal_tabella_outlier_nok")
     )
@@ -1715,7 +1715,29 @@ server <- function(input, output, session) {
       ) |>
       group_by(cds_name, sensor_description, day) |>
       summarise(
-        daily_count = sum(increment, na.rm = TRUE),
+        ha_incrementi_negativi = any(
+          is.finite(increment) & increment < 0
+        ),
+        attivazioni_negative = if (
+          any(is.finite(increment) & increment < 0)
+        ) {
+          sum(
+            increment[is.finite(increment) & increment < 0],
+            na.rm = TRUE
+          )
+        } else {
+          NA_real_
+        },
+        daily_count = if (
+          any(is.finite(increment) & increment >= 0)
+        ) {
+          sum(
+            increment[is.finite(increment) & increment >= 0],
+            na.rm = TRUE
+          )
+        } else {
+          NA_real_
+        },
         daily_uptime = if (all(is.na(daily_uptime))) {
           NA_real_
         } else {
@@ -1732,10 +1754,11 @@ server <- function(input, output, session) {
       group_by(cds_name, sensor_description) |>
       group_modify(~ {
         x <- .x$daily_count
-        validi <- is.finite(x)
+        negativo_anomalo <- .x$ha_incrementi_negativi %in% TRUE
+        validi <- is.finite(x) & !negativo_anomalo
         
         .x$lof_score <- NA_real_
-        .x$outlier_lof <- FALSE
+        .x$outlier_lof <- negativo_anomalo
         
         n_validi <- sum(validi)
         media_attivazioni_giornaliere <- if (n_validi > 0) {
@@ -1745,7 +1768,7 @@ server <- function(input, output, session) {
         }
         
         # Se il sensore ha normalmente attivita' (> 0 in media),
-        # una giornata con 0 attivazioni viene considerata anomala.
+        # una giornata valida con 0 attivazioni viene considerata anomala.
         zero_anomalo <- (
           validi &
           x == 0 &
@@ -1754,8 +1777,8 @@ server <- function(input, output, session) {
         )
         .x$outlier_lof[zero_anomalo] <- TRUE
         
-        # Con pochi dati il LOF non e' sufficientemente stabile:
-        # in quel caso restano comunque escluse le eventuali giornate a zero.
+        # I giorni con conteggi negativi sono gia' esclusi.
+        # Il LOF viene calcolato solo sulle giornate senza valori negativi.
         if (n_validi >= 6L && dplyr::n_distinct(x[validi]) >= 3L) {
           k <- min(4L, n_validi - 1L)
           score <- dbscan::lof(
@@ -1905,7 +1928,19 @@ server <- function(input, output, session) {
           day <= filtri$date[2]
         ) |>
         group_by(cds_name, day) |>
-        summarise(daily_count = sum(increment, na.rm = TRUE), .groups = "drop") |>
+        summarise(
+          daily_count = if (
+            any(is.finite(increment) & increment >= 0)
+          ) {
+            sum(
+              increment[is.finite(increment) & increment >= 0],
+              na.rm = TRUE
+            )
+          } else {
+            NA_real_
+          },
+          .groups = "drop"
+        ) |>
         group_by(cds_name) |>
         summarise(N_medio = mean(daily_count, na.rm = TRUE), .groups = "drop") |>
         mutate(cds_key = str_to_upper(str_squish(cds_name)))
@@ -2140,7 +2175,15 @@ server <- function(input, output, session) {
       transmute(
         Sensore = paste(cds_name, sensor_description, sep = " - "),
         Data = day,
-        Attivazioni = round(daily_count)
+        Attivazioni = case_when(
+          ha_incrementi_negativi ~ round(attivazioni_negative),
+          TRUE ~ round(daily_count)
+        ),
+        Motivo = case_when(
+          ha_incrementi_negativi ~ "Conteggio negativo",
+          is.finite(daily_count) & daily_count == 0 ~ "Zero attivazioni",
+          TRUE ~ "Anomalia statistica"
+        )
       )
   })
   
@@ -2512,7 +2555,16 @@ server <- function(input, output, session) {
         sensor_description
       ) |>
       summarise(
-        attivazioni_giornaliere = sum(increment, na.rm = TRUE),
+        attivazioni_giornaliere = if (
+          any(is.finite(increment) & increment >= 0)
+        ) {
+          sum(
+            increment[is.finite(increment) & increment >= 0],
+            na.rm = TRUE
+          )
+        } else {
+          NA_real_
+        },
         .groups = "drop"
       ) |>
       mutate(
@@ -4051,7 +4103,15 @@ server <- function(input, output, session) {
       transmute(
         Sensore = paste(cds_name, sensor_description, sep = " - "),
         Data = format(day, "%d-%m-%Y"),
-        Attivazioni = round(daily_count)
+        Attivazioni = case_when(
+          ha_incrementi_negativi ~ round(attivazioni_negative),
+          TRUE ~ round(daily_count)
+        ),
+        Motivo = case_when(
+          ha_incrementi_negativi ~ "Conteggio negativo",
+          is.finite(daily_count) & daily_count == 0 ~ "Zero attivazioni",
+          TRUE ~ "Anomalia statistica"
+        )
       )
     
     validate(
