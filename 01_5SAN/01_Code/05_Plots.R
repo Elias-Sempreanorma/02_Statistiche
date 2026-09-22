@@ -1507,7 +1507,7 @@ server <- function(input, output, session) {
         ),
         div(
           class = "alarm-section",
-          h4("Sensori rimasti aperti", class = "titolo-sezione"),
+          h4("Sensori aperti o senza contatto elettrico", class = "titolo-sezione"),
           p(
             "Eventi in cui il sensore è rimasto aperto per oltre 1 ora consecutiva mentre il gateway continuava a trasmettere."
           ),
@@ -1958,6 +1958,7 @@ server <- function(input, output, session) {
       data.frame(
         cds_key = character(),
         N_medio = double(),
+        ore_aperte_medie = double(),
         NOK = double()
       )
     } else {
@@ -1980,10 +1981,22 @@ server <- function(input, output, session) {
           } else {
             NA_real_
           },
+          daily_open_hours = if (
+            "daily_open_hours" %in% names(cur_data()) &&
+            any(is.finite(daily_open_hours))
+          ) {
+            max(daily_open_hours[is.finite(daily_open_hours)])
+          } else {
+            0
+          },
           .groups = "drop"
         ) |>
         group_by(cds_name) |>
-        summarise(N_medio = mean(daily_count, na.rm = TRUE), .groups = "drop") |>
+        summarise(
+          N_medio = mean(daily_count, na.rm = TRUE),
+          ore_aperte_medie = mean(daily_open_hours, na.rm = TRUE),
+          .groups = "drop"
+        ) |>
         mutate(cds_key = str_to_upper(str_squish(cds_name)))
       
       kpi_nok() |>
@@ -1991,7 +2004,7 @@ server <- function(input, output, session) {
         select(cds_key, NOK) |>
         group_by(cds_key) |>
         summarise(NOK = first(NOK), .groups = "drop") |>
-        left_join(select(raw_avg, cds_key, N_medio), by = "cds_key")
+        left_join(select(raw_avg, cds_key, N_medio, ore_aperte_medie), by = "cds_key")
     }
     
     punti <- mappa_sensori |>
@@ -2026,6 +2039,15 @@ server <- function(input, output, session) {
       }
       
       attivazioni_medie <- formatta_numero(punto$N_medio, 1)
+      ore_aperte <- formatta_numero(punto$ore_aperte_medie, 0)
+      etichetta_ore_aperte <- if (
+        length(filtri$date) == 2 &&
+        identical(filtri$date[1], filtri$date[2])
+      ) {
+        "Ore aperto"
+      } else {
+        "Ore aperto medie/giorno"
+      }
       nok_periodo <- formatta_numero(punto$NOK, 3)
       
       tags$span(
@@ -2035,6 +2057,7 @@ server <- function(input, output, session) {
         `aria-label` = paste0(
           descrizione,
           "; attivazioni giornaliere medie: ", attivazioni_medie,
+          "; ", etichetta_ore_aperte, ": ", ore_aperte,
           "; NOK: ", nok_periodo
         ),
         style = sprintf(
@@ -2046,6 +2069,7 @@ server <- function(input, output, session) {
           class = "sensor-tooltip",
           tags$span(descrizione, class = "sensor-tooltip-title"),
           tags$div("Attivazioni giornaliere medie: ", tags$strong(attivazioni_medie)),
+          tags$div(etichetta_ore_aperte, ": ", tags$strong(paste0(ore_aperte, " h"))),
           tags$div("NOK: ", tags$strong(nok_periodo))
         )
       )
@@ -2320,7 +2344,7 @@ server <- function(input, output, session) {
       return(
         div(
           class = "alarm-empty",
-          "Nessun sensore è rimasto aperto per oltre 1 ora consecutiva nel periodo selezionato."
+          "Nessun sensore aperto o senza contatto elettrico per oltre 1 ora consecutiva nel periodo selezionato."
         )
       )
     }
@@ -2655,6 +2679,15 @@ server <- function(input, output, session) {
         } else {
           NA_real_
         },
+        ore_aperte_giornaliere = if (
+          any(is.finite(daily_open_hours))
+        ) {
+          max(
+            daily_open_hours[is.finite(daily_open_hours)]
+          )
+        } else {
+          0
+        },
         .groups = "drop"
       ) |>
       mutate(
@@ -2667,9 +2700,20 @@ server <- function(input, output, session) {
       ) |>
       summarise(
         attivazioni = mean(attivazioni_giornaliere, na.rm = TRUE),
+        ore_aperte = mean(
+          ore_aperte_giornaliere,
+          na.rm = TRUE
+        ),
         .groups = "drop"
       ) |>
       mutate(
+        etichetta_ore_aperte = if (
+          identical(filtri$granularita, "Giorno")
+        ) {
+          "Ore aperto"
+        } else {
+          "Ore aperto medie/giorno"
+        },
         etichetta = cds_name,
         etichetta_completa = paste(cds_name, sensor_description, sep = " - "),
         periodo_label = formatta_periodo_label(
@@ -2719,7 +2763,10 @@ server <- function(input, output, session) {
           tooltip = paste0(
             "<b>", etichetta_completa, "</b><br/>",
             "Periodo: ", periodo_label, "<br/>",
-            "Attivazioni medie giornaliere: ", scales::label_number(accuracy = 0.1, big.mark = ".")(attivazioni)
+            "Attivazioni medie giornaliere: ", scales::label_number(accuracy = 0.1, big.mark = ".")(attivazioni), "<br/>",
+            etichetta_ore_aperte, ": ",
+            scales::label_number(accuracy = 1, big.mark = ".")(ore_aperte),
+            " h"
           ),
           data_id = paste(etichetta_completa, periodo_label, sep = "__")
         ),
@@ -2792,7 +2839,10 @@ server <- function(input, output, session) {
           tooltip = paste0(
             "<b>", etichetta_completa, "</b><br/>",
             "Periodo: ", periodo_label, "<br/>",
-            "Attivazioni: ", scales::label_number(accuracy = 1, big.mark = ".")(attivazioni)
+            "Attivazioni: ", scales::label_number(accuracy = 1, big.mark = ".")(attivazioni), "<br/>",
+            etichetta_ore_aperte, ": ",
+            scales::label_number(accuracy = 1, big.mark = ".")(ore_aperte),
+            " h"
           ),
           data_id = paste(etichetta_completa, periodo_label, sep = "__")
         ),
