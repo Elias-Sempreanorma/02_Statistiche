@@ -592,7 +592,7 @@ ui <- fluidPage(
         margin-bottom: 18px;
       }
       .modal-data-button {
-        margin: 6px 0 14px 0;
+        margin: 4px 0 10px 0;
         text-align: right;
       }
       .modal-data-panel {
@@ -1367,12 +1367,13 @@ server <- function(input, output, session) {
         uiOutput("modal_panel_outlier_nok"),
         uiOutput("modal_utilizzo_macchina"),
         uiOutput("modal_panel_storico_utilizzo_nok"),
-        girafeOutput("modal_utilizzoNokPlot", height = "420px"),
+        girafeOutput("modal_utilizzoNokPlot", height = "380px"),
         div(
           class = "modal-data-button",
           actionButton(
             "modal_btn_dati_profilo_nok",
             "Dati",
+            icon = icon("table"),
             class = "btn-sm btn-default"
           )
         ),
@@ -1385,12 +1386,13 @@ server <- function(input, output, session) {
           selected = isolate(granularita_nok_corrente()),
           inline = TRUE
         ),
-        girafeOutput("modal_utilizzoTempoPlot", height = "420px"),
+        girafeOutput("modal_utilizzoTempoPlot", height = "380px"),
         div(
           class = "modal-data-button",
           actionButton(
             "modal_btn_dati_nok",
             "Dati",
+            icon = icon("table"),
             class = "btn-sm btn-default"
           )
         ),
