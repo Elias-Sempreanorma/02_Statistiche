@@ -2411,7 +2411,7 @@ server <- function(input, output, session) {
   })
   
   # ---------------------------------------------------------------------
-  # Dati per il grafico attivazioni: raggruppati nel periodo scelto
+  # Dati per il grafico attivazioni: media giornaliera nel periodo scelto
   # (giorno/settimana/mese/trimestre/anno). Usati sia dal grafico a
   # barre (facet per periodo) sia dal grafico trend (facet per sensore).
   # ---------------------------------------------------------------------
@@ -2427,14 +2427,25 @@ server <- function(input, output, session) {
         day >= filtri$date[1],
         day <= filtri$date[2]
       ) |>
-      mutate(periodo = periodo_bucket(day, filtri$granularita)) |>
+      group_by(
+        day,
+        cds_name,
+        sensor_description
+      ) |>
+      summarise(
+        attivazioni_giornaliere = sum(increment, na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      mutate(
+        periodo = periodo_bucket(day, filtri$granularita)
+      ) |>
       group_by(
         periodo,
         cds_name,
         sensor_description
       ) |>
       summarise(
-        attivazioni = sum(increment, na.rm = TRUE),
+        attivazioni = mean(attivazioni_giornaliere, na.rm = TRUE),
         .groups = "drop"
       ) |>
       mutate(
@@ -2487,7 +2498,7 @@ server <- function(input, output, session) {
           tooltip = paste0(
             "<b>", etichetta_completa, "</b><br/>",
             "Periodo: ", periodo_label, "<br/>",
-            "Attivazioni: ", scales::label_number(accuracy = 1, big.mark = ".")(attivazioni)
+            "Attivazioni medie giornaliere: ", scales::label_number(accuracy = 0.1, big.mark = ".")(attivazioni)
           ),
           data_id = paste(etichetta_completa, periodo_label, sep = "__")
         ),
