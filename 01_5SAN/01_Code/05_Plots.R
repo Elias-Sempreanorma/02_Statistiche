@@ -1370,7 +1370,45 @@ server <- function(input, output, session) {
           )
         ),
         uiOutput("modal_panel_outlier_nok"),
-        uiOutput("modal_utilizzo_macchina"),
+        div(
+          style = paste0(
+            "margin:14px 0 20px 0;",
+            "padding:15px 18px;",
+            "border:1px solid #DDE4EA;",
+            "border-radius:9px;",
+            "background:#FAFBFC;"
+          ),
+          div(
+            style = paste0(
+              "display:flex;",
+              "align-items:center;",
+              "gap:18px;",
+              "margin-bottom:8px;",
+              "flex-wrap:wrap;"
+            ),
+            div(
+              "Utilizzo nel periodo",
+              style = paste0(
+                "font-size:16px;",
+                "font-weight:700;",
+                "color:#4A4A4A;"
+              )
+            ),
+            div(
+              style = "margin-bottom:-15px;",
+              radioButtons(
+                "modal_granularita_utilizzo",
+                label = NULL,
+                choices = c("Settimana", "Mese"),
+                selected = isolate(
+                  granularita_utilizzo_corrente()
+                ),
+                inline = TRUE
+              )
+            )
+          ),
+          uiOutput("modal_utilizzo_macchina")
+        ),
         uiOutput("modal_panel_storico_utilizzo_nok"),
         girafeOutput("modal_utilizzoNokPlot", height = "380px"),
         div(
@@ -1552,6 +1590,8 @@ server <- function(input, output, session) {
     granularita_nok_corrente(input$modal_granularita_nok)
   }, ignoreNULL = TRUE)
   
+  # Il selettore Settimana/Mese vive fuori dal renderUI dinamico della card:
+  # cosi' il cambio valore non distrugge e ricrea lo stesso input.
   observeEvent(input$modal_granularita_utilizzo, {
     req(input$modal_granularita_utilizzo)
     granularita_utilizzo_corrente(input$modal_granularita_utilizzo)
@@ -3325,41 +3365,7 @@ server <- function(input, output, session) {
       )
     })
     
-    div(
-      style = paste0(
-        "margin:14px 0 20px 0;",
-        "padding:15px 18px;",
-        "border:1px solid #DDE4EA;",
-        "border-radius:9px;",
-        "background:#FAFBFC;"
-      ),
-      div(
-        style = paste0(
-          "display:flex;",
-          "align-items:center;",
-          "gap:18px;",
-          "margin-bottom:8px;",
-          "flex-wrap:wrap;"
-        ),
-        div(
-          "Utilizzo nel periodo",
-          style = paste0(
-            "font-size:16px;",
-            "font-weight:700;",
-            "color:#4A4A4A;"
-          )
-        ),
-        div(
-          style = "margin-bottom:-15px;",
-          radioButtons(
-            "modal_granularita_utilizzo",
-            label = NULL,
-            choices = c("Settimana", "Mese"),
-            selected = isolate(granularita_utilizzo_corrente()),
-            inline = TRUE
-          )
-        )
-      ),
+    tagList(
       div(
         style = paste0(
           "display:flex;",
