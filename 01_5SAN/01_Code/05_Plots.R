@@ -2835,8 +2835,9 @@ server <- function(input, output, session) {
       ) |>
       mutate(
         U_sensore = media_nok * varianza_nok,
-        banda_min = pmax(0, media_nok - varianza_nok),
-        banda_max = media_nok + varianza_nok,
+        sd_nok = sqrt(varianza_nok),
+        banda_min = pmax(0, media_nok - 3 * sd_nok),
+        banda_max = media_nok + 3 * sd_nok,
         etichetta_sensore = paste(cds_name, sensor_description, sep = " - ")
       ) |>
       ordina_naturale()
@@ -2882,8 +2883,9 @@ server <- function(input, output, session) {
       ) |>
       mutate(
         U_sensore = media_nok * varianza_nok,
-        banda_min = pmax(0, media_nok - varianza_nok),
-        banda_max = media_nok + varianza_nok,
+        sd_nok = sqrt(varianza_nok),
+        banda_min = pmax(0, media_nok - 3 * sd_nok),
+        banda_max = media_nok + 3 * sd_nok,
         etichetta_sensore = paste(cds_name, sensor_description, sep = " - ")
       ) |>
       ordina_naturale()
@@ -3547,6 +3549,8 @@ server <- function(input, output, session) {
           "<b>", etichetta_sensore, "</b><br/>",
           "Media NOK: ", round(media_nok, 4), "<br/>",
           "Varianza NOK: ", round(varianza_nok, 4), "<br/>",
+          "Dev. standard NOK: ", round(sd_nok, 4), "<br/>",
+          "Intervallo grafico: media ± 3 SD<br/>",
           "U sensore: ", round(U_sensore, 4)
         )
       )
