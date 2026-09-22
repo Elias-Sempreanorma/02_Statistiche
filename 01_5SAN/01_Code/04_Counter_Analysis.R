@@ -74,50 +74,87 @@ open_intervals <- raw_data |>
     interval_end = timestamp_local
   )
 
-# Ore totali giornaliere in cui il sensore e' risultato aperto.
-# Gli eventi consecutivi servono solo come passaggio di calcolo e NON
-# vengono salvati in un file separato: l'informazione storicizzata resta
-# esclusivamente in sensor_count_increment.rds tramite daily_open_hours.
-sensor_open_daily <- if (nrow(open_intervals) > 0) {
-  open_intervals |>
-    group_by(
-      across(all_of(gruppi_sensore)),
-      day,
-      open_event_id
-    ) |>
-    summarise(
-      open_hours = as.numeric(
-        difftime(
-          max(interval_end, na.rm = TRUE),
-          min(interval_start, na.rm = TRUE),
-          units = "hours"
-        )
-      ),
-      .groups = "drop"
-    ) |>
-    group_by(
-      across(all_of(gruppi_sensore)),
-      day
-    ) |>
-    summarise(
-      daily_open_hours = sum(open_hours, na.rm = TRUE),
-      .groups = "drop"
-    )
-} else {
-  raw_data |>
-    mutate(
-      day = as.Date(
-        with_tz(timestamp, "Europe/Rome"),
-        tz = "Europe/Rome"
+# ---------------------------------------------------------------------------
+# Stima delle ore aperte giornaliere.
+#
+# Questa stima e' distinta dalla logica degli ALLARMI consecutivi sopra:
+# gli allarmi restano basati esclusivamente su status 0 + count invariato.
+#
+# Per daily_open_hours considero ogni intervallo tra due misure consecutive
+# dello stesso sensore e della stessa giornata:
+# - count invariato, 0 -> 0: 100% dell'intervallo aperto
+# - count invariato, 1 -> 1: 0% aperto
+# - count aumenta, 0 -> 1: 0% aperto
+# - count aumenta, 1 -> 0: 50% aperto
+# - count aumenta, 1 -> 1: 50% aperto
+# - count aumenta, 0 -> 0: 50% aperto
+#
+# Gli altri casi (valori mancanti, decrementi del count o transizioni senza
+# incremento non definite dalla regola) non contribuiscono alla stima.
+# ---------------------------------------------------------------------------
+sensor_open_daily <- raw_data |>
+  mutate(
+    field = if_else(
+      is.na(field) | trimws(field) == "",
+      "(Non specificato)",
+      field
+    ),
+    timestamp_local = with_tz(timestamp, "Europe/Rome"),
+    day = as.Date(timestamp_local, tz = "Europe/Rome")
+  ) |>
+  group_by(
+    across(all_of(gruppi_sensore)),
+    day
+  ) |>
+  arrange(timestamp_local, .by_group = TRUE) |>
+  mutate(
+    previous_timestamp = lag(timestamp_local),
+    previous_status = lag(status),
+    previous_raw_count = lag(count),
+    count_delta = count - previous_raw_count,
+    interval_hours = as.numeric(
+      difftime(
+        timestamp_local,
+        previous_timestamp,
+        units = "hours"
       )
-    ) |>
-    slice(0) |>
-    transmute(
-      across(all_of(gruppi_sensore)),
-      day,
-      daily_open_hours = numeric()
-    )
-}
+    ),
+    open_fraction = case_when(
+      is.na(previous_timestamp) ~ NA_real_,
+      !is.finite(interval_hours) | interval_hours < 0 ~ NA_real_,
+      !is.finite(status) | !is.finite(previous_status) ~ NA_real_,
+      !is.finite(count) | !is.finite(previous_raw_count) ~ NA_real_,
+      
+      count_delta == 0 &
+        previous_status == 0 &
+        status == 0 ~ 1,
+      
+      count_delta == 0 &
+        previous_status == 1 &
+        status == 1 ~ 0,
+      
+      count_delta > 0 &
+        previous_status == 0 &
+        status == 1 ~ 0,
+      
+      count_delta > 0 &
+        (
+          (previous_status == 1 & status == 0) |
+          (previous_status == 1 & status == 1) |
+          (previous_status == 0 & status == 0)
+        ) ~ 0.5,
+      
+      TRUE ~ NA_real_
+    ),
+    estimated_open_hours = interval_hours * open_fraction
+  ) |>
+  summarise(
+    daily_open_hours = sum(
+      estimated_open_hours,
+      na.rm = TRUE
+    ),
+    .groups = "drop"
+  )
 
 # calcola gli incrementi dei conteggi per ogni sensore e li classifico
 sensor_count_increment <- raw_data |>
