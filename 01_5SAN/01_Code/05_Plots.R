@@ -23,6 +23,13 @@ if (dir.exists(cds_images_dir)) {
 dati <- readRDS(here("02_Output", "sensor_count_increment.rds")) |>
   mutate(field = if_else(is.na(field) | trimws(field) == "", "(Non specificato)", field))
 
+# Compatibilita' con dataset generati prima dell'introduzione delle ore aperte.
+# Dopo il rerun completo dell'ETL la colonna e' presente realmente.
+if (!"daily_open_hours" %in% names(dati)) {
+  dati <- dati |>
+    mutate(daily_open_hours = 0)
+}
+
 sensor_open_events_path <- here("02_Output", "sensor_open_events.rds")
 
 sensor_open_events <- if (file.exists(sensor_open_events_path)) {
@@ -1982,7 +1989,6 @@ server <- function(input, output, session) {
             NA_real_
           },
           daily_open_hours = if (
-            "daily_open_hours" %in% names(cur_data()) &&
             any(is.finite(daily_open_hours))
           ) {
             max(daily_open_hours[is.finite(daily_open_hours)])
