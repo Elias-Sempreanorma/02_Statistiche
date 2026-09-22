@@ -1070,6 +1070,7 @@ server <- function(input, output, session) {
   }
   
   sensori_modal_correnti <- reactiveVal(character(0))
+  date_modal_corrente <- reactiveVal(NULL)
   modal_apertura_id <- reactiveVal(0)
   granularita_attivazioni_corrente <- reactiveVal("Giorno")
   granularita_nok_corrente <- reactiveVal("Giorno")
@@ -1105,6 +1106,7 @@ server <- function(input, output, session) {
     }
     
     sensori_modal_correnti(normalizza_sensori(sensori_iniziali))
+    date_modal_corrente(isolate(as.Date(input$date)))
     
     macchina_corrente <- macchine_lookup |>
       filter(coupon == isolate(input$macchina)) |>
@@ -1237,7 +1239,8 @@ server <- function(input, output, session) {
       sensori_macchina$cds_name
     )
     
-    date_selezionate <- isolate(as.Date(input$date))
+    date_selezionate <- isolate(date_modal_corrente())
+    req(length(date_selezionate) == 2, all(!is.na(date_selezionate)))
     
     scelte_sensori <- setNames(
       sensori_macchina$cds_name,
@@ -1473,10 +1476,10 @@ server <- function(input, output, session) {
   
   # ---------------------------------------------------------------------
   # Coda ottimizzata dei filtri modal.
-  # Il debounce aspetta 800 ms dall'ultima modifica; solo allora aggiorna
-  # grafici, stato del modal e filtri principali. Il contenuto del modal
-  # non dipende direttamente dai filtri principali, evitando il loop di
-  # distruzione e ricreazione continua degli input.
+  # Il debounce aspetta 800 ms dall'ultima modifica. Data e sensori del
+  # modal vengono mantenuti in reactiveVal dedicati: il modal aggiorna
+  # eventualmente la Home, ma la Home non riscrive gli input del modal.
+  # Questo elimina la sincronizzazione circolare che generava i loop.
   # ---------------------------------------------------------------------
   sensori_modal_input <- eventReactive(input$modal_sensori, {
     list(
@@ -1491,7 +1494,6 @@ server <- function(input, output, session) {
     
     if (identical(filtri$apertura_id, isolate(modal_apertura_id()))) {
       sensori_modal_correnti(filtri$sensori)
-      updatePickerInput(session, "modal_sensori", selected = filtri$sensori)
     }
   }, ignoreInit = TRUE)
   
@@ -1506,33 +1508,34 @@ server <- function(input, output, session) {
   observeEvent(periodo_modal_input(), {
     filtri <- periodo_modal_input()
     
-    if (
-      identical(filtri$apertura_id, isolate(modal_apertura_id())) &&
-      !identical(as.Date(input$date), filtri$date)
-    ) {
+    if (!identical(
+      filtri$apertura_id,
+      isolate(modal_apertura_id())
+    )) {
+      return()
+    }
+    
+    # Unica sorgente dati del modal mentre e' aperto.
+    # L'aggiornamento avviene solo dopo il debounce.
+    if (!identical(
+      isolate(date_modal_corrente()),
+      filtri$date
+    )) {
+      date_modal_corrente(filtri$date)
+    }
+    
+    # Il modal puo' riportare la scelta alla Home, ma la Home non
+    # riscrive mai modal_date: in questo modo non esiste piu' il ciclo
+    # input$date -> modal_date -> input$date.
+    if (!identical(
+      isolate(as.Date(input$date)),
+      filtri$date
+    )) {
       updateDateRangeInput(
         session,
         "date",
         start = filtri$date[1],
         end = filtri$date[2]
-      )
-    }
-  }, ignoreInit = TRUE)
-  
-  observeEvent(input$date, {
-    req(input$date)
-    
-    date_corrente <- as.Date(input$date)
-    
-    if (
-      !is.null(input$modal_date) &&
-      !identical(as.Date(input$modal_date), date_corrente)
-    ) {
-      updateDateRangeInput(
-        session,
-        "modal_date",
-        start = date_corrente[1],
-        end = date_corrente[2]
       )
     }
   }, ignoreInit = TRUE)
@@ -1548,11 +1551,17 @@ server <- function(input, output, session) {
   }, ignoreNULL = TRUE)
   
   filtri_attivazioni_modal <- reactive({
-    req(input$macchina, input$date)
+    req(input$macchina)
+    
+    date_corrente <- date_modal_corrente()
+    req(
+      length(date_corrente) == 2,
+      all(!is.na(date_corrente))
+    )
     
     list(
       macchina = input$macchina,
-      date = as.Date(input$date),
+      date = date_corrente,
       sensori = sensori_modal_correnti(),
       granularita = granularita_attivazioni_corrente()
     )
@@ -1568,11 +1577,17 @@ server <- function(input, output, session) {
   })
   
   filtri_nok_modal <- reactive({
-    req(input$macchina, input$date)
+    req(input$macchina)
+    
+    date_corrente <- date_modal_corrente()
+    req(
+      length(date_corrente) == 2,
+      all(!is.na(date_corrente))
+    )
     
     list(
       macchina = input$macchina,
-      date = as.Date(input$date),
+      date = date_corrente,
       sensori = sensori_modal_correnti(),
       granularita = granularita_nok_corrente()
     )
