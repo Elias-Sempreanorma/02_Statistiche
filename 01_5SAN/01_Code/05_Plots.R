@@ -1074,6 +1074,7 @@ server <- function(input, output, session) {
   modal_apertura_id <- reactiveVal(0)
   granularita_attivazioni_corrente <- reactiveVal("Giorno")
   granularita_nok_corrente <- reactiveVal("Giorno")
+  granularita_utilizzo_corrente <- reactiveVal("Settimana")
   
   filtri_principali <- reactive({
     req(input$macchina, input$date)
@@ -1124,6 +1125,7 @@ server <- function(input, output, session) {
     
     granularita_attivazioni_corrente("Giorno")
     granularita_nok_corrente("Giorno")
+    granularita_utilizzo_corrente("Settimana")
     
     modal_apertura_id(isolate(modal_apertura_id()) + 1)
     
@@ -1548,6 +1550,11 @@ server <- function(input, output, session) {
   observeEvent(input$modal_granularita_nok, {
     req(input$modal_granularita_nok)
     granularita_nok_corrente(input$modal_granularita_nok)
+  }, ignoreNULL = TRUE)
+  
+  observeEvent(input$modal_granularita_utilizzo, {
+    req(input$modal_granularita_utilizzo)
+    granularita_utilizzo_corrente(input$modal_granularita_utilizzo)
   }, ignoreNULL = TRUE)
   
   filtri_attivazioni_modal <- reactive({
@@ -3060,15 +3067,21 @@ server <- function(input, output, session) {
       TRUE ~ "Normale"
     )
     
-    # Utilizzo macchina settimana per settimana.
+    # Utilizzo macchina per settimana o mese, in base alla scelta utente.
+    granularita_utilizzo <- granularita_utilizzo_corrente()
+    
     storico_utilizzo_grafico <- base_completa |>
       mutate(
         inizio_finestra = as.Date(
-          lubridate::floor_date(
-            day,
-            "week",
-            week_start = 1
-          )
+          if (identical(granularita_utilizzo, "Mese")) {
+            lubridate::floor_date(day, "month")
+          } else {
+            lubridate::floor_date(
+              day,
+              "week",
+              week_start = 1
+            )
+          }
         )
       ) |>
       group_by(
@@ -3095,9 +3108,18 @@ server <- function(input, output, session) {
         .groups = "drop"
       ) |>
       mutate(
-        fine_settimana = inizio_finestra + 6L,
+        fine_finestra = if (identical(granularita_utilizzo, "Mese")) {
+          as.Date(
+            lubridate::ceiling_date(
+              inizio_finestra,
+              "month"
+            ) - lubridate::days(1)
+          )
+        } else {
+          inizio_finestra + 6L
+        },
         tipo = if_else(
-          fine_settimana >= filtri$date[1] &
+          fine_finestra >= filtri$date[1] &
             inizio_finestra <= filtri$date[2],
           "Periodo selezionato",
           "Riferimento"
@@ -3106,32 +3128,32 @@ server <- function(input, output, session) {
       filter(is.finite(U_macchina)) |>
       arrange(inizio_finestra)
     
-    # Limiti settimanali usati per classificare ogni singola settimana.
-    # Normalmente si basano sulle settimane precedenti al periodo selezionato.
-    # Se il periodo copre oltre il 50% dello storico, o non ci sono abbastanza
-    # settimane precedenti, si usa tutto lo storico settimanale disponibile.
-    settimane_precedenti <- storico_utilizzo_grafico |>
-      filter(fine_settimana < filtri$date[1])
+    # P10/P90 coerenti con la granularita' scelta.
+    # Si usano normalmente solo i periodi completi precedenti alla selezione.
+    # Se la selezione copre oltre il 50% dello storico o ci sono meno di due
+    # periodi precedenti, si usa tutto lo storico disponibile.
+    periodi_precedenti <- storico_utilizzo_grafico |>
+      filter(fine_finestra < filtri$date[1])
     
-    usa_tutte_settimane <- (
+    usa_tutti_periodi <- (
       quota_storico_selezionata > 0.50 ||
-      nrow(settimane_precedenti) < 2
+      nrow(periodi_precedenti) < 2
     )
     
-    riferimento_settimanale <- if (usa_tutte_settimane) {
+    riferimento_periodo <- if (usa_tutti_periodi) {
       storico_utilizzo_grafico
     } else {
-      settimane_precedenti
+      periodi_precedenti
     }
     
-    valori_settimanali_rif <- riferimento_settimanale$U_macchina[
-      is.finite(riferimento_settimanale$U_macchina)
+    valori_periodo_rif <- riferimento_periodo$U_macchina[
+      is.finite(riferimento_periodo$U_macchina)
     ]
     
-    P10_settimanale <- if (length(valori_settimanali_rif) > 0) {
+    P10_periodo <- if (length(valori_periodo_rif) > 0) {
       as.numeric(
         stats::quantile(
-          valori_settimanali_rif,
+          valori_periodo_rif,
           probs = 0.10,
           na.rm = TRUE,
           names = FALSE,
@@ -3142,10 +3164,10 @@ server <- function(input, output, session) {
       NA_real_
     }
     
-    P90_settimanale <- if (length(valori_settimanali_rif) > 0) {
+    P90_periodo <- if (length(valori_periodo_rif) > 0) {
       as.numeric(
         stats::quantile(
-          valori_settimanali_rif,
+          valori_periodo_rif,
           probs = 0.90,
           na.rm = TRUE,
           names = FALSE,
@@ -3160,10 +3182,10 @@ server <- function(input, output, session) {
       mutate(
         stato = case_when(
           tipo == "Riferimento" ~ "Storico",
-          !is.finite(P10_settimanale) |
-            !is.finite(P90_settimanale) ~ "N/D",
-          U_macchina < P10_settimanale ~ "Basso",
-          U_macchina > P90_settimanale ~ "Elevato",
+          !is.finite(P10_periodo) |
+            !is.finite(P90_periodo) ~ "N/D",
+          U_macchina < P10_periodo ~ "Basso",
+          U_macchina > P90_periodo ~ "Elevato",
           TRUE ~ "Normale"
         )
       )
@@ -3176,8 +3198,9 @@ server <- function(input, output, session) {
       P90_utilizzo = P90_utilizzo,
       stato_utilizzo = stato_utilizzo,
       storico_utilizzo_grafico = storico_utilizzo_grafico,
-      P10_settimanale = P10_settimanale,
-      P90_settimanale = P90_settimanale,
+      granularita_utilizzo = granularita_utilizzo,
+      P10_periodo = P10_periodo,
+      P90_periodo = P90_periodo,
       n_finestre_storiche = length(U_storici),
       n_settimane_storiche = length(U_storici),
       durata_finestra_giorni = durata_giorni,
@@ -3189,25 +3212,27 @@ server <- function(input, output, session) {
     bindCache(
       filtri_nok_modal()$macchina,
       filtri_nok_modal()$date,
-      filtri_nok_modal()$sensori
+      filtri_nok_modal()$sensori,
+      granularita_utilizzo_corrente()
     )
   
   output$modal_utilizzo_macchina <- renderUI({
     
     utilizzo <- utilizzo_nok_modal()
+    granularita <- utilizzo$granularita_utilizzo
     
-    settimane <- utilizzo$storico_utilizzo_grafico |>
+    periodi <- utilizzo$storico_utilizzo_grafico |>
       filter(tipo == "Periodo selezionato") |>
       arrange(inizio_finestra)
     
     soglia_bassa <- if (
-      length(utilizzo$P10_settimanale) == 0 ||
-      !is.finite(utilizzo$P10_settimanale)
+      length(utilizzo$P10_periodo) == 0 ||
+      !is.finite(utilizzo$P10_periodo)
     ) {
       "N/D"
     } else {
       formatC(
-        utilizzo$P10_settimanale,
+        utilizzo$P10_periodo,
         format = "f",
         digits = 2,
         decimal.mark = ","
@@ -3215,21 +3240,21 @@ server <- function(input, output, session) {
     }
     
     soglia_alta <- if (
-      length(utilizzo$P90_settimanale) == 0 ||
-      !is.finite(utilizzo$P90_settimanale)
+      length(utilizzo$P90_periodo) == 0 ||
+      !is.finite(utilizzo$P90_periodo)
     ) {
       "N/D"
     } else {
       formatC(
-        utilizzo$P90_settimanale,
+        utilizzo$P90_periodo,
         format = "f",
         digits = 2,
         decimal.mark = ","
       )
     }
     
-    cards_settimane <- lapply(seq_len(nrow(settimane)), function(i) {
-      riga <- settimane[i, ]
+    cards_periodo <- lapply(seq_len(nrow(periodi)), function(i) {
+      riga <- periodi[i, ]
       
       colore <- switch(
         as.character(riga$stato),
@@ -3247,6 +3272,20 @@ server <- function(input, output, session) {
         "#F4F8FB"
       )
       
+      etichetta_periodo <- if (
+        identical(granularita, "Mese")
+      ) {
+        paste0(
+          "Mese ",
+          format(riga$inizio_finestra, "%m-%Y")
+        )
+      } else {
+        paste0(
+          "Sett. ",
+          format(riga$inizio_finestra, "%d-%m")
+        )
+      }
+      
       div(
         style = paste0(
           "min-width:105px;",
@@ -3257,10 +3296,7 @@ server <- function(input, output, session) {
           "text-align:center;"
         ),
         div(
-          paste0(
-            "Sett. ",
-            format(riga$inizio_finestra, "%d-%m")
-          ),
+          etichetta_periodo,
           style = "font-size:11px;font-weight:700;color:#4A4A4A;"
         ),
         div(
@@ -3298,12 +3334,30 @@ server <- function(input, output, session) {
         "background:#FAFBFC;"
       ),
       div(
-        "Utilizzo periodo",
         style = paste0(
-          "font-size:16px;",
-          "font-weight:700;",
-          "color:#4A4A4A;",
-          "margin-bottom:8px;"
+          "display:flex;",
+          "align-items:center;",
+          "gap:18px;",
+          "margin-bottom:8px;",
+          "flex-wrap:wrap;"
+        ),
+        div(
+          "Utilizzo nel periodo",
+          style = paste0(
+            "font-size:16px;",
+            "font-weight:700;",
+            "color:#4A4A4A;"
+          )
+        ),
+        div(
+          style = "margin-bottom:-15px;",
+          radioButtons(
+            "modal_granularita_utilizzo",
+            label = NULL,
+            choices = c("Settimana", "Mese"),
+            selected = isolate(granularita_utilizzo_corrente()),
+            inline = TRUE
+          )
         )
       ),
       div(
@@ -3314,7 +3368,7 @@ server <- function(input, output, session) {
           "overflow-x:auto;",
           "padding-bottom:4px;"
         ),
-        cards_settimane
+        cards_periodo
       ),
       div(
         style = "margin-top:10px;",
@@ -3330,7 +3384,11 @@ server <- function(input, output, session) {
       ),
       div(
         paste0(
-          "Intervallo normale settimanale: ",
+          "Intervallo normale ",
+          if (
+            identical(granularita, "Mese")
+          ) "mensile" else "settimanale",
+          ": ",
           soglia_bassa,
           " – ",
           soglia_alta
@@ -3344,6 +3402,7 @@ server <- function(input, output, session) {
     
     utilizzo <- utilizzo_nok_modal()
     storico <- utilizzo$storico_utilizzo_grafico
+    granularita <- utilizzo$granularita_utilizzo
     
     validate(
       need(
@@ -3358,12 +3417,12 @@ server <- function(input, output, session) {
     validate(
       need(
         nrow(selezionato) > 0,
-        "Nessuna settimana disponibile nel periodo selezionato"
+        "Nessun periodo disponibile nella selezione"
       )
     )
     
     inizio_area <- min(selezionato$inizio_finestra, na.rm = TRUE)
-    fine_area <- max(selezionato$inizio_finestra, na.rm = TRUE) + 6L
+    fine_area <- max(selezionato$fine_finestra, na.rm = TRUE)
     
     storico <- storico |>
       mutate(
@@ -3374,16 +3433,32 @@ server <- function(input, output, session) {
           stato == "Basso" ~ "Basso",
           TRUE ~ "N/D"
         ),
+        etichetta_periodo = if (
+          identical(granularita, "Mese")
+        ) {
+          format(inizio_finestra, "%m-%Y")
+        } else {
+          format(inizio_finestra, "%d-%m-%Y")
+        },
         tooltip_utilizzo = paste0(
           "<b>",
           ifelse(
             tipo == "Periodo selezionato",
-            paste0("Settimana: ", stato),
-            "Settimana storica"
+            paste0(
+              if (
+                identical(granularita, "Mese")
+              ) "Mese: " else "Settimana: ",
+              stato
+            ),
+            if (
+              identical(granularita, "Mese")
+            ) "Mese storico" else "Settimana storica"
           ),
           "</b><br/>",
-          "Settimana dal: ",
-          format(inizio_finestra, "%d-%m-%Y"),
+          if (
+            identical(granularita, "Mese")
+          ) "Periodo: " else "Settimana dal: ",
+          etichetta_periodo,
           "<br/>",
           "Utilizzo macchina: ",
           round(U_macchina, 3)
@@ -3412,8 +3487,8 @@ server <- function(input, output, session) {
       geom_segment(
         data = tibble(
           soglia = c(
-            utilizzo$P10_settimanale,
-            utilizzo$P90_settimanale
+            utilizzo$P10_periodo,
+            utilizzo$P90_periodo
           )
         ) |>
           filter(is.finite(soglia)),
@@ -3465,10 +3540,17 @@ server <- function(input, output, session) {
       scale_x_date(
         breaks = storico$inizio_finestra,
         labels = function(x) {
-          format(
-            as.Date(x, origin = "1970-01-01"),
-            "%d-%m-%Y"
-          )
+          if (identical(granularita, "Mese")) {
+            format(
+              as.Date(x, origin = "1970-01-01"),
+              "%m-%Y"
+            )
+          } else {
+            format(
+              as.Date(x, origin = "1970-01-01"),
+              "%d-%m-%Y"
+            )
+          }
         }
       ) +
       scale_y_continuous(
