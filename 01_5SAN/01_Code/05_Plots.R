@@ -23,6 +23,39 @@ if (dir.exists(cds_images_dir)) {
 dati <- readRDS(here("02_Output", "sensor_count_increment.rds")) |>
   mutate(field = if_else(is.na(field) | trimws(field) == "", "(Non specificato)", field))
 
+sensor_open_events_path <- here("02_Output", "sensor_open_events.rds")
+
+sensor_open_events <- if (file.exists(sensor_open_events_path)) {
+  readRDS(sensor_open_events_path) |>
+    mutate(
+      field = if_else(
+        is.na(field) | trimws(field) == "",
+        "(Non specificato)",
+        field
+      )
+    )
+} else {
+  tibble(
+    company = character(),
+    field = character(),
+    project = character(),
+    coupon = character(),
+    machine_name = character(),
+    gateway_name = character(),
+    cds_name = character(),
+    cds_description = character(),
+    cds_brand = character(),
+    cds_use = character(),
+    cds_vds = double(),
+    sensor_description = character(),
+    open_event_id = integer(),
+    open_start = as.POSIXct(character()),
+    open_end = as.POSIXct(character()),
+    open_hours = double(),
+    open_date = as.Date(character())
+  )
+}
+
 life_data <- readRDS(here("02_Output", "raw_data.rds")) |>
   group_by(coupon, cds_name, cds_vds, cds_t10d) |>
   summarise(
@@ -1474,6 +1507,14 @@ server <- function(input, output, session) {
         ),
         div(
           class = "alarm-section",
+          h4("Sensori rimasti aperti", class = "titolo-sezione"),
+          p(
+            "Eventi in cui il sensore è rimasto aperto per oltre 1 ora consecutiva mentre il gateway continuava a trasmettere."
+          ),
+          uiOutput("modal_allarmi_sensori_aperti_panel")
+        ),
+        div(
+          class = "alarm-section",
           h4("Valori NOK anomali", class = "titolo-sezione"),
           p(
             "Giornate in cui il NOK giornaliero del sensore è fuori dai limiti media storica ± 3σ."
@@ -2187,6 +2228,29 @@ server <- function(input, output, session) {
       )
   })
   
+  allarmi_sensori_aperti_modal <- reactive({
+    
+    filtri <- filtri_nok_modal()
+    
+    sensor_open_events |>
+      filter(
+        coupon == filtri$macchina,
+        cds_name %in% filtri$sensori,
+        open_date >= filtri$date[1],
+        open_date <= filtri$date[2],
+        is.finite(open_hours),
+        open_hours > 1
+      ) |>
+      arrange(open_start, cds_name) |>
+      transmute(
+        Sensore = paste(cds_name, sensor_description, sep = " - "),
+        Data = open_date,
+        Inizio = open_start,
+        Fine = open_end,
+        `Ore consecutive` = round(open_hours, 2)
+      )
+  })
+  
   allarmi_nok_modal <- reactive({
     
     filtri <- filtri_nok_modal()
@@ -2249,6 +2313,21 @@ server <- function(input, output, session) {
     DTOutput("modal_allarmi_attivazioni")
   })
   
+  output$modal_allarmi_sensori_aperti_panel <- renderUI({
+    tabella <- allarmi_sensori_aperti_modal()
+    
+    if (nrow(tabella) == 0) {
+      return(
+        div(
+          class = "alarm-empty",
+          "Nessun sensore è rimasto aperto per oltre 1 ora consecutiva nel periodo selezionato."
+        )
+      )
+    }
+    
+    DTOutput("modal_allarmi_sensori_aperti")
+  })
+  
   output$modal_allarmi_nok_panel <- renderUI({
     tabella <- allarmi_nok_modal()
     
@@ -2267,6 +2346,17 @@ server <- function(input, output, session) {
   output$modal_allarmi_attivazioni <- renderDT({
     allarmi_attivazioni_modal() |>
       mutate(Data = format(Data, "%d-%m-%Y"))
+  },
+  rownames = FALSE,
+  options = list(pageLength = 15, dom = "tip"))
+  
+  output$modal_allarmi_sensori_aperti <- renderDT({
+    allarmi_sensori_aperti_modal() |>
+      mutate(
+        Data = format(Data, "%d-%m-%Y"),
+        Inizio = format(Inizio, "%d-%m-%Y %H:%M:%S", tz = "Europe/Rome"),
+        Fine = format(Fine, "%d-%m-%Y %H:%M:%S", tz = "Europe/Rome")
+      )
   },
   rownames = FALSE,
   options = list(pageLength = 15, dom = "tip"))
