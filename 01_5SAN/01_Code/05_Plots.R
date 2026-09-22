@@ -3637,9 +3637,7 @@ server <- function(input, output, session) {
           "<b>", etichetta_sensore, "</b><br/>",
           "Media NOK: ", round(media_nok, 4), "<br/>",
           "Varianza NOK: ", round(varianza_nok, 4), "<br/>",
-          "Dev. standard NOK: ", round(sd_nok, 4), "<br/>",
-          "Intervallo grafico: media ± 3 SD<br/>",
-          "U sensore: ", round(U_sensore, 4)
+          "Utilizzo sensore: ", round(U_sensore, 4)
         )
       )
     
