@@ -2247,7 +2247,7 @@ server <- function(input, output, session) {
         Data = open_date,
         Inizio = open_start,
         Fine = open_end,
-        `Ore consecutive` = round(open_hours, 2)
+        `Almeno ore consecutive` = round(open_hours, 2)
       )
   })
   
