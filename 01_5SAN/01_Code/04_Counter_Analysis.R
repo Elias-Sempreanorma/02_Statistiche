@@ -8,16 +8,20 @@ raw_data <- readRDS(here("02_Output", "raw_data.rds")) |>
 uptime <- readRDS(here("02_Output", "uptime.rds"))
 
 # ---------------------------------------------------------------------------
-# Rilevo i periodi in cui un sensore risulta aperto mentre il gateway
-# continua a trasmettere.
+# Rilevo i periodi in cui un sensore risulta aperto mentre la macchina
+# risulta accesa.
 #
-# Un intervallo e' considerato "sensore aperto" quando due misure
-# consecutive dello stesso sensore hanno:
+# Il calcolo viene fatto SEMPRE per singolo giorno e singolo sensore:
+# non vengono mai collegati timestamp appartenenti a giornate diverse.
+#
+# All'interno della giornata un intervallo tra due misure consecutive e'
+# considerato "sensore aperto" quando:
 # - status = 0 in entrambe le misure;
-# - count invariato.
+# - count non aumenta (rimane identico).
 #
-# La durata e' quindi almeno la differenza tra i timestamp ricevuti.
-# Gli intervalli consecutivi vengono uniti nello stesso evento.
+# Eventi consecutivi vengono uniti fino a quando una delle due condizioni
+# viene meno. La durata osservata e' compresa tra il primo e l'ultimo
+# timestamp dell'evento nella stessa giornata.
 # ---------------------------------------------------------------------------
 gruppi_sensore <- c(
   "company", "field", "project", "coupon", "machine_name",
@@ -32,9 +36,13 @@ open_intervals <- raw_data |>
       "(Non specificato)",
       field
     ),
-    timestamp_local = with_tz(timestamp, "Europe/Rome")
+    timestamp_local = with_tz(timestamp, "Europe/Rome"),
+    day = as.Date(timestamp_local, tz = "Europe/Rome")
   ) |>
-  group_by(across(all_of(gruppi_sensore))) |>
+  group_by(
+    across(all_of(gruppi_sensore)),
+    day
+  ) |>
   arrange(timestamp_local, .by_group = TRUE) |>
   mutate(
     previous_timestamp = lag(timestamp_local),
@@ -57,87 +65,63 @@ open_intervals <- raw_data |>
     open_event_id = cumsum(nuovo_evento_aperto)
   ) |>
   filter(sensore_aperto_intervallo) |>
+  ungroup() |>
   transmute(
     across(all_of(gruppi_sensore)),
+    day,
     open_event_id,
     interval_start = previous_timestamp,
     interval_end = timestamp_local
-  ) |>
-  ungroup()
+  )
 
 sensor_open_events <- open_intervals |>
   group_by(
     across(all_of(gruppi_sensore)),
+    day,
     open_event_id
   ) |>
   summarise(
     open_start = min(interval_start, na.rm = TRUE),
     open_end = max(interval_end, na.rm = TRUE),
-    open_hours = sum(
-      as.numeric(
-        difftime(
-          interval_end,
-          interval_start,
-          units = "hours"
-        )
-      ),
-      na.rm = TRUE
+    open_hours = as.numeric(
+      difftime(
+        max(interval_end, na.rm = TRUE),
+        min(interval_start, na.rm = TRUE),
+        units = "hours"
+      )
     ),
     .groups = "drop"
   ) |>
   mutate(
-    open_date = as.Date(open_start, tz = "Europe/Rome")
+    open_date = day
   ) |>
   arrange(open_start)
 
-# Suddivido gli intervalli anche per giorno, cosi' il dataset storico
-# contiene le ore totali giornaliere in cui ogni sensore e' risultato aperto.
-sensor_open_daily <- if (nrow(open_intervals) > 0) {
-  open_intervals |>
-    rowwise() |>
-    mutate(
-      open_day = list(
-        seq.Date(
-          as.Date(interval_start, tz = "Europe/Rome"),
-          as.Date(interval_end, tz = "Europe/Rome"),
-          by = "day"
-        )
-      )
-    ) |>
-    ungroup() |>
-    tidyr::unnest(open_day) |>
-    mutate(
-      day = as.Date(open_day),
-      day_start = as.POSIXct(day, tz = "Europe/Rome"),
-      day_end = day_start + days(1),
-      daily_open_piece_hours = pmax(
-        0,
-        as.numeric(
-          difftime(
-            pmin(interval_end, day_end),
-            pmax(interval_start, day_start),
-            units = "hours"
-          )
-        )
-      )
-    ) |>
+# Ore totali giornaliere in cui il sensore e' risultato aperto.
+# Il valore e' calcolato solo all'interno della stessa giornata e quindi
+# non puo' includere ore notturne o buchi tra giorni diversi.
+sensor_open_daily <- if (nrow(sensor_open_events) > 0) {
+  sensor_open_events |>
     group_by(
       across(all_of(gruppi_sensore)),
       day
     ) |>
     summarise(
-      daily_open_hours = sum(
-        daily_open_piece_hours,
-        na.rm = TRUE
-      ),
+      daily_open_hours = sum(open_hours, na.rm = TRUE),
       .groups = "drop"
     )
 } else {
   raw_data |>
+    mutate(
+      day = as.Date(
+        with_tz(timestamp, "Europe/Rome"),
+        tz = "Europe/Rome"
+      )
+    ) |>
     slice(0) |>
     transmute(
       across(all_of(gruppi_sensore)),
-      day = as.Date(timestamp),
+      day,
       daily_open_hours = numeric()
     )
 }
