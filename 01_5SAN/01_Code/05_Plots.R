@@ -1468,7 +1468,7 @@ server <- function(input, output, session) {
           class = "alarm-section",
           h4("Attivazioni anomale", class = "titolo-sezione"),
           p(
-            "Giornate escluse dal calcolo del NOK perché individuate come anomalie nel conteggio delle attivazioni."
+            "Giornate escluse dal calcolo del NOK perché individuate come anomalie nel conteggio delle attivazioni, incluse le giornate a 0 per sensori normalmente attivi."
           ),
           uiOutput("modal_allarmi_attivazioni_panel")
         ),
@@ -1687,8 +1687,7 @@ server <- function(input, output, session) {
       class = "modal-data-panel",
       p(
         "Attivazioni giornaliere escluse dal calcolo del NOK nel periodo selezionato. ",
-        "Il filtro statistico viene applicato al conteggio giornaliero delle attivazioni, ",
-        "separatamente per ciascun sensore."
+        "Sono considerate anomale anche le giornate con 0 attivazioni quando il sensore ha una media giornaliera storica maggiore di 0."
       ),
       DTOutput("modal_tabella_outlier_nok")
     )
@@ -1739,9 +1738,24 @@ server <- function(input, output, session) {
         .x$outlier_lof <- FALSE
         
         n_validi <- sum(validi)
+        media_attivazioni_giornaliere <- if (n_validi > 0) {
+          mean(x[validi], na.rm = TRUE)
+        } else {
+          NA_real_
+        }
+        
+        # Se il sensore ha normalmente attivita' (> 0 in media),
+        # una giornata con 0 attivazioni viene considerata anomala.
+        zero_anomalo <- (
+          validi &
+          x == 0 &
+          is.finite(media_attivazioni_giornaliere) &
+          media_attivazioni_giornaliere > 0
+        )
+        .x$outlier_lof[zero_anomalo] <- TRUE
         
         # Con pochi dati il LOF non e' sufficientemente stabile:
-        # in quel caso non viene esclusa alcuna giornata.
+        # in quel caso restano comunque escluse le eventuali giornate a zero.
         if (n_validi >= 6L && dplyr::n_distinct(x[validi]) >= 3L) {
           k <- min(4L, n_validi - 1L)
           score <- dbscan::lof(
@@ -1757,9 +1771,12 @@ server <- function(input, output, session) {
           
           .x$lof_score[validi] <- score
           .x$outlier_lof[validi] <- (
-            !is.na(score) &
-            score > 2 &
-            divario_ampio
+            .x$outlier_lof[validi] |
+            (
+              !is.na(score) &
+              score > 2 &
+              divario_ampio
+            )
           )
         }
         
