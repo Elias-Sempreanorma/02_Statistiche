@@ -1160,9 +1160,9 @@ server <- function(input, output, session) {
           label = NULL,
           choices = c(
             "Conteggio attivazioni" = "attivazioni",
-            "Vita sensori"          = "vita",
             "NOK"                   = "nok",
-            "Allarmi e Near Miss"    = "allarmi"
+            "Vita sensori"          = "vita",
+            "Allarmi e Near Miss"   = "allarmi"
           ),
           selected = vista_iniziale,
           status   = "primary",
@@ -3295,7 +3295,7 @@ server <- function(input, output, session) {
         )
       ),
       div(
-        "Indice dell’intensità di utilizzo rispetto al comportamento storico dei sensori. Valori alti indicano uno stress della macchina più elevato o una discrepanza nell’utilizzo rispetto allo storico.",
+        "Indice dell’intensità di utilizzo dei sensori. Valori alti indicano uno stress della macchina più elevato o una discrepanza nell’utilizzo rispetto allo storico. Valori bassi indicano uno stress della macchina meno elevato rispetto allo storico.",
         style = "margin-top:7px;font-size:13px;color:#5F6F7F;"
       ),
       div(
