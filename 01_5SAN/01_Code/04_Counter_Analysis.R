@@ -74,34 +74,27 @@ open_intervals <- raw_data |>
     interval_end = timestamp_local
   )
 
-sensor_open_events <- open_intervals |>
-  group_by(
-    across(all_of(gruppi_sensore)),
-    day,
-    open_event_id
-  ) |>
-  summarise(
-    open_start = min(interval_start, na.rm = TRUE),
-    open_end = max(interval_end, na.rm = TRUE),
-    open_hours = as.numeric(
-      difftime(
-        max(interval_end, na.rm = TRUE),
-        min(interval_start, na.rm = TRUE),
-        units = "hours"
-      )
-    ),
-    .groups = "drop"
-  ) |>
-  mutate(
-    open_date = day
-  ) |>
-  arrange(open_start)
-
 # Ore totali giornaliere in cui il sensore e' risultato aperto.
-# Il valore e' calcolato solo all'interno della stessa giornata e quindi
-# non puo' includere ore notturne o buchi tra giorni diversi.
-sensor_open_daily <- if (nrow(sensor_open_events) > 0) {
-  sensor_open_events |>
+# Gli eventi consecutivi servono solo come passaggio di calcolo e NON
+# vengono salvati in un file separato: l'informazione storicizzata resta
+# esclusivamente in sensor_count_increment.rds tramite daily_open_hours.
+sensor_open_daily <- if (nrow(open_intervals) > 0) {
+  open_intervals |>
+    group_by(
+      across(all_of(gruppi_sensore)),
+      day,
+      open_event_id
+    ) |>
+    summarise(
+      open_hours = as.numeric(
+        difftime(
+          max(interval_end, na.rm = TRUE),
+          min(interval_start, na.rm = TRUE),
+          units = "hours"
+        )
+      ),
+      .groups = "drop"
+    ) |>
     group_by(
       across(all_of(gruppi_sensore)),
       day
@@ -125,11 +118,6 @@ sensor_open_daily <- if (nrow(sensor_open_events) > 0) {
       daily_open_hours = numeric()
     )
 }
-
-saveRDS(
-  sensor_open_events,
-  here("02_Output", "sensor_open_events.rds")
-)
 
 # calcola gli incrementi dei conteggi per ogni sensore e li classifico
 sensor_count_increment <- raw_data |>
