@@ -30,39 +30,6 @@ if (!"daily_open_hours" %in% names(dati)) {
     mutate(daily_open_hours = 0)
 }
 
-sensor_open_events_path <- here("02_Output", "sensor_open_events.rds")
-
-sensor_open_events <- if (file.exists(sensor_open_events_path)) {
-  readRDS(sensor_open_events_path) |>
-    mutate(
-      field = if_else(
-        is.na(field) | trimws(field) == "",
-        "(Non specificato)",
-        field
-      )
-    )
-} else {
-  tibble(
-    company = character(),
-    field = character(),
-    project = character(),
-    coupon = character(),
-    machine_name = character(),
-    gateway_name = character(),
-    cds_name = character(),
-    cds_description = character(),
-    cds_brand = character(),
-    cds_use = character(),
-    cds_vds = double(),
-    sensor_description = character(),
-    open_event_id = integer(),
-    open_start = as.POSIXct(character()),
-    open_end = as.POSIXct(character()),
-    open_hours = double(),
-    open_date = as.Date(character())
-  )
-}
-
 life_data <- readRDS(here("02_Output", "raw_data.rds")) |>
   group_by(coupon, cds_name, cds_vds, cds_t10d) |>
   summarise(
@@ -2262,22 +2229,114 @@ server <- function(input, output, session) {
     
     filtri <- filtri_nok_modal()
     
-    sensor_open_events |>
+    raw_data_allarmi <- readRDS(
+      here("02_Output", "raw_data.rds")
+    ) |>
+      mutate(
+        field = if_else(
+          is.na(field) | trimws(field) == "",
+          "(Non specificato)",
+          field
+        ),
+        timestamp_local = with_tz(
+          timestamp,
+          "Europe/Rome"
+        ),
+        day = as.Date(
+          timestamp_local,
+          tz = "Europe/Rome"
+        )
+      ) |>
       filter(
         coupon == filtri$macchina,
         cds_name %in% filtri$sensori,
-        open_date >= filtri$date[1],
-        open_date <= filtri$date[2],
-        is.finite(open_hours),
-        open_hours > 1
+        day >= filtri$date[1],
+        day <= filtri$date[2]
+      )
+    
+    gruppi_aperti <- c(
+      "company", "field", "project", "coupon",
+      "machine_name", "gateway_name", "cds_name",
+      "cds_description", "cds_brand", "cds_use",
+      "cds_vds", "sensor_description"
+    )
+    
+    raw_data_allarmi |>
+      group_by(
+        across(all_of(gruppi_aperti)),
+        day
       ) |>
-      arrange(open_start, cds_name) |>
+      arrange(
+        timestamp_local,
+        .by_group = TRUE
+      ) |>
+      mutate(
+        previous_timestamp = lag(timestamp_local),
+        previous_status = lag(status),
+        previous_raw_count = lag(count),
+        sensore_aperto_intervallo = (
+          !is.na(previous_timestamp) &
+          is.finite(status) &
+          is.finite(previous_status) &
+          status == 0 &
+          previous_status == 0 &
+          is.finite(count) &
+          is.finite(previous_raw_count) &
+          count == previous_raw_count
+        ),
+        nuovo_evento_aperto = (
+          sensore_aperto_intervallo &
+          !lag(
+            sensore_aperto_intervallo,
+            default = FALSE
+          )
+        ),
+        open_event_id = cumsum(
+          nuovo_evento_aperto
+        )
+      ) |>
+      filter(sensore_aperto_intervallo) |>
+      group_by(
+        across(all_of(gruppi_aperti)),
+        day,
+        open_event_id
+      ) |>
+      summarise(
+        Inizio = min(
+          previous_timestamp,
+          na.rm = TRUE
+        ),
+        Fine = max(
+          timestamp_local,
+          na.rm = TRUE
+        ),
+        ore_consecutive = as.numeric(
+          difftime(
+            Fine,
+            Inizio,
+            units = "hours"
+          )
+        ),
+        .groups = "drop"
+      ) |>
+      filter(
+        is.finite(ore_consecutive),
+        ore_consecutive > 1
+      ) |>
+      arrange(Inizio, cds_name) |>
       transmute(
-        Sensore = paste(cds_name, sensor_description, sep = " - "),
-        Data = open_date,
-        Inizio = open_start,
-        Fine = open_end,
-        `Almeno ore consecutive` = round(open_hours, 2)
+        Sensore = paste(
+          cds_name,
+          sensor_description,
+          sep = " - "
+        ),
+        Data = day,
+        Inizio,
+        Fine,
+        `Almeno ore consecutive` = round(
+          ore_consecutive,
+          2
+        )
       )
   })
   
