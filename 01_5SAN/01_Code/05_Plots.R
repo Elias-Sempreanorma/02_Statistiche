@@ -3219,8 +3219,8 @@ server <- function(input, output, session) {
       
       div(
         style = paste0(
-          "min-width:120px;",
-          "padding:9px 12px;",
+          "min-width:105px;",
+          "padding:7px 9px;",
           "border:1px solid ", colore, ";",
           "border-radius:8px;",
           "background:", sfondo, ";",
@@ -3231,7 +3231,7 @@ server <- function(input, output, session) {
             "Sett. ",
             format(riga$inizio_finestra, "%d-%m")
           ),
-          style = "font-size:12px;font-weight:700;color:#4A4A4A;"
+          style = "font-size:11px;font-weight:700;color:#4A4A4A;"
         ),
         div(
           formatC(
@@ -3241,7 +3241,7 @@ server <- function(input, output, session) {
             decimal.mark = ","
           ),
           style = paste0(
-            "font-size:24px;",
+            "font-size:22px;",
             "font-weight:800;",
             "line-height:1.2;",
             "color:", colore, ";"
@@ -3250,7 +3250,7 @@ server <- function(input, output, session) {
         div(
           riga$stato,
           style = paste0(
-            "font-size:11px;",
+            "font-size:10px;",
             "font-weight:800;",
             "text-transform:uppercase;",
             "color:", colore, ";"
@@ -3268,10 +3268,19 @@ server <- function(input, output, session) {
         "background:#FAFBFC;"
       ),
       div(
+        "Utilizzo periodo",
+        style = paste0(
+          "font-size:16px;",
+          "font-weight:700;",
+          "color:#4A4A4A;",
+          "margin-bottom:8px;"
+        )
+      ),
+      div(
         style = paste0(
           "display:flex;",
           "align-items:flex-start;",
-          "gap:10px;",
+          "gap:8px;",
           "overflow-x:auto;",
           "padding-bottom:4px;"
         ),
