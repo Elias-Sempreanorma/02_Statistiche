@@ -3030,8 +3030,7 @@ server <- function(input, output, session) {
       TRUE ~ "Normale"
     )
     
-    # Grafico storico utilizzo: sempre settimana per settimana,
-    # indipendente dalla durata delle finestre usate per P10/P90.
+    # Utilizzo macchina settimana per settimana.
     storico_utilizzo_grafico <- base_completa |>
       mutate(
         inizio_finestra = as.Date(
@@ -3072,15 +3071,72 @@ server <- function(input, output, session) {
             inizio_finestra <= filtri$date[2],
           "Periodo selezionato",
           "Riferimento"
-        ),
-        stato = if_else(
-          tipo == "Periodo selezionato",
-          stato_utilizzo,
-          "Storico"
         )
       ) |>
       filter(is.finite(U_macchina)) |>
       arrange(inizio_finestra)
+    
+    # Limiti settimanali usati per classificare ogni singola settimana.
+    # Normalmente si basano sulle settimane precedenti al periodo selezionato.
+    # Se il periodo copre oltre il 50% dello storico, o non ci sono abbastanza
+    # settimane precedenti, si usa tutto lo storico settimanale disponibile.
+    settimane_precedenti <- storico_utilizzo_grafico |>
+      filter(fine_settimana < filtri$date[1])
+    
+    usa_tutte_settimane <- (
+      quota_storico_selezionata > 0.50 ||
+      nrow(settimane_precedenti) < 2
+    )
+    
+    riferimento_settimanale <- if (usa_tutte_settimane) {
+      storico_utilizzo_grafico
+    } else {
+      settimane_precedenti
+    }
+    
+    valori_settimanali_rif <- riferimento_settimanale$U_macchina[
+      is.finite(riferimento_settimanale$U_macchina)
+    ]
+    
+    P10_settimanale <- if (length(valori_settimanali_rif) > 0) {
+      as.numeric(
+        stats::quantile(
+          valori_settimanali_rif,
+          probs = 0.10,
+          na.rm = TRUE,
+          names = FALSE,
+          type = 7
+        )
+      )
+    } else {
+      NA_real_
+    }
+    
+    P90_settimanale <- if (length(valori_settimanali_rif) > 0) {
+      as.numeric(
+        stats::quantile(
+          valori_settimanali_rif,
+          probs = 0.90,
+          na.rm = TRUE,
+          names = FALSE,
+          type = 7
+        )
+      )
+    } else {
+      NA_real_
+    }
+    
+    storico_utilizzo_grafico <- storico_utilizzo_grafico |>
+      mutate(
+        stato = case_when(
+          tipo == "Riferimento" ~ "Storico",
+          !is.finite(P10_settimanale) |
+            !is.finite(P90_settimanale) ~ "N/D",
+          U_macchina < P10_settimanale ~ "Basso",
+          U_macchina > P90_settimanale ~ "Elevato",
+          TRUE ~ "Normale"
+        )
+      )
     
     list(
       per_sensore = per_sensore,
@@ -3090,6 +3146,8 @@ server <- function(input, output, session) {
       P90_utilizzo = P90_utilizzo,
       stato_utilizzo = stato_utilizzo,
       storico_utilizzo_grafico = storico_utilizzo_grafico,
+      P10_settimanale = P10_settimanale,
+      P90_settimanale = P90_settimanale,
       n_finestre_storiche = length(U_storici),
       n_settimane_storiche = length(U_storici),
       durata_finestra_giorni = durata_giorni,
@@ -3108,28 +3166,18 @@ server <- function(input, output, session) {
     
     utilizzo <- utilizzo_nok_modal()
     
-    valore <- if (
-      length(utilizzo$U_macchina) == 0 ||
-      !is.finite(utilizzo$U_macchina)
-    ) {
-      "N/D"
-    } else {
-      formatC(
-        utilizzo$U_macchina,
-        format = "f",
-        digits = 2,
-        decimal.mark = ","
-      )
-    }
+    settimane <- utilizzo$storico_utilizzo_grafico |>
+      filter(tipo == "Periodo selezionato") |>
+      arrange(inizio_finestra)
     
     soglia_bassa <- if (
-      length(utilizzo$P10_utilizzo) == 0 ||
-      !is.finite(utilizzo$P10_utilizzo)
+      length(utilizzo$P10_settimanale) == 0 ||
+      !is.finite(utilizzo$P10_settimanale)
     ) {
       "N/D"
     } else {
       formatC(
-        utilizzo$P10_utilizzo,
+        utilizzo$P10_settimanale,
         format = "f",
         digits = 2,
         decimal.mark = ","
@@ -3137,76 +3185,105 @@ server <- function(input, output, session) {
     }
     
     soglia_alta <- if (
-      length(utilizzo$P90_utilizzo) == 0 ||
-      !is.finite(utilizzo$P90_utilizzo)
+      length(utilizzo$P90_settimanale) == 0 ||
+      !is.finite(utilizzo$P90_settimanale)
     ) {
       "N/D"
     } else {
       formatC(
-        utilizzo$P90_utilizzo,
+        utilizzo$P90_settimanale,
         format = "f",
         digits = 2,
         decimal.mark = ","
       )
     }
     
-    stato <- utilizzo$stato_utilizzo
-    
-    colore <- switch(
-      stato,
-      "Normale" = "#19764A",
-      "Elevato" = "#A65A52",
-      "Basso" = "#58758F",
-      "#5F6F7F"
-    )
-    
-    sfondo <- switch(
-      stato,
-      "Normale" = "#F2FBF6",
-      "Elevato" = "#FBF3F2",
-      "Basso" = "#F2F6FA",
-      "#F4F8FB"
-    )
+    cards_settimane <- lapply(seq_len(nrow(settimane)), function(i) {
+      riga <- settimane[i, ]
+      
+      colore <- switch(
+        as.character(riga$stato),
+        "Normale" = "#19764A",
+        "Elevato" = "#A65A52",
+        "Basso" = "#58758F",
+        "#5F6F7F"
+      )
+      
+      sfondo <- switch(
+        as.character(riga$stato),
+        "Normale" = "#F2FBF6",
+        "Elevato" = "#FBF3F2",
+        "Basso" = "#F2F6FA",
+        "#F4F8FB"
+      )
+      
+      div(
+        style = paste0(
+          "min-width:120px;",
+          "padding:9px 12px;",
+          "border:1px solid ", colore, ";",
+          "border-radius:8px;",
+          "background:", sfondo, ";",
+          "text-align:center;"
+        ),
+        div(
+          paste0(
+            "Sett. ",
+            format(riga$inizio_finestra, "%d-%m")
+          ),
+          style = "font-size:12px;font-weight:700;color:#4A4A4A;"
+        ),
+        div(
+          formatC(
+            riga$U_macchina,
+            format = "f",
+            digits = 2,
+            decimal.mark = ","
+          ),
+          style = paste0(
+            "font-size:24px;",
+            "font-weight:800;",
+            "line-height:1.2;",
+            "color:", colore, ";"
+          )
+        ),
+        div(
+          riga$stato,
+          style = paste0(
+            "font-size:11px;",
+            "font-weight:800;",
+            "text-transform:uppercase;",
+            "color:", colore, ";"
+          )
+        )
+      )
+    })
     
     div(
       style = paste0(
         "margin:14px 0 20px 0;",
         "padding:15px 18px;",
-        "border:2px solid ", colore, ";",
+        "border:1px solid #DDE4EA;",
         "border-radius:9px;",
-        "background:", sfondo, ";"
+        "background:#FAFBFC;"
       ),
-      span(
-        "Utilizzo periodo: ",
-        style = "font-size:16px;font-weight:700;color:#4A4A4A;"
-      ),
-      span(
-        valore,
+      div(
         style = paste0(
-          "font-size:28px;font-weight:800;color:",
-          colore,
-          ";"
-        )
+          "display:flex;",
+          "align-items:flex-start;",
+          "gap:10px;",
+          "overflow-x:auto;",
+          "padding-bottom:4px;"
+        ),
+        cards_settimane
       ),
-      span(
-        paste0("  ", stato),
-        style = paste0(
-          "margin-left:10px;",
-          "padding:4px 10px;",
-          "border-radius:999px;",
-          "font-size:14px;",
-          "font-weight:800;",
-          "color:#FFFFFF;",
-          "background:",
-          colore,
-          ";"
+      div(
+        style = "margin-top:10px;",
+        actionButton(
+          "modal_btn_storico_utilizzo_nok",
+          "Storico utilizzo",
+          class = "btn-sm btn-default"
         )
-      ),
-      actionButton(
-        "modal_btn_storico_utilizzo_nok",
-        "Storico utilizzo",
-        class = "btn-sm btn-default",
-        style = "margin-left:12px;"
       ),
       div(
         "Indice dell’intensità di utilizzo rispetto al comportamento storico dei sensori. Valori alti indicano uno stress della macchina più elevato o una discrepanza nell’utilizzo rispetto allo storico.",
@@ -3214,7 +3291,7 @@ server <- function(input, output, session) {
       ),
       div(
         paste0(
-          "Intervallo normale: ",
+          "Intervallo normale settimanale: ",
           soglia_bassa,
           " – ",
           soglia_alta
@@ -3236,42 +3313,6 @@ server <- function(input, output, session) {
       )
     )
     
-    stato <- utilizzo$stato_utilizzo
-    
-    colore_periodo <- switch(
-      stato,
-      "Normale" = "#19764A",
-      "Elevato" = "#A65A52",
-      "Basso" = "#58758F",
-      "#5F6F7F"
-    )
-    
-    sfondo_periodo <- switch(
-      stato,
-      "Normale" = "#EAF6EF",
-      "Elevato" = "#F7EDEA",
-      "Basso" = "#EAF0F5",
-      "#F1F3F5"
-    )
-    
-    storico <- storico |>
-      mutate(
-        tooltip_utilizzo = paste0(
-          "<b>",
-          ifelse(
-            tipo == "Periodo selezionato",
-            "Settimana nel periodo selezionato",
-            "Settimana storica"
-          ),
-          "</b><br/>",
-          "Settimana dal: ",
-          format(inizio_finestra, "%d-%m-%Y"),
-          "<br/>",
-          "Utilizzo macchina: ",
-          round(U_macchina, 3)
-        )
-      )
-    
     selezionato <- storico |>
       filter(tipo == "Periodo selezionato")
     
@@ -3284,7 +3325,31 @@ server <- function(input, output, session) {
     
     inizio_area <- min(selezionato$inizio_finestra, na.rm = TRUE)
     fine_area <- max(selezionato$inizio_finestra, na.rm = TRUE) + 6L
-    media_periodo <- mean(selezionato$U_macchina, na.rm = TRUE)
+    
+    storico <- storico |>
+      mutate(
+        colore_punto = case_when(
+          tipo == "Riferimento" ~ "Storico",
+          stato == "Normale" ~ "Normale",
+          stato == "Elevato" ~ "Elevato",
+          stato == "Basso" ~ "Basso",
+          TRUE ~ "N/D"
+        ),
+        tooltip_utilizzo = paste0(
+          "<b>",
+          ifelse(
+            tipo == "Periodo selezionato",
+            paste0("Settimana: ", stato),
+            "Settimana storica"
+          ),
+          "</b><br/>",
+          "Settimana dal: ",
+          format(inizio_finestra, "%d-%m-%Y"),
+          "<br/>",
+          "Utilizzo macchina: ",
+          round(U_macchina, 3)
+        )
+      )
     
     ggplot(
       storico,
@@ -3298,41 +3363,35 @@ server <- function(input, output, session) {
           ymax = Inf
         ),
         inherit.aes = FALSE,
-        fill = sfondo_periodo,
+        fill = "#F6F1D8",
         alpha = 0.75
       ) +
       geom_line(
-        aes(color = "Storico"),
+        color = "#B7BEC5",
+        linewidth = 0.9
+      ) +
+      geom_segment(
+        data = tibble(
+          soglia = c(
+            utilizzo$P10_settimanale,
+            utilizzo$P90_settimanale
+          )
+        ) |>
+          filter(is.finite(soglia)),
+        aes(
+          x = inizio_area,
+          xend = fine_area,
+          y = soglia,
+          yend = soglia,
+          linetype = "Limiti normali"
+        ),
+        inherit.aes = FALSE,
+        color = "#79A884",
         linewidth = 0.9
       ) +
       geom_point_interactive(
-        data = storico |> filter(tipo == "Riferimento"),
         aes(
-          color = "Storico",
-          tooltip = tooltip_utilizzo,
-          data_id = paste(
-            tipo,
-            inizio_finestra,
-            sep = "__"
-          )
-        ),
-        size = 2.8
-      ) +
-      geom_line(
-        data = selezionato,
-        aes(
-          x = inizio_finestra,
-          y = U_macchina,
-          color = "Periodo selezionato"
-        ),
-        linewidth = 1.5
-      ) +
-      geom_point_interactive(
-        data = selezionato,
-        aes(
-          x = inizio_finestra,
-          y = U_macchina,
-          color = "Periodo selezionato",
+          color = colore_punto,
           tooltip = tooltip_utilizzo,
           data_id = paste(
             tipo,
@@ -3342,34 +3401,25 @@ server <- function(input, output, session) {
         ),
         size = 3.2
       ) +
-      geom_segment(
-        aes(
-          x = inizio_area,
-          xend = fine_area,
-          y = media_periodo,
-          yend = media_periodo,
-          color = "Media periodo",
-          linetype = "Media periodo"
-        ),
-        inherit.aes = FALSE,
-        linewidth = 1
-      ) +
       scale_color_manual(
         values = c(
           "Storico" = "#B7BEC5",
-          "Periodo selezionato" = colore_periodo,
-          "Media periodo" = colore_periodo
+          "Normale" = "#19764A",
+          "Elevato" = "#A65A52",
+          "Basso" = "#58758F",
+          "N/D" = "#6E7781"
         ),
         breaks = c(
           "Storico",
-          "Periodo selezionato",
-          "Media periodo"
+          "Normale",
+          "Elevato",
+          "Basso"
         ),
         name = NULL
       ) +
       scale_linetype_manual(
         values = c(
-          "Media periodo" = "dashed"
+          "Limiti normali" = "dashed"
         ),
         name = NULL
       ) +
