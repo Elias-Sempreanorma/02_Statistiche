@@ -382,6 +382,24 @@ ui <- fluidPage(
         background: #EDE8D8;
         color: #24364B !important;
       }
+      .modal-documenti {
+        padding-top: 2px;
+      }
+      .modal-documenti-title {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        margin-bottom: 6px;
+        color: #24364B;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .modal-documenti .documenti-links {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
       .card-home {
         display: block;
         width: 100%;
@@ -1010,29 +1028,6 @@ ui <- fluidPage(
     )
   ),
   
-  if (length(documenti_files) > 0) {
-    div(
-      class = "documenti-bar",
-      div(
-        class = "documenti-title",
-        icon("file-pdf"),
-        span("Documenti")
-      ),
-      div(
-        class = "documenti-links",
-        lapply(seq_along(documenti_files), function(i) {
-          downloadLink(
-            outputId = paste0("download_documento_", i),
-            label = tools::file_path_sans_ext(
-              basename(documenti_files[[i]])
-            ),
-            class = "documento-download"
-          )
-        })
-      )
-    )
-  },
-  
   # Home unica: menu verticale a sinistra e schema della macchina a destra.
   div(
     class = "home-stage",
@@ -1558,20 +1553,47 @@ server <- function(input, output, session) {
         div(
           class = "modal-filters",
           fluidRow(
-            column(4,
-                   dateRangeInput(
-                     "modal_date", "Periodo:",
-                     start = date_selezionate[1], end = date_selezionate[2],
-                     min = data_min, max = data_max,
-                     format = "dd-mm-yyyy", separator = " a ", language = "it"
-                   )
+            column(
+              3,
+              dateRangeInput(
+                "modal_date", "Periodo:",
+                start = date_selezionate[1], end = date_selezionate[2],
+                min = data_min, max = data_max,
+                format = "dd-mm-yyyy", separator = " a ", language = "it"
+              )
             ),
-            column(8,
-                   pickerInput(
-                     "modal_sensori", "Sensori:",
-                     choices = scelte_sensori, selected = sensori_selezionati,
-                     multiple = TRUE, options = picker_opts
-                   )
+            column(
+              6,
+              pickerInput(
+                "modal_sensori", "Sensori:",
+                choices = scelte_sensori, selected = sensori_selezionati,
+                multiple = TRUE, options = picker_opts
+              )
+            ),
+            column(
+              3,
+              if (length(documenti_files) > 0) {
+                div(
+                  class = "modal-documenti",
+                  div(
+                    class = "modal-documenti-title",
+                    icon("file-pdf"),
+                    span("Documenti")
+                  ),
+                  div(
+                    class = "documenti-links",
+                    lapply(seq_along(documenti_files), function(i) {
+                      downloadLink(
+                        outputId = paste0("download_documento_", i),
+                        label = tools::file_path_sans_ext(
+                          basename(documenti_files[[i]])
+                        ),
+                        class = "documento-download"
+                      )
+                    })
+                  )
+                )
+              }
             )
           )
         ),
