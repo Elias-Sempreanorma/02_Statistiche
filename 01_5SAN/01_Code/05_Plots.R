@@ -3114,7 +3114,7 @@ server <- function(input, output, session) {
   # Utilizzo macchina dal NOK.
   # Usa gli stessi dati giornalieri gia' filtrati per il calcolo del NOK.
   #
-  # U_sensore  = media(NOK) * varianza(NOK)
+  # U_sensore  = sqrt(media(NOK)^2 + varianza(NOK))
   # U_macchina = media(U_sensore)
   # ---------------------------------------------------------------------
   utilizzo_nok_modal <- reactive({
@@ -3155,7 +3155,7 @@ server <- function(input, output, session) {
         .groups = "drop"
       ) |>
       mutate(
-        U_sensore = media_nok * varianza_nok,
+        U_sensore = sqrt(media_nok^2 + varianza_nok),
         sd_nok = sqrt(varianza_nok),
         banda_min = pmax(0, media_nok - sd_nok),
         banda_max = media_nok + sd_nok,
@@ -3203,7 +3203,7 @@ server <- function(input, output, session) {
         .groups = "drop"
       ) |>
       mutate(
-        U_sensore = media_nok * varianza_nok,
+        U_sensore = sqrt(media_nok^2 + varianza_nok),
         sd_nok = sqrt(varianza_nok),
         banda_min = pmax(0, media_nok - sd_nok),
         banda_max = media_nok + sd_nok,
@@ -3277,7 +3277,7 @@ server <- function(input, output, session) {
           .groups = "drop"
         ) |>
         mutate(
-          U_sensore = media_nok * varianza_nok
+          U_sensore = sqrt(media_nok^2 + varianza_nok)
         ) |>
         filter(is.finite(U_sensore))
       
@@ -3413,7 +3413,7 @@ server <- function(input, output, session) {
         .groups = "drop"
       ) |>
       mutate(
-        U_sensore = media_nok * varianza_nok
+        U_sensore = sqrt(media_nok^2 + varianza_nok)
       ) |>
       filter(is.finite(U_sensore)) |>
       group_by(inizio_finestra) |>
