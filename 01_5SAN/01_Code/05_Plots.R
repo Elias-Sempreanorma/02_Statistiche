@@ -2117,7 +2117,7 @@ server <- function(input, output, session) {
         .groups = "drop"
       ) |>
       mutate(
-        limite_nok_inf = media_nok_storico - 3 * sigma_nok_storico,
+        limite_nok_inf = pmax(0, media_nok_storico - 3 * sigma_nok_storico),
         limite_nok_sup = media_nok_storico + 3 * sigma_nok_storico
       )
   })
