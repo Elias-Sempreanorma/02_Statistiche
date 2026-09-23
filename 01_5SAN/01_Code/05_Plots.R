@@ -20,14 +20,14 @@ if (dir.exists(cds_images_dir)) {
   addResourcePath("cds-images", cds_images_dir)
 }
 
-# PDF statici scaricabili dalla dashboard. Restano fuori da www:
+# DOCX statici scaricabili dalla dashboard. Restano fuori da www:
 # il download passa quindi sempre da Shiny.
 documenti_dir <- here("00_Data", "03_Documenti")
 documenti_files <- if (dir.exists(documenti_dir)) {
   sort(
     list.files(
       documenti_dir,
-      pattern = "\\.pdf$",
+      pattern = "\\.docx$",
       full.names = TRUE,
       ignore.case = TRUE
     )
@@ -1095,7 +1095,7 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
   
-  # Download dei PDF presenti in 00_Data/03_Documenti.
+  # Download dei DOCX presenti in 00_Data/03_Documenti.
   if (length(documenti_files) > 0) {
     for (i in seq_along(documenti_files)) {
       local({
@@ -1113,7 +1113,7 @@ server <- function(input, output, session) {
               overwrite = TRUE
             )
           },
-          contentType = "application/pdf"
+          contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
       })
     }
@@ -1577,7 +1577,7 @@ server <- function(input, output, session) {
                   class = "modal-documenti",
                   div(
                     class = "modal-documenti-title",
-                    icon("file-pdf"),
+                    icon("file-word"),
                     span("Documenti")
                   ),
                   div(
