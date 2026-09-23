@@ -20,6 +20,22 @@ if (dir.exists(cds_images_dir)) {
   addResourcePath("cds-images", cds_images_dir)
 }
 
+# PDF statici scaricabili dalla dashboard. Restano fuori da www:
+# il download passa quindi sempre da Shiny.
+documenti_dir <- here("00_Data", "03_Documenti")
+documenti_files <- if (dir.exists(documenti_dir)) {
+  sort(
+    list.files(
+      documenti_dir,
+      pattern = "\\.pdf$",
+      full.names = TRUE,
+      ignore.case = TRUE
+    )
+  )
+} else {
+  character(0)
+}
+
 dati <- readRDS(here("02_Output", "sensor_count_increment.rds")) |>
   mutate(field = if_else(is.na(field) | trimws(field) == "", "(Non specificato)", field))
 
@@ -324,6 +340,47 @@ ui <- fluidPage(
         font-weight: 600;
         margin-top: 10px;
         margin-bottom: 10px;
+      }
+      .documenti-bar {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+        margin: 0 0 10px 0;
+        padding: 9px 13px;
+        border: 1px solid #D8D3C3;
+        border-radius: 7px;
+        background: #F8F6EE;
+      }
+      .documenti-title {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        color: #24364B;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      .documenti-links {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .documento-download {
+        display: inline-block;
+        padding: 5px 9px;
+        border: 1px solid #C8C0A7;
+        border-radius: 6px;
+        background: #FFFFFF;
+        color: #24364B !important;
+        font-size: 12px;
+        font-weight: 600;
+        text-decoration: none !important;
+      }
+      .documento-download:hover,
+      .documento-download:focus {
+        background: #EDE8D8;
+        color: #24364B !important;
       }
       .card-home {
         display: block;
@@ -953,6 +1010,29 @@ ui <- fluidPage(
     )
   ),
   
+  if (length(documenti_files) > 0) {
+    div(
+      class = "documenti-bar",
+      div(
+        class = "documenti-title",
+        icon("file-pdf"),
+        span("Documenti")
+      ),
+      div(
+        class = "documenti-links",
+        lapply(seq_along(documenti_files), function(i) {
+          downloadLink(
+            outputId = paste0("download_documento_", i),
+            label = tools::file_path_sans_ext(
+              basename(documenti_files[[i]])
+            ),
+            class = "documento-download"
+          )
+        })
+      )
+    )
+  },
+  
   # Home unica: menu verticale a sinistra e schema della macchina a destra.
   div(
     class = "home-stage",
@@ -1019,6 +1099,30 @@ ui <- fluidPage(
 )
 
 server <- function(input, output, session) {
+  
+  # Download dei PDF presenti in 00_Data/03_Documenti.
+  if (length(documenti_files) > 0) {
+    for (i in seq_along(documenti_files)) {
+      local({
+        file_corrente <- documenti_files[[i]]
+        output_id <- paste0("download_documento_", i)
+        
+        output[[output_id]] <- downloadHandler(
+          filename = function() {
+            basename(file_corrente)
+          },
+          content = function(file) {
+            file.copy(
+              file_corrente,
+              file,
+              overwrite = TRUE
+            )
+          },
+          contentType = "application/pdf"
+        )
+      })
+    }
+  }
   
   # 1. Quando cambia l'azienda, aggiorno gli stabilimenti disponibili
   observeEvent(input$azienda, {
