@@ -91,7 +91,7 @@ sensori_lookup <- dati |>
 
 data_min <- min(dati$day, na.rm = TRUE)
 data_max <- max(dati$day, na.rm = TRUE)
-data_start_default <- max(data_min, data_max - 13)
+data_start_default <- max(data_min, data_max - 27)
 
 # ---------------------------------------------------------------------------
 # Immagini disponibili e coordinate dei punti interattivi.
