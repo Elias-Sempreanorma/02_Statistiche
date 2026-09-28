@@ -1962,8 +1962,13 @@ server <- function(input, output, session) {
     bindCache(filtri_principali()$macchina, filtri_principali()$sensori)
   
   nmn_storico <- reactive({
+    filtri <- filtri_principali()
+    
     valori_giornalieri() |>
-      filter(!outlier_lof) |>
+      filter(
+        !outlier_lof,
+        day < filtri$date[1] | day > filtri$date[2]
+      ) |>
       group_by(cds_name, sensor_description) |>
       summarise(NMN = mean(daily_value, na.rm = TRUE), .groups = "drop")
   })
@@ -2209,8 +2214,13 @@ server <- function(input, output, session) {
     bindCache(filtri_nok_modal()$macchina, filtri_nok_modal()$sensori)
   
   nmn_storico_modal_nok <- reactive({
+    filtri <- filtri_nok_modal()
+    
     valori_giornalieri_modal_nok() |>
-      filter(!outlier_lof) |>
+      filter(
+        !outlier_lof,
+        day < filtri$date[1] | day > filtri$date[2]
+      ) |>
       group_by(cds_name, sensor_description) |>
       summarise(NMN = mean(daily_value, na.rm = TRUE), .groups = "drop")
   })
