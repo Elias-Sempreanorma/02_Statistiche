@@ -1945,20 +1945,27 @@ server <- function(input, output, session) {
             numeric(1)
           )
           
-          divario_ampio <- (
+          rapporto_anomalo <- (
             is.finite(mediana_senza_valore) &
-            x_validi >= mediana_senza_valore * 5 &
+            x_validi >= mediana_senza_valore * 5
+          )
+          
+          differenza_anomala <- (
+            is.finite(mediana_senza_valore) &
             (x_validi - mediana_senza_valore) >= 49
+          )
+          
+          lof_anomalo <- (
+            !is.na(score) &
+            score > 2
           )
           
           .x$lof_score[validi] <- score
           .x$outlier_lof[validi] <- (
             .x$outlier_lof[validi] |
-            (
-              !is.na(score) &
-              score > 2 &
-              divario_ampio
-            )
+            lof_anomalo |
+            rapporto_anomalo |
+            differenza_anomala
           )
         }
         
@@ -2247,8 +2254,13 @@ server <- function(input, output, session) {
   # Limiti di riferimento: media storica +/- 3 sigma.
   statistiche_nok_storiche_modal <- reactive({
     
+    filtri <- filtri_nok_modal()
+    
     valori_giornalieri_modal_nok() |>
-      filter(!outlier_lof) |>
+      filter(
+        !outlier_lof,
+        day < filtri$date[1] | day > filtri$date[2]
+      ) |>
       left_join(
         nmn_storico_modal_nok(),
         by = c("cds_name", "sensor_description")
@@ -2500,7 +2512,7 @@ server <- function(input, output, session) {
     
     valori_giornalieri_modal_nok() |>
       filter(
-        !outlier_lof,
+        !ha_incrementi_negativi,
         day >= filtri$date[1],
         day <= filtri$date[2]
       ) |>
