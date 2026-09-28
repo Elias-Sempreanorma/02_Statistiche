@@ -1471,7 +1471,7 @@ server <- function(input, output, session) {
           ),
           actionButton(
             "modal_btn_outlier_nok",
-            "Attivazioni escluse",
+            "Attivazioni anomale",
             class = "btn-sm btn-default"
           )
         ),
@@ -1601,7 +1601,7 @@ server <- function(input, output, session) {
           class = "alarm-section",
           h4("Attivazioni anomale", class = "titolo-sezione"),
           p(
-            "Giornate escluse dal calcolo del NOK perché individuate come anomalie nel conteggio delle attivazioni, inclusi valori negativi e giornate a 0 per sensori normalmente attivi."
+            "Giornate con attivazioni anomale. Le anomalie statistiche e le giornate a 0 restano nel NOK del periodo selezionato e vengono escluse solo dal riferimento storico NMN; i giorni con conteggi negativi restano esclusi dal NOK."
           ),
           uiOutput("modal_allarmi_attivazioni_panel")
         ),
@@ -1827,8 +1827,8 @@ server <- function(input, output, session) {
     div(
       class = "modal-data-panel",
       p(
-        "Attivazioni giornaliere escluse dal calcolo del NOK nel periodo selezionato. ",
-        "I conteggi negativi non vengono considerati nei conteggi e sono sempre esclusi dal NOK; sono inoltre anomale le giornate con 0 attivazioni quando il sensore ha una media giornaliera storica maggiore di 0."
+        "Attivazioni giornaliere anomale rilevate nel periodo selezionato. ",
+        "Le anomalie statistiche e le giornate con 0 attivazioni restano nel calcolo dell'NMM e quindi del NOK del periodo; il filtro anomalie viene usato per pulire l'NMN storico. I giorni con conteggi negativi restano esclusi dal NOK perché non rappresentano attivazioni reali."
       ),
       DTOutput("modal_tabella_outlier_nok")
     )
@@ -1927,10 +1927,28 @@ server <- function(input, output, session) {
             minPts = k
           )
           
-          mediana_attivazioni <- stats::median(x[validi], na.rm = TRUE)
+          x_validi <- x[validi]
+          
+          # Per valutare il divario di ciascun candidato uso una mediana
+          # leave-one-out: il valore che sto testando non contribuisce alla
+          # propria mediana di riferimento.
+          mediana_senza_valore <- vapply(
+            seq_along(x_validi),
+            function(i) {
+              altri_valori <- x_validi[-i]
+              if (length(altri_valori) == 0) {
+                NA_real_
+              } else {
+                stats::median(altri_valori, na.rm = TRUE)
+              }
+            },
+            numeric(1)
+          )
+          
           divario_ampio <- (
-            x[validi] >= mediana_attivazioni * 5 &
-            (x[validi] - mediana_attivazioni) >= 49
+            is.finite(mediana_senza_valore) &
+            x_validi >= mediana_senza_valore * 5 &
+            (x_validi - mediana_senza_valore) >= 49
           )
           
           .x$lof_score[validi] <- score
@@ -1992,7 +2010,7 @@ server <- function(input, output, session) {
     
     nmm_per_sensore <- valori_giornalieri() |>
       filter(
-        !outlier_lof,
+        !ha_incrementi_negativi,
         day >= filtri$date[1],
         day <= filtri$date[2]
       ) |>
@@ -2264,7 +2282,7 @@ server <- function(input, output, session) {
     
     nmm_per_sensore <- valori_giornalieri_modal_nok() |>
       filter(
-        !outlier_lof,
+        !ha_incrementi_negativi,
         day >= filtri$date[1],
         day <= filtri$date[2]
       ) |>
@@ -3124,7 +3142,7 @@ server <- function(input, output, session) {
     
     valori_giornalieri_modal_nok() |>
       filter(
-        !outlier_lof,
+        !ha_incrementi_negativi,
         day >= filtri$date[1],
         day <= filtri$date[2]
       ) |>
@@ -3164,7 +3182,7 @@ server <- function(input, output, session) {
     periodo_precedente_inizio <- filtri$date[1] - durata_giorni
     
     base <- valori_giornalieri_modal_nok() |>
-      filter(!outlier_lof) |>
+      filter(!ha_incrementi_negativi) |>
       left_join(
         nmn_storico_modal_nok(),
         by = c("cds_name", "sensor_description")
@@ -3258,7 +3276,7 @@ server <- function(input, output, session) {
     filtri <- filtri_nok_modal()
     
     base_completa <- valori_giornalieri_modal_nok() |>
-      filter(!outlier_lof) |>
+      filter(!ha_incrementi_negativi) |>
       left_join(
         nmn_storico_modal_nok(),
         by = c("cds_name", "sensor_description")
@@ -4458,7 +4476,7 @@ server <- function(input, output, session) {
     validate(
       need(
         nrow(esclusi) > 0,
-        "Nessuna attivazione esclusa nel periodo selezionato."
+        "Nessuna attivazione anomala nel periodo selezionato."
       )
     )
     
