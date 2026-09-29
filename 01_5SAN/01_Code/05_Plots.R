@@ -405,7 +405,7 @@ ui <- fluidPage(
         padding-bottom: 8px;
       }
       .activation-scroll-inner {
-        min-width: 2200px;
+        display: block;
       }
       .documenti-bar {
         display: flex;
@@ -1458,10 +1458,7 @@ server <- function(input, output, session) {
         h4("Conteggio attivazioni", class = "titolo-sezione"),
         div(
           class = "activation-scroll",
-          div(
-            class = "activation-scroll-inner",
-            girafeOutput("modal_activationPlot", height = "380px")
-          )
+          uiOutput("modal_activationPlot_container")
         ),
         div(
           class = "modal-data-button",
@@ -1472,10 +1469,7 @@ server <- function(input, output, session) {
         br(),
         div(
           class = "activation-scroll",
-          div(
-            class = "activation-scroll-inner",
-            girafeOutput("modal_activationTrendPlot", height = "380px")
-          )
+          uiOutput("modal_activationTrendPlot_container")
         ),
         div(
           class = "modal-data-button",
@@ -3169,19 +3163,10 @@ server <- function(input, output, session) {
               "Attivazioni nell'ora: ",
               "Attivazioni medie giornaliere: "
             ),
-            scales::label_number(accuracy = 0.1, big.mark = ".")(attivazioni), "<br/>",
-            etichetta_ore_aperte, ": ",
-            scales::label_number(accuracy = 1, big.mark = ".")(ore_aperte),
-            " h",
-            if_else(
-              anomalia_oraria,
-              paste0(
-                "<br/><b>Attivazione anomala</b><br/>",
-                "Mediana oraria: ",
-                scales::label_number(accuracy = 0.1, big.mark = ".")(mediana_oraria)
-              ),
-              ""
-            )
+            scales::label_number(
+              accuracy = 0.1,
+              big.mark = "."
+            )(attivazioni)
           ),
           data_id = paste(etichetta_completa, periodo_label, sep = "__")
         ),
@@ -3241,19 +3226,10 @@ server <- function(input, output, session) {
       "<b>", grafico$etichetta_completa, "</b><br/>",
       "Periodo: ", grafico$periodo_label, "<br/>",
       "Attivazioni: ",
-      scales::label_number(accuracy = 1, big.mark = ".")(grafico$attivazioni),
-      ifelse(
-        grafico$anomalia_oraria,
-        paste0(
-          "<br/><b>Attivazione anomala</b><br/>",
-          "Mediana oraria: ",
-          scales::label_number(
-            accuracy = 0.1,
-            big.mark = "."
-          )(grafico$mediana_oraria)
-        ),
-        ""
-      )
+      scales::label_number(
+        accuracy = 1,
+        big.mark = "."
+      )(grafico$attivazioni)
     )
     
     if (identical(granularita, "Ora")) {
@@ -3416,7 +3392,72 @@ server <- function(input, output, session) {
       )
   }
   
-  # Modal (size = "xl", ~95vw): larghezza misurata dal JS dopo l'apertura
+  # Modal (size = "xl", ~95vw): larghezza misurata dal JS dopo l'apertura.
+  # In modalita' oraria il contenitore interno ha una larghezza reale in pixel:
+  # il grafico mantiene quindi la propria scala e lo scorrimento avviene nel
+  # contenitore esterno, senza comprimere l'SVG per farlo stare a schermo.
+  output$modal_activationPlot_container <- renderUI({
+    w_px <- if (!is.null(input$modal_px_width) && input$modal_px_width > 0)
+      input$modal_px_width else 1100
+    
+    grafico <- dati_grafico_modal()
+    n_periodi <- dplyr::n_distinct(grafico$periodo)
+    n_sensori <- dplyr::n_distinct(grafico$etichetta_completa)
+    
+    plot_px <- if (
+      identical(filtri_attivazioni_modal()$granularita, "Ora")
+    ) {
+      max(
+        w_px,
+        n_periodi * max(90, n_sensori * 16)
+      )
+    } else {
+      max(w_px, 2200)
+    }
+    
+    div(
+      class = "activation-scroll-inner",
+      style = paste0(
+        "width:", round(plot_px), "px;",
+        "min-width:", round(plot_px), "px;"
+      ),
+      girafeOutput(
+        "modal_activationPlot",
+        width = "100%",
+        height = "380px"
+      )
+    )
+  })
+  
+  output$modal_activationTrendPlot_container <- renderUI({
+    w_px <- if (!is.null(input$modal_px_width) && input$modal_px_width > 0)
+      input$modal_px_width else 1100
+    
+    grafico <- dati_grafico_modal()
+    n_periodi <- dplyr::n_distinct(grafico$periodo)
+    
+    plot_px <- if (
+      identical(filtri_attivazioni_modal()$granularita, "Ora")
+    ) {
+      max(w_px, n_periodi * 55)
+    } else {
+      max(w_px, 2200)
+    }
+    
+    div(
+      class = "activation-scroll-inner",
+      style = paste0(
+        "width:", round(plot_px), "px;",
+        "min-width:", round(plot_px), "px;"
+      ),
+      girafeOutput(
+        "modal_activationTrendPlot",
+        width = "100%",
+        height = "380px"
+      )
+    )
+  })
+  
   output$modal_activationPlot <- renderGirafe({
     w_px <- if (!is.null(input$modal_px_width) && input$modal_px_width > 0)
       input$modal_px_width else 1100
