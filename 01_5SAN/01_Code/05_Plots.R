@@ -341,6 +341,15 @@ ui <- fluidPage(
         margin-top: 10px;
         margin-bottom: 10px;
       }
+      .activation-scroll {
+        width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding-bottom: 8px;
+      }
+      .activation-scroll-inner {
+        min-width: 2200px;
+      }
       .documenti-bar {
         display: flex;
         align-items: center;
@@ -1385,12 +1394,18 @@ server <- function(input, output, session) {
           ),
           radioButtons(
             "modal_granularita_attivazioni", "Raggruppamento:",
-            choices = c("Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
+            choices = c("Ora", "Giorno", "Settimana", "Mese", "Trimestre", "Anno"),
             selected = isolate(granularita_attivazioni_corrente()), inline = TRUE
           )
         ),
         h4("Conteggio attivazioni", class = "titolo-sezione"),
-        girafeOutput("modal_activationPlot", height = "380px"),
+        div(
+          class = "activation-scroll",
+          div(
+            class = "activation-scroll-inner",
+            girafeOutput("modal_activationPlot", height = "380px")
+          )
+        ),
         div(
           class = "modal-data-button",
           actionButton("modal_btn_dati_attivazioni", "Dati", icon = icon("table"), class = "btn-sm btn-default")
@@ -1398,7 +1413,13 @@ server <- function(input, output, session) {
         uiOutput("modal_panel_dati_attivazioni"),
         h4("Andamento per sensore", class = "titolo-sezione"),
         br(),
-        girafeOutput("modal_activationTrendPlot", height = "380px"),
+        div(
+          class = "activation-scroll",
+          div(
+            class = "activation-scroll-inner",
+            girafeOutput("modal_activationTrendPlot", height = "380px")
+          )
+        ),
         div(
           class = "modal-data-button",
           actionButton("modal_btn_dati_trend", "Dati", icon = icon("table"), class = "btn-sm btn-default")
@@ -1601,7 +1622,7 @@ server <- function(input, output, session) {
           class = "alarm-section",
           h4("Attivazioni anomale", class = "titolo-sezione"),
           p(
-            "Giornate con attivazioni anomale. Le anomalie statistiche e le giornate a 0 restano nel NOK del periodo selezionato e vengono escluse solo dal riferimento storico NMN."
+            "Anomalie nei conteggi delle attivazioni: oltre alle anomalie giornaliere, viene segnalata ogni ora in cui il conteggio del sensore e' almeno 4 volte la sua mediana oraria."
           ),
           uiOutput("modal_allarmi_attivazioni_panel")
         ),
@@ -1827,8 +1848,8 @@ server <- function(input, output, session) {
     div(
       class = "modal-data-panel",
       p(
-        "Attivazioni giornaliere anomale rilevate nel periodo selezionato. ",
-        "Le anomalie statistiche e le giornate con 0 attivazioni restano nel calcolo dell'NMM e quindi del NOK del periodo; il filtro anomalie viene usato per pulire l'NMN storico."
+        "Attivazioni anomale rilevate nel periodo selezionato. ",
+        "Sono mostrate sia le anomalie giornaliere sia le ore con attivazioni almeno 4 volte superiori alla mediana oraria del sensore. Le anomalie giornaliere continuano a essere usate per pulire l'NMN storico."
       ),
       DTOutput("modal_tabella_outlier_nok")
     )
@@ -2352,22 +2373,43 @@ server <- function(input, output, session) {
     
     filtri <- filtri_nok_modal()
     
-    valori_giornalieri_modal_nok() |>
+    anomalie_giornaliere <- valori_giornalieri_modal_nok() |>
       filter(
         outlier_lof,
         day >= filtri$date[1],
         day <= filtri$date[2]
       ) |>
-      arrange(day, cds_name) |>
       transmute(
         Sensore = paste(cds_name, sensor_description, sep = " - "),
         Data = day,
+        Ora = "-",
         Attivazioni = round(daily_count),
         Motivo = case_when(
           is.finite(daily_count) & daily_count == 0 ~ "Zero attivazioni",
-          TRUE ~ "Anomalia statistica"
+          TRUE ~ "Anomalia statistica giornaliera"
         )
       )
+    
+    anomalie_orarie <- dati_attivazioni_orarie_modal() |>
+      filter(anomalia_oraria) |>
+      transmute(
+        Sensore = paste(cds_name, sensor_description, sep = " - "),
+        Data = day,
+        Ora = format(hour, "%H:00", tz = "Europe/Rome"),
+        Attivazioni = round(attivazioni_orarie),
+        Motivo = paste0(
+          "Attivazioni orarie >= 4 x mediana oraria (",
+          round(mediana_oraria, 1),
+          ")"
+        )
+      )
+    
+    bind_rows(
+      anomalie_giornaliere,
+      anomalie_orarie
+    ) |>
+      distinct() |>
+      arrange(Data, Ora, Sensore)
   })
   
   allarmi_sensori_aperti_modal <- reactive({
@@ -2856,75 +2898,195 @@ server <- function(input, output, session) {
   })
   
   # ---------------------------------------------------------------------
-  # Dati per il grafico attivazioni: media giornaliera nel periodo scelto
-  # (giorno/settimana/mese/trimestre/anno). Usati sia dal grafico a
-  # barre (facet per periodo) sia dal grafico trend (facet per sensore).
+  # Dati per il grafico attivazioni.
+  # La base e' ORARIA: per ogni giorno considero la macchina accesa dalla
+  # prima ora con un segnale fino all'ora dell'ultimo segnale compresa
+  # (equivalente a terminare un'ora dopo l'ultimo segnale).
+  # Per ogni sensore vengono quindi create anche le ore senza attivazioni.
+  # Le granularita' da Giorno ad Anno derivano da questa stessa base.
   # ---------------------------------------------------------------------
-  dati_grafico_modal <- reactive({
+  dati_attivazioni_orarie_modal <- reactive({
     
     filtri <- filtri_attivazioni_modal()
     req(length(filtri$sensori) > 0)
     
-    dati |>
-      filter(
-        coupon == filtri$macchina,
-        cds_name %in% filtri$sensori,
-        day >= filtri$date[1],
-        day <= filtri$date[2]
-      ) |>
+    base_macchina <- dati |>
+      filter(coupon == filtri$macchina) |>
+      mutate(
+        timestamp_local = with_tz(timestamp, "Europe/Rome"),
+        day_local = as.Date(timestamp_local, tz = "Europe/Rome"),
+        hour_local = floor_date(timestamp_local, "hour")
+      )
+    
+    sensori_selezionati <- base_macchina |>
+      filter(cds_name %in% filtri$sensori) |>
+      distinct(cds_name, sensor_description)
+    
+    costruisci_griglia_oraria <- function(base) {
+      finestre <- base |>
+        group_by(day_local) |>
+        summarise(
+          prima_ora = min(hour_local, na.rm = TRUE),
+          ultima_ora = max(hour_local, na.rm = TRUE),
+          .groups = "drop"
+        ) |>
+        filter(
+          is.finite(as.numeric(prima_ora)),
+          is.finite(as.numeric(ultima_ora))
+        )
+      
+      if (nrow(finestre) == 0 || nrow(sensori_selezionati) == 0) {
+        return(tibble(
+          day = as.Date(character()),
+          hour = as.POSIXct(character(), tz = "Europe/Rome"),
+          cds_name = character(),
+          sensor_description = character()
+        ))
+      }
+      
+      ore_macchina <- finestre |>
+        rowwise() |>
+        reframe(
+          day = day_local,
+          hour = seq(
+            from = prima_ora,
+            to = ultima_ora,
+            by = "hour"
+          )
+        ) |>
+        ungroup()
+      
+      tidyr::crossing(
+        ore_macchina,
+        sensori_selezionati
+      )
+    }
+    
+    conteggi_orari <- base_macchina |>
+      filter(cds_name %in% filtri$sensori) |>
       group_by(
-        day,
+        day = day_local,
+        hour = hour_local,
         cds_name,
         sensor_description
       ) |>
       summarise(
-        attivazioni_giornaliere = if (
+        attivazioni_orarie = if (
           any(is.finite(increment))
         ) {
-          sum(
-            increment[is.finite(increment)],
-            na.rm = TRUE
-          )
+          sum(increment[is.finite(increment)], na.rm = TRUE)
         } else {
           NA_real_
         },
-        ore_aperte_giornaliere = if (
-          any(is.finite(daily_open_hours))
-        ) {
-          max(
-            daily_open_hours[is.finite(daily_open_hours)]
-          )
-        } else {
-          0
-        },
         .groups = "drop"
+      )
+    
+    griglia_storica <- costruisci_griglia_oraria(base_macchina) |>
+      left_join(
+        conteggi_orari,
+        by = c("day", "hour", "cds_name", "sensor_description")
       ) |>
       mutate(
-        periodo = periodo_bucket(day, filtri$granularita)
+        attivazioni_orarie = coalesce(attivazioni_orarie, 0)
+      )
+    
+    mediane_orarie <- griglia_storica |>
+      filter(
+        is.finite(attivazioni_orarie),
+        attivazioni_orarie > 0
       ) |>
-      group_by(
-        periodo,
-        cds_name,
-        sensor_description
-      ) |>
+      group_by(cds_name, sensor_description) |>
       summarise(
-        attivazioni = mean(attivazioni_giornaliere, na.rm = TRUE),
-        ore_aperte = mean(
-          ore_aperte_giornaliere,
-          na.rm = TRUE
-        ),
+        mediana_oraria = median(attivazioni_orarie, na.rm = TRUE),
         .groups = "drop"
+      )
+    
+    griglia_storica |>
+      filter(
+        day >= filtri$date[1],
+        day <= filtri$date[2]
+      ) |>
+      left_join(
+        mediane_orarie,
+        by = c("cds_name", "sensor_description")
       ) |>
       mutate(
-        etichetta_ore_aperte = if (
-          identical(filtri$granularita, "Giorno")
-        ) {
-          "Ore aperto"
-        } else {
-          "Ore aperto medie/giorno"
-        },
+        anomalia_oraria = (
+          is.finite(attivazioni_orarie) &
+          is.finite(mediana_oraria) &
+          mediana_oraria > 0 &
+          attivazioni_orarie >= 4 * mediana_oraria
+        )
+      ) |>
+      arrange(hour, cds_name)
+  }) |>
+    bindCache(
+      filtri_attivazioni_modal()$macchina,
+      filtri_attivazioni_modal()$date,
+      filtri_attivazioni_modal()$sensori
+    )
+  
+  dati_grafico_modal <- reactive({
+    
+    filtri <- filtri_attivazioni_modal()
+    orari <- dati_attivazioni_orarie_modal()
+    
+    validate(
+      need(nrow(orari) > 0, "Nessun dato disponibile per i filtri scelti")
+    )
+    
+    giornalieri <- orari |>
+      group_by(day, cds_name, sensor_description) |>
+      summarise(
+        attivazioni_giornaliere = sum(attivazioni_orarie, na.rm = TRUE),
+        ore_macchina = n_distinct(hour),
+        .groups = "drop"
+      )
+    
+    if (identical(filtri$granularita, "Ora")) {
+      risultato <- orari |>
+        transmute(
+          periodo = hour,
+          cds_name,
+          sensor_description,
+          attivazioni = attivazioni_orarie,
+          ore_aperte = 1,
+          anomalia_oraria,
+          mediana_oraria,
+          etichetta_ore_aperte = "Ora macchina"
+        )
+    } else {
+      risultato <- giornalieri |>
+        mutate(
+          periodo = periodo_bucket(day, filtri$granularita)
+        ) |>
+        group_by(periodo, cds_name, sensor_description) |>
+        summarise(
+          attivazioni = mean(attivazioni_giornaliere, na.rm = TRUE),
+          ore_aperte = mean(ore_macchina, na.rm = TRUE),
+          .groups = "drop"
+        ) |>
+        mutate(
+          anomalia_oraria = FALSE,
+          mediana_oraria = NA_real_,
+          etichetta_ore_aperte = if (
+            identical(filtri$granularita, "Giorno")
+          ) {
+            "Ore macchina"
+          } else {
+            "Ore macchina medie/giorno"
+          }
+        )
+    }
+    
+    risultato |>
+      mutate(
         etichetta = cds_name,
-        etichetta_completa = paste(cds_name, sensor_description, sep = " - "),
+        etichetta_completa = paste(
+          cds_name,
+          sensor_description,
+          sep = " - "
+        ),
         periodo_label = formatta_periodo_label(
           periodo,
           filtri$granularita
@@ -2933,8 +3095,14 @@ server <- function(input, output, session) {
       ordina_naturale() |>
       mutate(
         etichetta = factor(etichetta, levels = unique(etichetta)),
-        etichetta_completa = factor(etichetta_completa, levels = unique(etichetta_completa)),
-        periodo_label = factor(periodo_label, levels = unique(periodo_label[order(periodo)]))
+        etichetta_completa = factor(
+          etichetta_completa,
+          levels = unique(etichetta_completa)
+        ),
+        periodo_label = factor(
+          periodo_label,
+          levels = unique(periodo_label[order(periodo)])
+        )
       )
   }) |>
     bindCache(filtri_attivazioni_modal())
@@ -2972,10 +3140,24 @@ server <- function(input, output, session) {
           tooltip = paste0(
             "<b>", etichetta_completa, "</b><br/>",
             "Periodo: ", periodo_label, "<br/>",
-            "Attivazioni medie giornaliere: ", scales::label_number(accuracy = 0.1, big.mark = ".")(attivazioni), "<br/>",
+            if_else(
+              filtri_attivazioni_modal()$granularita == "Ora",
+              "Attivazioni nell'ora: ",
+              "Attivazioni medie giornaliere: "
+            ),
+            scales::label_number(accuracy = 0.1, big.mark = ".")(attivazioni), "<br/>",
             etichetta_ore_aperte, ": ",
             scales::label_number(accuracy = 1, big.mark = ".")(ore_aperte),
-            " h"
+            " h",
+            if_else(
+              anomalia_oraria,
+              paste0(
+                "<br/><b>Attivazione anomala</b><br/>",
+                "Mediana oraria: ",
+                scales::label_number(accuracy = 0.1, big.mark = ".")(mediana_oraria)
+              ),
+              ""
+            )
           ),
           data_id = paste(etichetta_completa, periodo_label, sep = "__")
         ),
@@ -3027,33 +3209,123 @@ server <- function(input, output, session) {
     n_sensori <- dplyr::n_distinct(grafico$etichetta_completa)
     palette_sensori <- colorRampPalette(brewer.pal(8, "Set2"))(n_sensori)
     
+    tooltip_punti <- paste0(
+      "<b>", grafico$etichetta_completa, "</b><br/>",
+      "Periodo: ", grafico$periodo_label, "<br/>",
+      "Attivazioni: ",
+      scales::label_number(accuracy = 1, big.mark = ".")(grafico$attivazioni),
+      ifelse(
+        grafico$anomalia_oraria,
+        paste0(
+          "<br/><b>Attivazione anomala</b><br/>",
+          "Mediana oraria: ",
+          scales::label_number(
+            accuracy = 0.1,
+            big.mark = "."
+          )(grafico$mediana_oraria)
+        ),
+        ""
+      )
+    )
+    
+    if (identical(granularita, "Ora")) {
+      return(
+        ggplot(
+          grafico,
+          aes(
+            x = periodo,
+            y = attivazioni,
+            color = etichetta_completa,
+            group = etichetta_completa
+          )
+        ) +
+          geom_line(linewidth = 0.8) +
+          geom_point_interactive(
+            aes(
+              tooltip = tooltip_punti,
+              data_id = paste(
+                etichetta_completa,
+                periodo_label,
+                sep = "__"
+              )
+            ),
+            size = 1.8
+          ) +
+          scale_x_datetime(
+            date_breaks = "6 hours",
+            date_labels = "%d-%m\n%H:00",
+            timezone = "Europe/Rome"
+          ) +
+          scale_y_continuous(
+            breaks = scales::pretty_breaks(n = 8),
+            expand = expansion(mult = c(0, 0.04))
+          ) +
+          scale_color_manual(
+            values = palette_sensori,
+            name = "Sensore"
+          ) +
+          labs(x = NULL, y = "Attivazioni") +
+          theme_minimal(base_size = 13) +
+          theme(
+            panel.grid.minor = element_blank(),
+            panel.grid.major.x = element_line(
+              color = "#B8C4CC",
+              linewidth = 0.5
+            ),
+            axis.text.x = element_text(
+              size = 10,
+              angle = 90,
+              face = "bold",
+              hjust = 1,
+              vjust = 0.5
+            ),
+            axis.text.y = element_text(size = 11),
+            plot.title = element_blank(),
+            legend.position = "bottom",
+            legend.title = element_text(size = 13),
+            legend.text = element_text(size = 13)
+          )
+      )
+    }
+    
     breaks_periodo <- calcola_breaks_periodo(grafico$periodo)
     
-    spline_att <- interpola_spline(grafico, "periodo", "attivazioni", "etichetta_completa") |>
-      mutate(etichetta_completa = factor(etichetta_completa, levels = levels(grafico$etichetta_completa)))
+    spline_att <- interpola_spline(
+      grafico,
+      "periodo",
+      "attivazioni",
+      "etichetta_completa"
+    ) |>
+      mutate(
+        etichetta_completa = factor(
+          etichetta_completa,
+          levels = levels(grafico$etichetta_completa)
+        )
+      )
     
     ggplot() +
       geom_line(
         data = spline_att,
-        aes(x = periodo, y = attivazioni, color = etichetta_completa),
+        aes(
+          x = periodo,
+          y = attivazioni,
+          color = etichetta_completa
+        ),
         linewidth = 1,
-        na.rm = FALSE   # gli NA spezzano la linea nel punto di gap
+        na.rm = FALSE
       ) +
       geom_point_interactive(
         data = grafico,
         aes(
-          x       = periodo,
-          y       = attivazioni,
-          color   = etichetta_completa,
-          tooltip = paste0(
-            "<b>", etichetta_completa, "</b><br/>",
-            "Periodo: ", periodo_label, "<br/>",
-            "Attivazioni: ", scales::label_number(accuracy = 1, big.mark = ".")(attivazioni), "<br/>",
-            etichetta_ore_aperte, ": ",
-            scales::label_number(accuracy = 1, big.mark = ".")(ore_aperte),
-            " h"
-          ),
-          data_id = paste(etichetta_completa, periodo_label, sep = "__")
+          x = periodo,
+          y = attivazioni,
+          color = etichetta_completa,
+          tooltip = tooltip_punti,
+          data_id = paste(
+            etichetta_completa,
+            periodo_label,
+            sep = "__"
+          )
         ),
         size = 1.8
       ) +
@@ -3077,9 +3349,21 @@ server <- function(input, output, session) {
       theme_minimal(base_size = 13) +
       theme(
         panel.grid.minor = element_blank(),
-        panel.grid.major.x = element_line(color = "#B8C4CC", linewidth = 0.5),
-        axis.text.x = element_text(size = 12, angle = 90, face = "bold", hjust = 1, vjust = 0.5),
-        axis.ticks.x = element_line(color = "#6B7380", linewidth = 0.5),
+        panel.grid.major.x = element_line(
+          color = "#B8C4CC",
+          linewidth = 0.5
+        ),
+        axis.text.x = element_text(
+          size = 12,
+          angle = 90,
+          face = "bold",
+          hjust = 1,
+          vjust = 0.5
+        ),
+        axis.ticks.x = element_line(
+          color = "#6B7380",
+          linewidth = 0.5
+        ),
         axis.text.y = element_text(size = 11),
         plot.title = element_blank(),
         legend.position = "bottom",
@@ -3092,9 +3376,10 @@ server <- function(input, output, session) {
   output$modal_activationPlot <- renderGirafe({
     w_px <- if (!is.null(input$modal_px_width) && input$modal_px_width > 0)
       input$modal_px_width else 1100
+    plot_px <- max(w_px, 2200)
     girafe(
       ggobj      = render_activation_bar_gg(),
-      width_svg  = w_px / 72,
+      width_svg  = plot_px / 72,
       height_svg = 380 / 72,
       options    = list(
         opts_tooltip(css = tooltip_css, use_fill = FALSE),
@@ -3109,9 +3394,10 @@ server <- function(input, output, session) {
   output$modal_activationTrendPlot <- renderGirafe({
     w_px <- if (!is.null(input$modal_px_width) && input$modal_px_width > 0)
       input$modal_px_width else 1100
+    plot_px <- max(w_px, 2200)
     girafe(
       ggobj      = render_activation_trend_gg(),
-      width_svg  = w_px / 72,
+      width_svg  = plot_px / 72,
       height_svg = 380 / 72,
       options    = list(
         opts_tooltip(css = tooltip_css, use_fill = FALSE),
@@ -4407,7 +4693,8 @@ server <- function(input, output, session) {
       transmute(
         Periodo     = as.character(periodo_label),
         Sensore     = as.character(etichetta_completa),
-        Attivazioni = attivazioni
+        Attivazioni = attivazioni,
+        Anomalia = if_else(anomalia_oraria, "SI", "")
       ) |>
       arrange(Periodo, Sensore)
   }, rownames = FALSE, options = list(pageLength = 25, dom = "tip"))
@@ -4417,7 +4704,8 @@ server <- function(input, output, session) {
       transmute(
         Sensore     = as.character(etichetta_completa),
         Periodo     = as.character(periodo_label),
-        Attivazioni = attivazioni
+        Attivazioni = attivazioni,
+        Anomalia = if_else(anomalia_oraria, "SI", "")
       ) |>
       arrange(Sensore, Periodo)
   }, rownames = FALSE, options = list(pageLength = 25, dom = "tip"))
@@ -4439,24 +4727,8 @@ server <- function(input, output, session) {
   
   output$modal_tabella_outlier_nok <- renderDT({
     
-    filtri <- filtri_nok_modal()
-    
-    esclusi <- valori_giornalieri_modal_nok() |>
-      filter(
-        outlier_lof,
-        day >= filtri$date[1],
-        day <= filtri$date[2]
-      ) |>
-      arrange(day, cds_name) |>
-      transmute(
-        Sensore = paste(cds_name, sensor_description, sep = " - "),
-        Data = format(day, "%d-%m-%Y"),
-        Attivazioni = round(daily_count),
-        Motivo = case_when(
-          is.finite(daily_count) & daily_count == 0 ~ "Zero attivazioni",
-          TRUE ~ "Anomalia statistica"
-        )
-      )
+    esclusi <- allarmi_attivazioni_modal() |>
+      mutate(Data = format(Data, "%d-%m-%Y"))
     
     validate(
       need(
