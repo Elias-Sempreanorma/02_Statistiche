@@ -89,6 +89,63 @@ sensori_lookup <- dati |>
   distinct(coupon, cds_name, sensor_description) |>
   arrange(coupon, cds_name)
 
+# ---------------------------------------------------------------------------
+# Base oraria precalcolata una sola volta all'avvio di Shiny.
+# Le reactive dei grafici filtrano questi oggetti gia' aggregati invece di
+# ricostruire ogni volta tutto lo storico della macchina.
+# ---------------------------------------------------------------------------
+dati_attivazioni_orarie_base <- dati |>
+  mutate(
+    timestamp_local = with_tz(timestamp, "Europe/Rome"),
+    day_oraria = as.Date(timestamp_local, tz = "Europe/Rome"),
+    hour_oraria = floor_date(timestamp_local, "hour")
+  ) |>
+  group_by(
+    coupon,
+    day = day_oraria,
+    hour = hour_oraria,
+    cds_name,
+    sensor_description
+  ) |>
+  summarise(
+    attivazioni_orarie = if (
+      any(is.finite(increment))
+    ) {
+      sum(increment[is.finite(increment)], na.rm = TRUE)
+    } else {
+      NA_real_
+    },
+    .groups = "drop"
+  )
+
+finestre_orarie_macchina <- dati |>
+  mutate(
+    timestamp_local = with_tz(timestamp, "Europe/Rome"),
+    day_oraria = as.Date(timestamp_local, tz = "Europe/Rome"),
+    hour_oraria = floor_date(timestamp_local, "hour")
+  ) |>
+  group_by(coupon, day = day_oraria) |>
+  summarise(
+    prima_ora = min(hour_oraria, na.rm = TRUE),
+    ultima_ora = max(hour_oraria, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  filter(
+    is.finite(as.numeric(prima_ora)),
+    is.finite(as.numeric(ultima_ora))
+  )
+
+mediane_attivazioni_orarie <- dati_attivazioni_orarie_base |>
+  filter(
+    is.finite(attivazioni_orarie),
+    attivazioni_orarie > 0
+  ) |>
+  group_by(coupon, cds_name, sensor_description) |>
+  summarise(
+    mediana_oraria = median(attivazioni_orarie, na.rm = TRUE),
+    .groups = "drop"
+  )
+
 data_min <- min(dati$day, na.rm = TRUE)
 data_max <- max(dati$day, na.rm = TRUE)
 data_start_default <- max(data_min, data_max - 27)
@@ -2910,104 +2967,71 @@ server <- function(input, output, session) {
     filtri <- filtri_attivazioni_modal()
     req(length(filtri$sensori) > 0)
     
-    base_macchina <- dati |>
-      filter(coupon == filtri$macchina) |>
-      mutate(
-        timestamp_local = with_tz(timestamp, "Europe/Rome"),
-        day_local = as.Date(timestamp_local, tz = "Europe/Rome"),
-        hour_local = floor_date(timestamp_local, "hour")
-      )
-    
-    sensori_selezionati <- base_macchina |>
-      filter(cds_name %in% filtri$sensori) |>
-      distinct(cds_name, sensor_description)
-    
-    costruisci_griglia_oraria <- function(base) {
-      finestre <- base |>
-        group_by(day_local) |>
-        summarise(
-          prima_ora = min(hour_local, na.rm = TRUE),
-          ultima_ora = max(hour_local, na.rm = TRUE),
-          .groups = "drop"
-        ) |>
-        filter(
-          is.finite(as.numeric(prima_ora)),
-          is.finite(as.numeric(ultima_ora))
-        )
-      
-      if (nrow(finestre) == 0 || nrow(sensori_selezionati) == 0) {
-        return(tibble(
-          day = as.Date(character()),
-          hour = as.POSIXct(character(), tz = "Europe/Rome"),
-          cds_name = character(),
-          sensor_description = character()
-        ))
-      }
-      
-      ore_macchina <- finestre |>
-        rowwise() |>
-        reframe(
-          day = day_local,
-          hour = seq(
-            from = prima_ora,
-            to = ultima_ora,
-            by = "hour"
-          )
-        ) |>
-        ungroup()
-      
-      tidyr::crossing(
-        ore_macchina,
-        sensori_selezionati
-      )
-    }
-    
-    conteggi_orari <- base_macchina |>
-      filter(cds_name %in% filtri$sensori) |>
-      group_by(
-        day = day_local,
-        hour = hour_local,
-        cds_name,
-        sensor_description
+    sensori_selezionati <- sensori_lookup |>
+      filter(
+        coupon == filtri$macchina,
+        cds_name %in% filtri$sensori
       ) |>
-      summarise(
-        attivazioni_orarie = if (
-          any(is.finite(increment))
-        ) {
-          sum(increment[is.finite(increment)], na.rm = TRUE)
-        } else {
-          NA_real_
-        },
-        .groups = "drop"
+      select(cds_name, sensor_description)
+    
+    finestre_periodo <- finestre_orarie_macchina |>
+      filter(
+        coupon == filtri$macchina,
+        day >= filtri$date[1],
+        day <= filtri$date[2]
+      ) |>
+      select(day, prima_ora, ultima_ora)
+    
+    validate(
+      need(
+        nrow(finestre_periodo) > 0 &&
+          nrow(sensori_selezionati) > 0,
+        "Nessun dato disponibile per i filtri scelti"
+      )
+    )
+    
+    ore_macchina <- finestre_periodo |>
+      rowwise() |>
+      reframe(
+        day = day,
+        hour = seq(
+          from = prima_ora,
+          to = ultima_ora,
+          by = "hour"
+        )
+      ) |>
+      ungroup()
+    
+    conteggi_periodo <- dati_attivazioni_orarie_base |>
+      filter(
+        coupon == filtri$macchina,
+        day >= filtri$date[1],
+        day <= filtri$date[2],
+        cds_name %in% filtri$sensori
+      ) |>
+      select(
+        day,
+        hour,
+        cds_name,
+        sensor_description,
+        attivazioni_orarie
       )
     
-    griglia_storica <- costruisci_griglia_oraria(base_macchina) |>
+    tidyr::crossing(
+      ore_macchina,
+      sensori_selezionati
+    ) |>
       left_join(
-        conteggi_orari,
+        conteggi_periodo,
         by = c("day", "hour", "cds_name", "sensor_description")
       ) |>
       mutate(
         attivazioni_orarie = coalesce(attivazioni_orarie, 0)
-      )
-    
-    mediane_orarie <- griglia_storica |>
-      filter(
-        is.finite(attivazioni_orarie),
-        attivazioni_orarie > 0
-      ) |>
-      group_by(cds_name, sensor_description) |>
-      summarise(
-        mediana_oraria = median(attivazioni_orarie, na.rm = TRUE),
-        .groups = "drop"
-      )
-    
-    griglia_storica |>
-      filter(
-        day >= filtri$date[1],
-        day <= filtri$date[2]
       ) |>
       left_join(
-        mediane_orarie,
+        mediane_attivazioni_orarie |>
+          filter(coupon == filtri$macchina) |>
+          select(-coupon),
         by = c("cds_name", "sensor_description")
       ) |>
       mutate(
@@ -3161,7 +3185,10 @@ server <- function(input, output, session) {
           ),
           data_id = paste(etichetta_completa, periodo_label, sep = "__")
         ),
-        width = 0.8
+        width = 0.62
+      ) +
+      scale_x_discrete(
+        expand = expansion(add = 0.35)
       ) +
       facet_grid(
         cols = vars(periodo_label),
@@ -3183,6 +3210,7 @@ server <- function(input, output, session) {
       theme_minimal(base_size = 13) +
       theme(
         panel.grid.major.x = element_blank(),
+        panel.spacing.x = grid::unit(10, "pt"),
         strip.placement = "outside",
         strip.background = element_blank(),
         axis.text.x = element_text(size = 13, angle = 90),
@@ -3231,12 +3259,21 @@ server <- function(input, output, session) {
     if (identical(granularita, "Ora")) {
       return(
         ggplot(
-          grafico,
+          grafico |>
+            mutate(
+              giorno_linea = as.Date(
+                periodo,
+                tz = "Europe/Rome"
+              )
+            ),
           aes(
             x = periodo,
             y = attivazioni,
             color = etichetta_completa,
-            group = etichetta_completa
+            group = interaction(
+              etichetta_completa,
+              giorno_linea
+            )
           )
         ) +
           geom_line(linewidth = 0.8) +
@@ -3252,8 +3289,15 @@ server <- function(input, output, session) {
             size = 1.8
           ) +
           scale_x_datetime(
-            date_breaks = "6 hours",
-            date_labels = "%d-%m\n%H:00",
+            breaks = sort(unique(grafico$periodo)),
+            labels = function(x) {
+              format(
+                x,
+                "%d-%m %H:00",
+                tz = "Europe/Rome"
+              )
+            },
+            minor_breaks = NULL,
             timezone = "Europe/Rome"
           ) +
           scale_y_continuous(
@@ -3376,7 +3420,22 @@ server <- function(input, output, session) {
   output$modal_activationPlot <- renderGirafe({
     w_px <- if (!is.null(input$modal_px_width) && input$modal_px_width > 0)
       input$modal_px_width else 1100
-    plot_px <- max(w_px, 2200)
+    
+    grafico <- dati_grafico_modal()
+    n_periodi <- dplyr::n_distinct(grafico$periodo)
+    n_sensori <- dplyr::n_distinct(grafico$etichetta_completa)
+    
+    plot_px <- if (
+      identical(filtri_attivazioni_modal()$granularita, "Ora")
+    ) {
+      max(
+        w_px,
+        n_periodi * max(90, n_sensori * 16)
+      )
+    } else {
+      max(w_px, 2200)
+    }
+    
     girafe(
       ggobj      = render_activation_bar_gg(),
       width_svg  = plot_px / 72,
@@ -3394,7 +3453,18 @@ server <- function(input, output, session) {
   output$modal_activationTrendPlot <- renderGirafe({
     w_px <- if (!is.null(input$modal_px_width) && input$modal_px_width > 0)
       input$modal_px_width else 1100
-    plot_px <- max(w_px, 2200)
+    
+    grafico <- dati_grafico_modal()
+    n_periodi <- dplyr::n_distinct(grafico$periodo)
+    
+    plot_px <- if (
+      identical(filtri_attivazioni_modal()$granularita, "Ora")
+    ) {
+      max(w_px, n_periodi * 55)
+    } else {
+      max(w_px, 2200)
+    }
+    
     girafe(
       ggobj      = render_activation_trend_gg(),
       width_svg  = plot_px / 72,
