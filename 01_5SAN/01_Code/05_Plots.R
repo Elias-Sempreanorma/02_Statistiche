@@ -766,7 +766,7 @@ ui <- fluidPage(
       .report-modal {
         color: #334155;
         padding-bottom: 18px;
-        font-family: "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif;
+        font-family: 'Segoe UI', 'Inter', 'Helvetica Neue', Arial, sans-serif;
         letter-spacing: -0.005em;
       }
       .report-hero {
@@ -3029,7 +3029,7 @@ server <- function(input, output, session) {
               format(r$precedente_fine, "%d/%m/%Y")
             ),
             class = "report-meta-chip"
-          ),
+          )
         )
       ),
       
