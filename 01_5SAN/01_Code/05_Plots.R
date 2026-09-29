@@ -783,6 +783,31 @@ ui <- fluidPage(
         align-items: flex-start;
         gap: 22px;
       }
+      .report-heading-left {
+        display: flex;
+        align-items: flex-start;
+        gap: 13px;
+        min-width: 0;
+      }
+      .report-back-btn.btn {
+        flex-shrink: 0;
+        width: 38px;
+        height: 38px;
+        margin-top: 1px;
+        padding: 0 !important;
+        border: 1px solid rgba(255,255,255,0.30) !important;
+        border-radius: 50% !important;
+        background: rgba(255,255,255,0.08) !important;
+        color: #FFFFFF !important;
+        font-size: 16px;
+        box-shadow: none !important;
+      }
+      .report-back-btn.btn:hover,
+      .report-back-btn.btn:focus {
+        background: rgba(255,255,255,0.18) !important;
+        color: #FFFFFF !important;
+        outline: none !important;
+      }
       .report-title {
         margin: 0;
         color: #FFFFFF;
@@ -1536,15 +1561,23 @@ server <- function(input, output, session) {
   # apri_modal() viene chiamata dai tre bottoni Home: imposta la vista
   # iniziale e mostra il dialogo. Il contenuto cambia senza chiuderlo.
   # ---------------------------------------------------------------------
-  apri_modal <- function(vista_iniziale, sensori_iniziali = NULL) {
+  apri_modal <- function(
+    vista_iniziale,
+    sensori_iniziali = NULL,
+    date_iniziali = NULL
+  ) {
     if (is.null(sensori_iniziali)) {
       sensori_iniziali <- sensori_lookup |>
         filter(coupon == isolate(input$macchina)) |>
         pull(cds_name)
     }
     
+    if (is.null(date_iniziali)) {
+      date_iniziali <- isolate(as.Date(input$date))
+    }
+    
     sensori_modal_correnti(normalizza_sensori(sensori_iniziali))
-    date_modal_corrente(isolate(as.Date(input$date)))
+    date_modal_corrente(as.Date(date_iniziali))
     
     macchina_corrente <- macchine_lookup |>
       filter(coupon == isolate(input$macchina)) |>
@@ -2801,6 +2834,20 @@ server <- function(input, output, session) {
       uiOutput("report_modal_content")
     ))
   })
+
+  
+  observeEvent(input$report_back_to_alarms, {
+    sensori_ripristino <- isolate(sensori_modal_correnti())
+    date_ripristino <- isolate(date_modal_corrente())
+    
+    removeModal()
+    
+    apri_modal(
+      "allarmi",
+      sensori_iniziali = sensori_ripristino,
+      date_iniziali = date_ripristino
+    )
+  }, ignoreInit = TRUE)
   
   output$report_modal_content <- renderUI({
     r <- report_dati()
@@ -2990,14 +3037,24 @@ server <- function(input, output, session) {
         div(
           class = "report-modal-header",
           div(
-            h2("Rapporto anomalie e utilizzo", class = "report-title"),
+            class = "report-heading-left",
+            actionButton(
+              "report_back_to_alarms",
+              label = NULL,
+              icon = icon("arrow-left"),
+              class = "report-back-btn",
+              title = "Torna agli allarmi"
+            ),
             div(
-              paste0(
-                r$macchina,
-                " · Coupon ",
-                r$coupon
-              ),
-              class = "report-subtitle"
+              h2("Rapporto anomalie e utilizzo", class = "report-title"),
+              div(
+                paste0(
+                  r$macchina,
+                  " · Coupon ",
+                  r$coupon
+                ),
+                class = "report-subtitle"
+              )
             )
           ),
           downloadButton(
