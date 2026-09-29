@@ -1950,7 +1950,14 @@ server <- function(input, output, session) {
     
     inizio <- as.Date(date_corrente[1])
     fine <- as.Date(date_corrente[2])
-    granularita <- input$report_granularita %||% "Settimana"
+    granularita <- if (
+      is.null(input$report_granularita) ||
+      !nzchar(input$report_granularita)
+    ) {
+      "Settimana"
+    } else {
+      input$report_granularita
+    }
     
     mesi <- seq.Date(
       lubridate::floor_date(inizio, "month"),
@@ -2715,13 +2722,16 @@ server <- function(input, output, session) {
         
         y <- 0.88
         if (!is.null(testo_intro)) {
+          testo_wrapped <- paste(
+            strwrap(testo_intro, width = 150),
+            collapse = "\n"
+          )
           grobs[[length(grobs) + 1]] <- grid::textGrob(
-            testo_intro,
+            testo_wrapped,
             x = 0.03,
             y = y,
             just = c("left", "top"),
-            gp = grid::gpar(fontsize = 10),
-            width = grid::unit(0.94, "npc")
+            gp = grid::gpar(fontsize = 10)
           )
           y <- y - 0.14
         }
