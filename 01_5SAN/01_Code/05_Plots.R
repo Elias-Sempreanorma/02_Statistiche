@@ -734,64 +734,232 @@ ui <- fluidPage(
         font-size: 13px;
       }
       .report-panel {
-        margin: 0 0 26px 0;
-        padding: 16px 18px;
+        margin: 0 0 28px 0;
+        padding: 18px 20px;
         border: 1px solid #D8D3C3;
-        border-radius: 9px;
-        background: #FAF9F4;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #FBFAF6 0%, #F4F1E7 100%);
+        box-shadow: 0 3px 12px rgba(36,54,75,0.06);
       }
       .report-buttons {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 8px;
+        gap: 9px;
+        margin-top: 10px;
       }
       .report-period-btn {
         border: 1px solid #C8C0A7;
-        border-radius: 7px;
+        border-radius: 999px;
         background: #FFFFFF;
         color: #24364B;
         font-size: 12px;
         font-weight: 700;
-        padding: 7px 11px;
+        padding: 8px 13px;
         cursor: pointer;
+        box-shadow: 0 1px 3px rgba(36,54,75,0.05);
+        transition: background 0.15s ease, transform 0.15s ease;
       }
       .report-period-btn:hover {
         background: #EDE8D8;
+        transform: translateY(-1px);
+      }
+      .report-modal {
+        color: #334155;
+        padding-bottom: 18px;
+      }
+      .report-hero {
+        margin: -15px -15px 22px -15px;
+        padding: 25px 28px 24px 28px;
+        background: linear-gradient(135deg, #24364B 0%, #354C65 100%);
+        color: #FFFFFF;
+        border-radius: 8px 8px 14px 14px;
+        box-shadow: 0 7px 20px rgba(36,54,75,0.16);
       }
       .report-modal-header {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        gap: 18px;
-        margin-bottom: 14px;
+        gap: 22px;
+      }
+      .report-eyebrow {
+        margin-bottom: 7px;
+        color: #DDD6BD;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+      }
+      .report-title {
+        margin: 0;
+        color: #FFFFFF;
+        font-size: 27px;
+        line-height: 1.18;
+        font-weight: 750;
+      }
+      .report-subtitle {
+        margin-top: 9px;
+        color: #DDE5EC;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .report-download.btn {
+        flex-shrink: 0;
+        margin-top: 2px;
+        padding: 9px 14px;
+        border: 1px solid rgba(255,255,255,0.36) !important;
+        border-radius: 8px !important;
+        background: rgba(255,255,255,0.10) !important;
+        color: #FFFFFF !important;
+        font-weight: 700;
+      }
+      .report-download.btn:hover {
+        background: rgba(255,255,255,0.18) !important;
+      }
+      .report-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 15px;
+      }
+      .report-meta-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 9px;
+        border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 999px;
+        background: rgba(255,255,255,0.07);
+        color: #EEF3F7;
+        font-size: 11px;
+        font-weight: 650;
+      }
+      .report-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0,1fr));
+        gap: 11px;
+        margin: 0 0 22px 0;
+      }
+      .report-kpi-card {
+        min-width: 0;
+        padding: 14px 15px;
+        border: 1px solid #E0E5EA;
+        border-radius: 10px;
+        background: #FFFFFF;
+        box-shadow: 0 2px 8px rgba(36,54,75,0.05);
+      }
+      .report-kpi-label {
+        color: #718096;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+      }
+      .report-kpi-value {
+        margin-top: 5px;
+        color: #24364B;
+        font-size: 23px;
+        line-height: 1.12;
+        font-weight: 800;
+      }
+      .report-kpi-note {
+        margin-top: 4px;
+        color: #718096;
+        font-size: 11px;
+        line-height: 1.35;
       }
       .report-summary {
-        margin: 0 0 18px 0;
-        padding: 14px 16px;
-        border-left: 4px solid #C8C0A7;
+        margin: 0 0 24px 0;
+        padding: 18px 20px;
+        border: 1px solid #E1DCCB;
+        border-left: 5px solid #B6A878;
+        border-radius: 10px;
         background: #F8F6EE;
         color: #334155;
-        line-height: 1.55;
+        line-height: 1.67;
+        font-size: 13px;
+      }
+      .report-summary-title {
+        margin: 0 0 10px 0;
+        color: #24364B;
+        font-size: 15px;
+        font-weight: 800;
+      }
+      .report-summary p {
+        margin: 0 0 10px 0;
+      }
+      .report-summary p:last-child {
+        margin-bottom: 0;
+      }
+      .report-section {
+        margin: 0 0 28px 0;
+      }
+      .report-section-heading {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin: 0 0 10px 0;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #E4E7EB;
+      }
+      .report-section-number {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #24364B;
+        color: #FFFFFF;
+        font-size: 11px;
+        font-weight: 800;
+      }
+      .report-section-title {
+        margin: 0;
+        color: #24364B;
+        font-size: 16px;
+        font-weight: 800;
+      }
+      .report-section-note {
+        margin: -3px 0 10px 33px;
+        color: #718096;
+        font-size: 11px;
+      }
+      .report-table-wrap {
+        width: 100%;
+        overflow-x: auto;
+        border: 1px solid #E0E5EA;
+        border-radius: 9px;
+        background: #FFFFFF;
       }
       .report-table {
         width: 100%;
         border-collapse: collapse;
-        margin: 8px 0 20px 0;
+        margin: 0;
         font-size: 12px;
       }
       .report-table th {
-        background: #E9EDF1;
+        background: #EDF1F4;
         color: #24364B;
-        border: 1px solid #DDE4EA;
-        padding: 7px 8px;
+        border-bottom: 1px solid #D8E0E6;
+        border-right: 1px solid #E1E6EA;
+        padding: 9px 10px;
         text-align: center;
+        white-space: nowrap;
       }
       .report-table td {
-        border: 1px solid #E4E7EB;
-        padding: 7px 8px;
+        border-bottom: 1px solid #EEF1F4;
+        border-right: 1px solid #EEF1F4;
+        padding: 9px 10px;
         text-align: center;
         vertical-align: top;
+        white-space: nowrap;
+      }
+      .report-table tbody tr:nth-child(even) {
+        background: #FAFBFC;
+      }
+      .report-table th:last-child,
+      .report-table td:last-child {
+        border-right: 0;
       }
       .report-ok {
         color: #19764A;
@@ -804,6 +972,34 @@ ui <- fluidPage(
       .report-nd {
         color: #718096;
         font-weight: 700;
+      }
+      .report-status-pill {
+        display: inline-block;
+        margin-left: 5px;
+        padding: 2px 7px;
+        border-radius: 999px;
+        font-size: 9px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+      .report-status-ok {
+        color: #19764A;
+        background: #DDF3E6;
+      }
+      .report-status-bad {
+        color: #A93B32;
+        background: #F7D9D5;
+      }
+      @media (max-width: 900px) {
+        .report-kpi-grid {
+          grid-template-columns: repeat(2, minmax(0,1fr));
+        }
+        .report-modal-header {
+          display: block;
+        }
+        .report-download.btn {
+          margin-top: 14px;
+        }
       }
       .modal-filters {
         background: #F4F6F8;
@@ -2296,7 +2492,9 @@ server <- function(input, output, session) {
       filter(
         outlier_lof,
         day >= inizio,
-        day <= fine
+        day <= fine,
+        is.finite(daily_count),
+        daily_count > 6
       ) |>
       transmute(
         Macchina = nome_macchina,
@@ -2329,6 +2527,7 @@ server <- function(input, output, session) {
       ) |>
       filter(
         is.finite(attivazioni_orarie),
+        attivazioni_orarie > 6,
         is.finite(mediana_oraria),
         mediana_oraria > 0,
         attivazioni_orarie >= 4 * mediana_oraria
@@ -2460,6 +2659,133 @@ server <- function(input, output, session) {
       paste0(formatC(abs(x), format = "f", digits = 1, decimal.mark = ","), "%")
     )
   }
+
+  
+  testo_report_esteso <- function(r) {
+    n_sensori <- nrow(r$confronto)
+    n_nok_fuori <- nrow(r$nok_anomalo)
+    n_att_anomale <- nrow(r$attivazioni_anomale)
+    
+    sensori_att_anomali <- if (n_att_anomale > 0) {
+      dplyr::n_distinct(r$attivazioni_anomale$Sensore)
+    } else {
+      0L
+    }
+    
+    utilizzo_range <- if (
+      is.finite(r$p10_utilizzo) &&
+      is.finite(r$p90_utilizzo)
+    ) {
+      paste0(
+        "intervallo storico P10-P90 [",
+        formatC(r$p10_utilizzo, format = "f", digits = 3, decimal.mark = ","),
+        " - ",
+        formatC(r$p90_utilizzo, format = "f", digits = 3, decimal.mark = ","),
+        "]"
+      )
+    } else {
+      "intervallo storico non disponibile"
+    }
+    
+    nok_range <- if (
+      is.finite(r$nok_macchina_inf) &&
+      is.finite(r$nok_macchina_sup)
+    ) {
+      paste0(
+        "range storico [",
+        formatC(r$nok_macchina_inf, format = "f", digits = 3, decimal.mark = ","),
+        " - ",
+        formatC(r$nok_macchina_sup, format = "f", digits = 3, decimal.mark = ","),
+        "]"
+      )
+    } else {
+      "range storico non disponibile"
+    }
+    
+    stato_utilizzo <- if (identical(r$utilizzo_stato, "Normale")) {
+      "all'interno del comportamento storico atteso"
+    } else if (identical(r$utilizzo_stato, "Elevato")) {
+      "sopra il livello storico di riferimento"
+    } else if (identical(r$utilizzo_stato, "Basso")) {
+      "sotto il livello storico di riferimento"
+    } else {
+      "non classificabile rispetto allo storico disponibile"
+    }
+    
+    stato_nok <- if (isTRUE(r$nok_macchina_fuori)) {
+      "fuori dal proprio intervallo storico"
+    } else {
+      "all'interno del proprio intervallo storico"
+    }
+    
+    p1 <- paste0(
+      "Il presente rapporto sintetizza il comportamento operativo della macchina ",
+      r$macchina,
+      " (coupon ",
+      r$coupon,
+      ") nel periodo ",
+      format(r$inizio, "%d/%m/%Y"),
+      " - ",
+      format(r$fine, "%d/%m/%Y"),
+      ". I risultati vengono letti in confronto al periodo immediatamente precedente di pari durata, ",
+      format(r$precedente_inizio, "%d/%m/%Y"),
+      " - ",
+      format(r$precedente_fine, "%d/%m/%Y"),
+      ", così da evidenziare variazioni recenti senza perdere il riferimento allo storico disponibile."
+    )
+    
+    p2 <- paste0(
+      "Sul piano dell'intensità di utilizzo, ",
+      testo_andamento_report(r$utilizzo_pct, "l'indice complessivo"),
+      ". Il valore del periodo è ",
+      ifelse(
+        is.finite(r$utilizzo),
+        formatC(r$utilizzo, format = "f", digits = 3, decimal.mark = ","),
+        "N/D"
+      ),
+      " e risulta ",
+      stato_utilizzo,
+      " rispetto all'",
+      utilizzo_range,
+      ". La variazione percentuale va quindi interpretata insieme alla posizione nel range: un incremento non costituisce automaticamente un'anomalia se il livello finale resta coerente con il comportamento storico della macchina."
+    )
+    
+    p3 <- paste0(
+      "Il NOK medio della macchina è ",
+      ifelse(
+        is.finite(r$nok_macchina),
+        formatC(r$nok_macchina, format = "f", digits = 3, decimal.mark = ","),
+        "N/D"
+      ),
+      "; ",
+      testo_andamento_report(r$nok_macchina_pct, "rispetto al periodo precedente"),
+      ". Nel complesso il NOK è ",
+      stato_nok,
+      " (",
+      nok_range,
+      "). A livello di dettaglio, ",
+      n_nok_fuori,
+      " sensori su ",
+      n_sensori,
+      " risultano fuori dai rispettivi limiti storici nel periodo considerato."
+    )
+    
+    p4 <- if (n_att_anomale > 0) {
+      paste0(
+        "Sono inoltre presenti ",
+        n_att_anomale,
+        " segnalazioni di attivazioni anomale distribuite su ",
+        sensori_att_anomali,
+        " sensori. In questo report vengono riportate esclusivamente le anomalie con un conteggio superiore a 6 attivazioni, in modo da concentrare la lettura sugli eventi quantitativamente più rilevanti. Le tabelle successive permettono di risalire al sensore, alla data e, quando disponibile, all'ora dell'evento."
+      )
+    } else {
+      paste0(
+        "Nel periodo non risultano anomalie di attivazione con conteggio superiore a 6. Le eventuali segnalazioni statistiche di intensità minore non vengono incluse in questo report, che mantiene volutamente una soglia di rilevanza operativa più alta per rendere la lettura sintetica."
+      )
+    }
+    
+    c(p1, p2, p3, p4)
+  }
   
   observeEvent(input$report_periodo_click, {
     req(input$report_periodo_click$start, input$report_periodo_click$end)
@@ -2481,23 +2807,12 @@ server <- function(input, output, session) {
   
   output$report_modal_content <- renderUI({
     r <- report_dati()
+    narrativa <- testo_report_esteso(r)
     
     sensori <- r$confronto |>
       mutate(
         sensore_label = paste(cds_name, sensor_description, sep = " - ")
       )
-    
-    nok_stato_macchina <- if (
-      isTRUE(r$nok_macchina_fuori)
-    ) "fuori dal range storico" else "nel range storico"
-    
-    utilizzo_stato_testo <- if (
-      identical(r$utilizzo_stato, "Normale")
-    ) "nel range storico" else if (
-      identical(r$utilizzo_stato, "Elevato")
-    ) "sopra il range storico" else if (
-      identical(r$utilizzo_stato, "Basso")
-    ) "sotto il range storico" else "non classificabile"
     
     cella_nok <- function(valore, fuori) {
       classe <- if (!is.finite(valore)) {
@@ -2507,9 +2822,36 @@ server <- function(input, output, session) {
       } else {
         "report-ok"
       }
-      tags$span(
-        class = classe,
-        if (is.finite(valore)) formatC(valore, format = "f", digits = 3, decimal.mark = ",") else "N/D"
+      
+      stato <- if (!is.finite(valore)) {
+        "N/D"
+      } else if (isTRUE(fuori)) {
+        "Fuori range"
+      } else {
+        "Nel range"
+      }
+      
+      tagList(
+        tags$span(
+          class = classe,
+          if (is.finite(valore)) {
+            formatC(
+              valore,
+              format = "f",
+              digits = 3,
+              decimal.mark = ","
+            )
+          } else {
+            "N/D"
+          }
+        ),
+        tags$span(
+          class = paste(
+            "report-status-pill",
+            if (isTRUE(fuori)) "report-status-bad" else "report-status-ok"
+          ),
+          stato
+        )
       )
     }
     
@@ -2519,38 +2861,63 @@ server <- function(input, output, session) {
         list(
           nome = srow$sensore_label,
           att = paste0(
-            formatC(srow$attivazioni_medie, format = "f", digits = 1, decimal.mark = ","),
-            " (", formatta_variazione_report(srow$variazione_attivazioni_pct), ")"
+            formatC(
+              srow$attivazioni_medie,
+              format = "f",
+              digits = 1,
+              decimal.mark = ","
+            ),
+            " (",
+            formatta_variazione_report(
+              srow$variazione_attivazioni_pct
+            ),
+            ")"
           ),
-          nok = cella_nok(srow$NOK, srow$nok_fuori_range)
+          nok = cella_nok(
+            srow$NOK,
+            srow$nok_fuori_range
+          )
         )
       }),
       list(list(
         nome = "Macchina",
         att = paste0(
-          formatC(r$att_macchina, format = "f", digits = 1, decimal.mark = ","),
-          " (", formatta_variazione_report(r$att_macchina_pct), ")"
+          formatC(
+            r$att_macchina,
+            format = "f",
+            digits = 1,
+            decimal.mark = ","
+          ),
+          " (",
+          formatta_variazione_report(r$att_macchina_pct),
+          ")"
         ),
-        nok = cella_nok(r$nok_macchina, r$nok_macchina_fuori)
+        nok = cella_nok(
+          r$nok_macchina,
+          r$nok_macchina_fuori
+        )
       ))
     )
     
-    tabella_sintesi <- tags$table(
-      class = "report-table",
-      tags$thead(
-        tags$tr(
-          tags$th("Metrica"),
-          lapply(colonne, function(x) tags$th(x$nome))
-        )
-      ),
-      tags$tbody(
-        tags$tr(
-          tags$td(tags$strong("Attivazioni medie")),
-          lapply(colonne, function(x) tags$td(x$att))
+    tabella_sintesi <- div(
+      class = "report-table-wrap",
+      tags$table(
+        class = "report-table",
+        tags$thead(
+          tags$tr(
+            tags$th("Metrica"),
+            lapply(colonne, function(x) tags$th(x$nome))
+          )
         ),
-        tags$tr(
-          tags$td(tags$strong("NOK")),
-          lapply(colonne, function(x) tags$td(x$nok))
+        tags$tbody(
+          tags$tr(
+            tags$td(tags$strong("Attivazioni medie")),
+            lapply(colonne, function(x) tags$td(x$att))
+          ),
+          tags$tr(
+            tags$td(tags$strong("NOK")),
+            lapply(colonne, function(x) tags$td(x$nok))
+          )
         )
       )
     )
@@ -2559,78 +2926,211 @@ server <- function(input, output, session) {
       if (nrow(df) == 0) {
         return(div(class = "alarm-empty", vuoto))
       }
-      tags$table(
-        class = "report-table",
-        tags$thead(
-          tags$tr(lapply(names(df), tags$th))
-        ),
-        tags$tbody(
-          lapply(seq_len(nrow(df)), function(i) {
-            tags$tr(lapply(df[i, , drop = FALSE], function(x) tags$td(as.character(x))))
-          })
+      
+      div(
+        class = "report-table-wrap",
+        tags$table(
+          class = "report-table",
+          tags$thead(
+            tags$tr(lapply(names(df), tags$th))
+          ),
+          tags$tbody(
+            lapply(seq_len(nrow(df)), function(i) {
+              tags$tr(
+                lapply(
+                  df[i, , drop = FALSE],
+                  function(x) tags$td(as.character(x))
+                )
+              )
+            })
+          )
         )
+      )
+    }
+    
+    utilizzo_val <- if (is.finite(r$utilizzo)) {
+      formatC(
+        r$utilizzo,
+        format = "f",
+        digits = 3,
+        decimal.mark = ","
+      )
+    } else {
+      "N/D"
+    }
+    
+    nok_val <- if (is.finite(r$nok_macchina)) {
+      formatC(
+        r$nok_macchina,
+        format = "f",
+        digits = 3,
+        decimal.mark = ","
+      )
+    } else {
+      "N/D"
+    }
+    
+    n_att <- nrow(r$attivazioni_anomale)
+    n_nok <- nrow(r$nok_anomalo)
+    
+    sezione <- function(numero, titolo, nota, contenuto) {
+      div(
+        class = "report-section",
+        div(
+          class = "report-section-heading",
+          span(numero, class = "report-section-number"),
+          h4(titolo, class = "report-section-title")
+        ),
+        div(nota, class = "report-section-note"),
+        contenuto
       )
     }
     
     div(
       class = "report-modal",
       div(
-        class = "report-modal-header",
+        class = "report-hero",
         div(
-          h3(
-            paste0(
-              "Report anomalie - periodo ",
-              format(r$inizio, "%d/%m/%Y"),
-              " - ",
-              format(r$fine, "%d/%m/%Y"),
-              " - per macchina ",
-              r$macchina,
-              ", coupon ",
-              r$coupon
-            ),
-            style = "margin-top:0;color:#24364B;"
+          class = "report-modal-header",
+          div(
+            div("5SAN · MONITORAGGIO OPERATIVO", class = "report-eyebrow"),
+            h2("Rapporto anomalie e utilizzo", class = "report-title"),
+            div(
+              paste0(
+                r$macchina,
+                " · Coupon ",
+                r$coupon
+              ),
+              class = "report-subtitle"
+            )
+          ),
+          downloadButton(
+            "download_report_pdf",
+            "Scarica PDF",
+            icon = icon("file-pdf"),
+            class = "report-download"
           )
         ),
-        downloadButton(
-          "download_report_pdf",
-          "Scarica PDF",
-          icon = icon("file-pdf"),
-          class = "btn-default"
+        div(
+          class = "report-meta",
+          span(
+            icon("calendar"),
+            paste(
+              format(r$inizio, "%d/%m/%Y"),
+              format(r$fine, "%d/%m/%Y"),
+              sep = " - "
+            ),
+            class = "report-meta-chip"
+          ),
+          span(
+            icon("clock"),
+            paste0(
+              "Confronto: ",
+              format(r$precedente_inizio, "%d/%m/%Y"),
+              " - ",
+              format(r$precedente_fine, "%d/%m/%Y")
+            ),
+            class = "report-meta-chip"
+          ),
+          span(
+            icon("filter"),
+            "Anomalie attivazioni incluse solo se > 6",
+            class = "report-meta-chip"
+          )
         )
       ),
+      
+      div(
+        class = "report-kpi-grid",
+        div(
+          class = "report-kpi-card",
+          div("Indice utilizzo", class = "report-kpi-label"),
+          div(utilizzo_val, class = "report-kpi-value"),
+          div(
+            paste0(
+              r$utilizzo_stato,
+              " · ",
+              formatta_variazione_report(r$utilizzo_pct)
+            ),
+            class = "report-kpi-note"
+          )
+        ),
+        div(
+          class = "report-kpi-card",
+          div("NOK medio macchina", class = "report-kpi-label"),
+          div(nok_val, class = "report-kpi-value"),
+          div(
+            paste0(
+              ifelse(
+                isTRUE(r$nok_macchina_fuori),
+                "Fuori range",
+                "Nel range"
+              ),
+              " · ",
+              formatta_variazione_report(r$nok_macchina_pct)
+            ),
+            class = "report-kpi-note"
+          )
+        ),
+        div(
+          class = "report-kpi-card",
+          div("Anomalie attivazioni", class = "report-kpi-label"),
+          div(n_att, class = "report-kpi-value"),
+          div("Solo eventi con conteggio > 6", class = "report-kpi-note")
+        ),
+        div(
+          class = "report-kpi-card",
+          div("Sensori NOK fuori range", class = "report-kpi-label"),
+          div(n_nok, class = "report-kpi-value"),
+          div(
+            paste0("Su ", nrow(r$confronto), " sensori analizzati"),
+            class = "report-kpi-note"
+          )
+        )
+      ),
+      
       div(
         class = "report-summary",
-        paste0(
-          "Nel periodo analizzato, ",
-          testo_andamento_report(r$utilizzo_pct, "l'utilizzo complessivo della macchina"),
-          ". ",
-          testo_andamento_report(r$nok_macchina_pct, "Il NOK medio della macchina"),
-          " ed è ",
-          nok_stato_macchina,
-          ". L'indice di utilizzo è ",
-          utilizzo_stato_testo,
-          " (valore ",
-          ifelse(is.finite(r$utilizzo), round(r$utilizzo, 3), "N/D"),
-          ")."
+        div("Lettura del periodo", class = "report-summary-title"),
+        lapply(narrativa, function(x) tags$p(x))
+      ),
+      
+      sezione(
+        "1",
+        "Sintesi per sensore e macchina",
+        "Le attivazioni riportano il valore medio del periodo e, tra parentesi, la variazione rispetto al periodo precedente. Il NOK è evidenziato in base alla permanenza nel proprio range storico.",
+        tabella_sintesi
+      ),
+      
+      sezione(
+        "2",
+        "Attivazioni anomale rilevanti",
+        "Sono riportate esclusivamente le anomalie con più di 6 attivazioni.",
+        tabella_html(
+          r$attivazioni_anomale |>
+            mutate(Data = format(Data, "%d/%m/%Y")),
+          "Nessuna attivazione anomala con conteggio superiore a 6 nel periodo."
         )
       ),
-      h4("Sintesi per sensore e macchina"),
-      tabella_sintesi,
-      h4("Attivazioni anomale"),
-      tabella_html(
-        r$attivazioni_anomale |>
-          mutate(Data = format(Data, "%d/%m/%Y")),
-        "Nessuna attivazione anomala nel periodo."
+      
+      sezione(
+        "3",
+        "NOK per sensore fuori range",
+        "Dettaglio dei sensori il cui NOK di periodo supera i limiti storici calcolati.",
+        tabella_html(
+          r$nok_anomalo,
+          "Nessun NOK per sensore fuori range nel periodo."
+        )
       ),
-      h4("NOK per sensore fuori range"),
-      tabella_html(
-        r$nok_anomalo,
-        "Nessun NOK per sensore fuori range nel periodo."
-      ),
-      h4("Utilizzo macchina fuori range"),
-      tabella_html(
-        r$utilizzo_anomalo,
-        "Utilizzo macchina nel range nel periodo."
+      
+      sezione(
+        "4",
+        "Utilizzo macchina fuori range",
+        "La sezione viene popolata solo quando l'indice di utilizzo complessivo è sotto P10 o sopra P90 rispetto allo storico di riferimento.",
+        tabella_html(
+          r$utilizzo_anomalo,
+          "L'utilizzo complessivo della macchina rientra nel range storico nel periodo."
+        )
       )
     )
   })
@@ -2650,6 +3150,7 @@ server <- function(input, output, session) {
     },
     content = function(file) {
       r <- report_dati()
+      narrativa <- testo_report_esteso(r)
       
       grDevices::pdf(
         file,
@@ -2657,144 +3158,457 @@ server <- function(input, output, session) {
         height = 8.27,
         onefile = TRUE
       )
-      
       on.exit(grDevices::dev.off(), add = TRUE)
       
-      titolo <- paste0(
-        "Report anomalie - periodo ",
+      navy <- "#24364B"
+      slate <- "#334155"
+      muted <- "#718096"
+      beige <- "#F4F1E7"
+      beige_dark <- "#B6A878"
+      border <- "#DDE4EA"
+      green <- "#19764A"
+      red <- "#B42318"
+      
+      titolo_base <- "Rapporto anomalie e utilizzo"
+      sottotitolo <- paste0(
+        r$macchina,
+        " · Coupon ",
+        r$coupon,
+        " · ",
         format(r$inizio, "%d/%m/%Y"),
         " - ",
-        format(r$fine, "%d/%m/%Y"),
-        " - per macchina ",
-        r$macchina,
-        ", coupon ",
-        r$coupon
+        format(r$fine, "%d/%m/%Y")
       )
       
-      testo <- paste0(
-        testo_andamento_report(r$utilizzo_pct, "Utilizzo complessivo"),
-        ". ",
-        testo_andamento_report(r$nok_macchina_pct, "NOK medio"),
-        ". Stato NOK macchina: ",
-        ifelse(isTRUE(r$nok_macchina_fuori), "fuori range", "nel range"),
-        ". Stato utilizzo: ",
-        r$utilizzo_stato,
-        "."
+      footer <- function() {
+        grid::grid.text(
+          paste0(
+            "5SAN · Report generato il ",
+            format(Sys.time(), "%d/%m/%Y %H:%M")
+          ),
+          x = 0.03,
+          y = 0.025,
+          just = c("left", "bottom"),
+          gp = grid::gpar(
+            fontsize = 7.5,
+            col = muted
+          )
+        )
+      }
+      
+      header_pagina <- function(titolo_sezione = NULL) {
+        grid::grid.rect(
+          x = 0.5,
+          y = 0.955,
+          width = 1,
+          height = 0.09,
+          gp = grid::gpar(
+            fill = navy,
+            col = NA
+          )
+        )
+        grid::grid.text(
+          "5SAN · MONITORAGGIO OPERATIVO",
+          x = 0.035,
+          y = 0.972,
+          just = c("left", "top"),
+          gp = grid::gpar(
+            fontsize = 7.5,
+            fontface = "bold",
+            col = "#DDD6BD"
+          )
+        )
+        grid::grid.text(
+          if (is.null(titolo_sezione)) titolo_base else titolo_sezione,
+          x = 0.035,
+          y = 0.945,
+          just = c("left", "top"),
+          gp = grid::gpar(
+            fontsize = 15,
+            fontface = "bold",
+            col = "#FFFFFF"
+          )
+        )
+        footer()
+      }
+      
+      kpi_card <- function(x, label, value, note, status = "normal") {
+        status_col <- if (identical(status, "bad")) red else if (
+          identical(status, "good")
+        ) green else navy
+        
+        grid::grid.roundrect(
+          x = x,
+          y = 0.685,
+          width = 0.215,
+          height = 0.145,
+          r = grid::unit(0.035, "snpc"),
+          gp = grid::gpar(
+            fill = "#FFFFFF",
+            col = border,
+            lwd = 1
+          )
+        )
+        grid::grid.text(
+          label,
+          x = x - 0.092,
+          y = 0.73,
+          just = c("left", "center"),
+          gp = grid::gpar(
+            fontsize = 7.5,
+            fontface = "bold",
+            col = muted
+          )
+        )
+        grid::grid.text(
+          value,
+          x = x - 0.092,
+          y = 0.688,
+          just = c("left", "center"),
+          gp = grid::gpar(
+            fontsize = 16,
+            fontface = "bold",
+            col = status_col
+          )
+        )
+        grid::grid.text(
+          note,
+          x = x - 0.092,
+          y = 0.647,
+          just = c("left", "center"),
+          gp = grid::gpar(
+            fontsize = 7.3,
+            col = muted
+          )
+        )
+      }
+      
+      # Pagina 1 - Executive summary.
+      grid::grid.newpage()
+      grid::grid.rect(
+        x = 0.5,
+        y = 0.90,
+        width = 1,
+        height = 0.20,
+        gp = grid::gpar(fill = navy, col = NA)
+      )
+      grid::grid.text(
+        "5SAN · MONITORAGGIO OPERATIVO",
+        x = 0.04,
+        y = 0.965,
+        just = c("left", "top"),
+        gp = grid::gpar(
+          fontsize = 8,
+          fontface = "bold",
+          col = "#DDD6BD"
+        )
+      )
+      grid::grid.text(
+        titolo_base,
+        x = 0.04,
+        y = 0.925,
+        just = c("left", "top"),
+        gp = grid::gpar(
+          fontsize = 23,
+          fontface = "bold",
+          col = "#FFFFFF"
+        )
+      )
+      grid::grid.text(
+        sottotitolo,
+        x = 0.04,
+        y = 0.865,
+        just = c("left", "top"),
+        gp = grid::gpar(
+          fontsize = 10,
+          col = "#DDE5EC"
+        )
+      )
+      grid::grid.text(
+        paste0(
+          "Confronto: ",
+          format(r$precedente_inizio, "%d/%m/%Y"),
+          " - ",
+          format(r$precedente_fine, "%d/%m/%Y"),
+          " · Anomalie attivazioni incluse solo se > 6"
+        ),
+        x = 0.04,
+        y = 0.832,
+        just = c("left", "top"),
+        gp = grid::gpar(
+          fontsize = 8,
+          col = "#DDE5EC"
+        )
       )
       
-      sensori_pdf <- r$confronto |>
+      utilizzo_val <- if (is.finite(r$utilizzo)) {
+        formatC(r$utilizzo, format = "f", digits = 3, decimal.mark = ",")
+      } else "N/D"
+      nok_val <- if (is.finite(r$nok_macchina)) {
+        formatC(r$nok_macchina, format = "f", digits = 3, decimal.mark = ",")
+      } else "N/D"
+      
+      kpi_card(
+        0.145,
+        "INDICE UTILIZZO",
+        utilizzo_val,
+        paste0(r$utilizzo_stato, " · ", formatta_variazione_report(r$utilizzo_pct)),
+        if (r$utilizzo_stato %in% c("Elevato", "Basso")) "bad" else "good"
+      )
+      kpi_card(
+        0.385,
+        "NOK MEDIO MACCHINA",
+        nok_val,
+        paste0(
+          ifelse(isTRUE(r$nok_macchina_fuori), "Fuori range", "Nel range"),
+          " · ",
+          formatta_variazione_report(r$nok_macchina_pct)
+        ),
+        if (isTRUE(r$nok_macchina_fuori)) "bad" else "good"
+      )
+      kpi_card(
+        0.625,
+        "ANOMALIE ATTIVAZIONI",
+        as.character(nrow(r$attivazioni_anomale)),
+        "Conteggio > 6",
+        if (nrow(r$attivazioni_anomale) > 0) "bad" else "good"
+      )
+      kpi_card(
+        0.865,
+        "SENSORI NOK FUORI RANGE",
+        as.character(nrow(r$nok_anomalo)),
+        paste0("Su ", nrow(r$confronto), " sensori"),
+        if (nrow(r$nok_anomalo) > 0) "bad" else "good"
+      )
+      
+      grid::grid.text(
+        "Lettura del periodo",
+        x = 0.04,
+        y = 0.57,
+        just = c("left", "top"),
+        gp = grid::gpar(
+          fontsize = 13,
+          fontface = "bold",
+          col = navy
+        )
+      )
+      grid::grid.rect(
+        x = 0.5,
+        y = 0.36,
+        width = 0.92,
+        height = 0.38,
+        gp = grid::gpar(
+          fill = beige,
+          col = "#E1DCCB"
+        )
+      )
+      
+      testo_exec <- paste(
+        vapply(
+          narrativa,
+          function(x) paste(strwrap(x, width = 155), collapse = "\n"),
+          character(1)
+        ),
+        collapse = "\n\n"
+      )
+      grid::grid.text(
+        testo_exec,
+        x = 0.06,
+        y = 0.53,
+        just = c("left", "top"),
+        gp = grid::gpar(
+          fontsize = 9,
+          col = slate,
+          lineheight = 1.25
+        )
+      )
+      footer()
+      
+      # Sintesi per sensore: più pagine, 7 sensori alla volta + macchina.
+      sensori_summary <- r$confronto |>
         transmute(
           Sensore = cds_name,
           Attivazioni = paste0(
-            round(attivazioni_medie, 1),
+            formatC(attivazioni_medie, format = "f", digits = 1, decimal.mark = ","),
             " (",
-            formatta_variazione_report(variazione_attivazioni_pct),
+            vapply(
+              variazione_attivazioni_pct,
+              formatta_variazione_report,
+              character(1)
+            ),
             ")"
           ),
-          NOK = ifelse(is.finite(NOK), round(NOK, 3), NA_real_)
+          NOK = ifelse(
+            is.finite(NOK),
+            formatC(NOK, format = "f", digits = 3, decimal.mark = ","),
+            "N/D"
+          ),
+          Stato = ifelse(nok_fuori_range, "FUORI", "OK")
         )
       
-      sintesi_pdf <- bind_rows(
-        sensori_pdf,
-        tibble(
-          Sensore = "Macchina",
-          Attivazioni = paste0(
-            round(r$att_macchina, 1),
-            " (",
-            formatta_variazione_report(r$att_macchina_pct),
-            ")"
-          ),
-          NOK = ifelse(is.finite(r$nok_macchina), round(r$nok_macchina, 3), NA_real_)
-        )
+      idx_chunks <- split(
+        seq_len(nrow(sensori_summary)),
+        ceiling(seq_len(nrow(sensori_summary)) / 7)
       )
       
-      disegna_pagina <- function(titolo_sezione, df = NULL, testo_intro = NULL) {
-        grid::grid.newpage()
-        grobs <- list(
-          grid::textGrob(
-            titolo,
-            x = 0.03,
-            y = 0.97,
-            just = c("left", "top"),
-            gp = grid::gpar(fontsize = 16, fontface = "bold")
-          )
-        )
+      if (length(idx_chunks) == 0) idx_chunks <- list(integer(0))
+      
+      for (chunk_i in seq_along(idx_chunks)) {
+        idx <- idx_chunks[[chunk_i]]
+        chunk <- sensori_summary[idx, , drop = FALSE]
         
-        y <- 0.88
-        if (!is.null(testo_intro)) {
-          testo_wrapped <- paste(
-            strwrap(testo_intro, width = 150),
-            collapse = "\n"
-          )
-          grobs[[length(grobs) + 1]] <- grid::textGrob(
-            testo_wrapped,
-            x = 0.03,
-            y = y,
-            just = c("left", "top"),
-            gp = grid::gpar(fontsize = 10)
-          )
-          y <- y - 0.14
+        metriche <- c("Attivazioni medie", "NOK")
+        tab <- data.frame(Metrica = metriche, check.names = FALSE)
+        
+        if (nrow(chunk) > 0) {
+          for (i in seq_len(nrow(chunk))) {
+            tab[[chunk$Sensore[i]]] <- c(
+              chunk$Attivazioni[i],
+              paste0(chunk$NOK[i], " · ", chunk$Stato[i])
+            )
+          }
         }
         
-        grobs[[length(grobs) + 1]] <- grid::textGrob(
-          titolo_sezione,
-          x = 0.03,
-          y = y,
+        if (chunk_i == length(idx_chunks)) {
+          tab[["Macchina"]] <- c(
+            paste0(
+              formatC(r$att_macchina, format = "f", digits = 1, decimal.mark = ","),
+              " (",
+              formatta_variazione_report(r$att_macchina_pct),
+              ")"
+            ),
+            paste0(
+              nok_val,
+              " · ",
+              ifelse(isTRUE(r$nok_macchina_fuori), "FUORI", "OK")
+            )
+          )
+        }
+        
+        grid::grid.newpage()
+        header_pagina("Sintesi per sensore e macchina")
+        grid::grid.text(
+          paste0(
+            "Valori medi del periodo; tra parentesi la variazione rispetto al periodo precedente. ",
+            "NOK classificato rispetto al range storico."
+          ),
+          x = 0.04,
+          y = 0.84,
           just = c("left", "top"),
-          gp = grid::gpar(fontsize = 12, fontface = "bold")
+          gp = grid::gpar(fontsize = 8.5, col = muted)
         )
         
-        if (!is.null(df) && nrow(df) > 0) {
+        tg <- gridExtra::tableGrob(
+          tab,
+          rows = NULL,
+          theme = gridExtra::ttheme_minimal(
+            base_size = 8,
+            core = list(
+              fg_params = list(col = slate),
+              bg_params = list(fill = c("#FFFFFF", "#FAFBFC"))
+            ),
+            colhead = list(
+              fg_params = list(fontface = "bold", col = navy),
+              bg_params = list(fill = "#EDF1F4")
+            )
+          )
+        )
+        grid::pushViewport(
+          grid::viewport(
+            x = 0.04,
+            y = 0.79,
+            width = 0.92,
+            height = 0.60,
+            just = c("left", "top")
+          )
+        )
+        grid::grid.draw(tg)
+        grid::popViewport()
+      }
+      
+      disegna_tabella_paginata <- function(titolo_sezione, df, empty_text) {
+        if (nrow(df) == 0) {
+          grid::grid.newpage()
+          header_pagina(titolo_sezione)
+          grid::grid.roundrect(
+            x = 0.5,
+            y = 0.60,
+            width = 0.88,
+            height = 0.18,
+            r = grid::unit(0.03, "snpc"),
+            gp = grid::gpar(fill = beige, col = "#E1DCCB")
+          )
+          grid::grid.text(
+            empty_text,
+            x = 0.5,
+            y = 0.60,
+            gp = grid::gpar(
+              fontsize = 10,
+              col = slate
+            )
+          )
+          return(invisible(NULL))
+        }
+        
+        chunks <- split(
+          seq_len(nrow(df)),
+          ceiling(seq_len(nrow(df)) / 12)
+        )
+        
+        for (idx in chunks) {
+          grid::grid.newpage()
+          header_pagina(titolo_sezione)
+          
           tg <- gridExtra::tableGrob(
-            as.data.frame(df),
+            as.data.frame(df[idx, , drop = FALSE]),
             rows = NULL,
             theme = gridExtra::ttheme_minimal(
-              base_size = 8,
+              base_size = 7.4,
               core = list(
-                fg_params = list(hjust = 0, x = 0.03)
+                fg_params = list(col = slate, hjust = 0, x = 0.03),
+                bg_params = list(fill = rep(c("#FFFFFF", "#FAFBFC"), length.out = length(idx)))
               ),
               colhead = list(
-                fg_params = list(fontface = "bold")
+                fg_params = list(fontface = "bold", col = navy),
+                bg_params = list(fill = "#EDF1F4")
               )
             )
           )
+          
           grid::pushViewport(
             grid::viewport(
-              x = 0.03,
-              y = y - 0.04,
-              width = 0.94,
-              height = max(0.15, y - 0.10),
+              x = 0.035,
+              y = 0.84,
+              width = 0.93,
+              height = 0.70,
               just = c("left", "top")
             )
           )
           grid::grid.draw(tg)
           grid::popViewport()
-        } else {
-          grobs[[length(grobs) + 1]] <- grid::textGrob(
-            "Nessuna anomalia rilevata.",
-            x = 0.03,
-            y = y - 0.06,
-            just = c("left", "top"),
-            gp = grid::gpar(fontsize = 9)
-          )
         }
-        
-        lapply(grobs, grid::grid.draw)
       }
-      
-      disegna_pagina(
-        "Sintesi",
-        sintesi_pdf,
-        testo
-      )
       
       att_pdf <- r$attivazioni_anomale |>
         mutate(Data = format(Data, "%d/%m/%Y"))
-      disegna_pagina("Attivazioni anomale", att_pdf)
       
-      disegna_pagina("NOK per sensore fuori range", r$nok_anomalo)
+      disegna_tabella_paginata(
+        "Attivazioni anomale rilevanti",
+        att_pdf,
+        "Nessuna anomalia di attivazione con conteggio superiore a 6."
+      )
       
-      disegna_pagina("Utilizzo macchina fuori range", r$utilizzo_anomalo)
+      disegna_tabella_paginata(
+        "NOK per sensore fuori range",
+        r$nok_anomalo,
+        "Nessun NOK per sensore fuori range nel periodo."
+      )
+      
+      disegna_tabella_paginata(
+        "Utilizzo macchina fuori range",
+        r$utilizzo_anomalo,
+        "L'utilizzo complessivo della macchina rientra nel range storico."
+      )
     },
     contentType = "application/pdf"
   )
