@@ -34,17 +34,18 @@ connetti_maria <- function() {
 }
 
 # ---------------------------------------------------------------------------
-# Helper: raggruppa una data nel periodo scelto (giorno/settimana/mese/...)
+# Helper: raggruppa data/ora nel periodo scelto (ora/giorno/settimana/mese/...)
 # e restituisce anche un'etichetta leggibile per gli assi/facet
 # ---------------------------------------------------------------------------
 periodo_bucket <- function(day, granularita) {
   switch(
     granularita,
-    "Giorno"     = day,
-    "Settimana"  = floor_date(day, "week", week_start = 1),
-    "Mese"       = floor_date(day, "month"),
-    "Trimestre"  = floor_date(day, "quarter"),
-    "Anno"       = floor_date(day, "year"),
+    "Ora"        = floor_date(day, "hour"),
+    "Giorno"     = as.Date(day),
+    "Settimana"  = floor_date(as.Date(day), "week", week_start = 1),
+    "Mese"       = floor_date(as.Date(day), "month"),
+    "Trimestre"  = floor_date(as.Date(day), "quarter"),
+    "Anno"       = floor_date(as.Date(day), "year"),
     day
   )
 }
@@ -52,11 +53,12 @@ periodo_bucket <- function(day, granularita) {
 formatta_periodo_label <- function(periodo, granularita) {
   as.character(switch(
     granularita,
-    "Giorno"    = format(periodo, "%d-%m-%Y"),
-    "Settimana" = paste0("Sett. ", format(periodo, "%d-%m-%Y")),
-    "Mese"      = format(periodo, "%b %Y"),
-    "Trimestre" = paste0("Q", quarter(periodo), " ", format(periodo, "%Y")),
-    "Anno"      = format(periodo, "%Y"),
+    "Ora"       = format(periodo, "%d-%m-%Y %H:00"),
+    "Giorno"    = format(as.Date(periodo), "%d-%m-%Y"),
+    "Settimana" = paste0("Sett. ", format(as.Date(periodo), "%d-%m-%Y")),
+    "Mese"      = format(as.Date(periodo), "%b %Y"),
+    "Trimestre" = paste0("Q", quarter(as.Date(periodo)), " ", format(as.Date(periodo), "%Y")),
+    "Anno"      = format(as.Date(periodo), "%Y"),
     format(periodo, "%d-%m-%Y")
   ))
 }
