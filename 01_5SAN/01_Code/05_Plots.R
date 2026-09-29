@@ -733,6 +733,78 @@ ui <- fluidPage(
         color: #5F6F7F;
         font-size: 13px;
       }
+      .report-panel {
+        margin: 0 0 26px 0;
+        padding: 16px 18px;
+        border: 1px solid #D8D3C3;
+        border-radius: 9px;
+        background: #FAF9F4;
+      }
+      .report-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .report-period-btn {
+        border: 1px solid #C8C0A7;
+        border-radius: 7px;
+        background: #FFFFFF;
+        color: #24364B;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 7px 11px;
+        cursor: pointer;
+      }
+      .report-period-btn:hover {
+        background: #EDE8D8;
+      }
+      .report-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 18px;
+        margin-bottom: 14px;
+      }
+      .report-summary {
+        margin: 0 0 18px 0;
+        padding: 14px 16px;
+        border-left: 4px solid #C8C0A7;
+        background: #F8F6EE;
+        color: #334155;
+        line-height: 1.55;
+      }
+      .report-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 8px 0 20px 0;
+        font-size: 12px;
+      }
+      .report-table th {
+        background: #E9EDF1;
+        color: #24364B;
+        border: 1px solid #DDE4EA;
+        padding: 7px 8px;
+        text-align: center;
+      }
+      .report-table td {
+        border: 1px solid #E4E7EB;
+        padding: 7px 8px;
+        text-align: center;
+        vertical-align: top;
+      }
+      .report-ok {
+        color: #19764A;
+        font-weight: 800;
+      }
+      .report-bad {
+        color: #B42318;
+        font-weight: 800;
+      }
+      .report-nd {
+        color: #718096;
+        font-weight: 700;
+      }
       .modal-filters {
         background: #F4F6F8;
         border-radius: 7px;
@@ -1247,6 +1319,7 @@ server <- function(input, output, session) {
   granularita_attivazioni_corrente <- reactiveVal("Giorno")
   granularita_nok_corrente <- reactiveVal("Giorno")
   granularita_utilizzo_corrente <- reactiveVal("Settimana")
+  report_periodo_corrente <- reactiveVal(NULL)
   
   filtri_principali <- reactive({
     req(input$macchina, input$date)
@@ -1670,6 +1743,18 @@ server <- function(input, output, session) {
           )
         ),
         div(
+          class = "report-panel",
+          h4("Report anomalie", class = "titolo-sezione"),
+          radioButtons(
+            "report_granularita",
+            "Granularità report:",
+            choices = c("Settimana", "Mese"),
+            selected = "Settimana",
+            inline = TRUE
+          ),
+          uiOutput("report_period_buttons")
+        ),
+        div(
           class = "alarm-section",
           h4("Attivazioni anomale", class = "titolo-sezione"),
           p(
@@ -1852,6 +1937,857 @@ server <- function(input, output, session) {
       granularita = granularita_nok_corrente()
     )
   })
+
+  
+  # ---------------------------------------------------------------------
+  # Report anomalie settimanali/mensili.
+  # "Settimana" usa quattro fasce mensili (1-7, 8-14, 15-21, 22-fine mese),
+  # cosi' un mese completo genera sempre quattro report.
+  # ---------------------------------------------------------------------
+  periodi_report <- reactive({
+    date_corrente <- date_modal_corrente()
+    req(length(date_corrente) == 2, all(!is.na(date_corrente)))
+    
+    inizio <- as.Date(date_corrente[1])
+    fine <- as.Date(date_corrente[2])
+    granularita <- input$report_granularita %||% "Settimana"
+    
+    mesi <- seq.Date(
+      lubridate::floor_date(inizio, "month"),
+      lubridate::floor_date(fine, "month"),
+      by = "month"
+    )
+    
+    periodi <- lapply(mesi, function(mese) {
+      fine_mese <- as.Date(lubridate::ceiling_date(mese, "month") - lubridate::days(1))
+      
+      if (identical(granularita, "Mese")) {
+        p_start <- max(inizio, mese)
+        p_end <- min(fine, fine_mese)
+        if (p_start <= p_end) {
+          return(tibble(
+            start = p_start,
+            end = p_end,
+            label = format(mese, "%B %Y")
+          ))
+        }
+        return(NULL)
+      }
+      
+      limiti <- list(
+        c(1L, 7L),
+        c(8L, 14L),
+        c(15L, 21L),
+        c(22L, lubridate::days_in_month(mese))
+      )
+      
+      bind_rows(lapply(seq_along(limiti), function(i) {
+        p_start <- mese + lubridate::days(limiti[[i]][1] - 1L)
+        p_end <- mese + lubridate::days(limiti[[i]][2] - 1L)
+        p_start <- max(inizio, as.Date(p_start))
+        p_end <- min(fine, as.Date(p_end))
+        
+        if (p_start > p_end) return(NULL)
+        
+        tibble(
+          start = p_start,
+          end = p_end,
+          label = paste0(
+            "Sett. ", i, " - ",
+            format(p_start, "%d/%m"),
+            " - ",
+            format(p_end, "%d/%m")
+          )
+        )
+      }))
+    })
+    
+    bind_rows(periodi)
+  })
+  
+  output$report_period_buttons <- renderUI({
+    periodi <- periodi_report()
+    
+    if (nrow(periodi) == 0) {
+      return(div(class = "alarm-empty", "Nessun periodo disponibile."))
+    }
+    
+    div(
+      class = "report-buttons",
+      lapply(seq_len(nrow(periodi)), function(i) {
+        p <- periodi[i, ]
+        tags$button(
+          type = "button",
+          class = "report-period-btn",
+          onclick = sprintf(
+            "Shiny.setInputValue('report_periodo_click',{start:'%s',end:'%s',label:'%s',nonce:Date.now()},{priority:'event'});",
+            format(p$start, "%Y-%m-%d"),
+            format(p$end, "%Y-%m-%d"),
+            gsub("'", "\\'", p$label)
+          ),
+          p$label
+        )
+      })
+    )
+  })
+  
+  calcola_report_periodo <- function(inizio, fine, macchina, sensori) {
+    inizio <- as.Date(inizio)
+    fine <- as.Date(fine)
+    durata <- as.integer(fine - inizio) + 1L
+    prev_fine <- inizio - 1L
+    prev_inizio <- inizio - durata
+    
+    macchina_info <- macchine_lookup |>
+      filter(coupon == macchina) |>
+      slice_head(n = 1)
+    
+    nome_macchina <- if (nrow(macchina_info) > 0) {
+      as.character(macchina_info$machine_name)
+    } else {
+      macchina
+    }
+    
+    base_giornaliera <- prepara_valori_giornalieri_nok(macchina, sensori)
+    
+    # NMN e limiti storici sono calcolati escludendo il periodo del report.
+    storico_pulito <- base_giornaliera |>
+      filter(
+        !outlier_lof,
+        day < inizio | day > fine
+      )
+    
+    nmn <- storico_pulito |>
+      group_by(cds_name, sensor_description) |>
+      summarise(
+        NMN = mean(daily_value, na.rm = TRUE),
+        .groups = "drop"
+      )
+    
+    storico_nok <- storico_pulito |>
+      left_join(nmn, by = c("cds_name", "sensor_description")) |>
+      mutate(
+        NOK_giornaliero = if_else(
+          is.finite(daily_value) & is.finite(NMN) & NMN != 0,
+          daily_value / NMN,
+          NA_real_
+        )
+      ) |>
+      filter(is.finite(NOK_giornaliero))
+    
+    limiti_nok <- storico_nok |>
+      group_by(cds_name, sensor_description) |>
+      summarise(
+        media_nok_storico = mean(NOK_giornaliero, na.rm = TRUE),
+        sigma_nok_storico = if (n() >= 2) sd(NOK_giornaliero, na.rm = TRUE) else NA_real_,
+        .groups = "drop"
+      ) |>
+      mutate(
+        limite_inf = pmax(0, media_nok_storico - 3 * sigma_nok_storico),
+        limite_sup = media_nok_storico + 3 * sigma_nok_storico
+      )
+    
+    metriche_periodo <- function(data_start, data_end) {
+      periodo <- base_giornaliera |>
+        filter(day >= data_start, day <= data_end)
+      
+      att <- periodo |>
+        group_by(cds_name, sensor_description) |>
+        summarise(
+          attivazioni_medie = mean(daily_count, na.rm = TRUE),
+          .groups = "drop"
+        )
+      
+      nok <- periodo |>
+        group_by(cds_name, sensor_description) |>
+        summarise(
+          NMM = mean(daily_value, na.rm = TRUE),
+          .groups = "drop"
+        ) |>
+        left_join(nmn, by = c("cds_name", "sensor_description")) |>
+        mutate(
+          NOK = if_else(
+            is.finite(NMM) & is.finite(NMN) & NMN != 0,
+            NMM / NMN,
+            NA_real_
+          )
+        ) |>
+        select(cds_name, sensor_description, NOK)
+      
+      att |>
+        full_join(nok, by = c("cds_name", "sensor_description"))
+    }
+    
+    correnti <- metriche_periodo(inizio, fine) |>
+      left_join(
+        limiti_nok |>
+          select(cds_name, sensor_description, limite_inf, limite_sup),
+        by = c("cds_name", "sensor_description")
+      )
+    
+    precedenti <- metriche_periodo(prev_inizio, prev_fine) |>
+      rename(
+        attivazioni_medie_precedenti = attivazioni_medie,
+        NOK_precedente = NOK
+      )
+    
+    confronto <- correnti |>
+      left_join(
+        precedenti,
+        by = c("cds_name", "sensor_description")
+      ) |>
+      mutate(
+        variazione_attivazioni_pct = case_when(
+          is.finite(attivazioni_medie_precedenti) &
+            attivazioni_medie_precedenti != 0 ~
+              100 * (attivazioni_medie - attivazioni_medie_precedenti) /
+              abs(attivazioni_medie_precedenti),
+          TRUE ~ NA_real_
+        ),
+        variazione_nok_pct = case_when(
+          is.finite(NOK_precedente) & NOK_precedente != 0 ~
+            100 * (NOK - NOK_precedente) / abs(NOK_precedente),
+          TRUE ~ NA_real_
+        ),
+        nok_fuori_range = (
+          is.finite(NOK) &
+          is.finite(limite_inf) &
+          is.finite(limite_sup) &
+          (NOK < limite_inf | NOK > limite_sup)
+        )
+      ) |>
+      ordina_naturale()
+    
+    # Metriche macchina.
+    att_macchina <- sum(confronto$attivazioni_medie, na.rm = TRUE)
+    att_macchina_prev <- sum(confronto$attivazioni_medie_precedenti, na.rm = TRUE)
+    att_macchina_pct <- if (
+      is.finite(att_macchina_prev) && att_macchina_prev != 0
+    ) {
+      100 * (att_macchina - att_macchina_prev) / abs(att_macchina_prev)
+    } else {
+      NA_real_
+    }
+    
+    nok_macchina <- mean(confronto$NOK[is.finite(confronto$NOK)], na.rm = TRUE)
+    nok_macchina_prev <- mean(
+      confronto$NOK_precedente[is.finite(confronto$NOK_precedente)],
+      na.rm = TRUE
+    )
+    if (!is.finite(nok_macchina)) nok_macchina <- NA_real_
+    if (!is.finite(nok_macchina_prev)) nok_macchina_prev <- NA_real_
+    
+    nok_macchina_pct <- if (
+      is.finite(nok_macchina_prev) && nok_macchina_prev != 0
+    ) {
+      100 * (nok_macchina - nok_macchina_prev) / abs(nok_macchina_prev)
+    } else {
+      NA_real_
+    }
+    
+    storico_macchina <- storico_nok |>
+      group_by(day) |>
+      summarise(
+        NOK_macchina = mean(NOK_giornaliero, na.rm = TRUE),
+        .groups = "drop"
+      ) |>
+      filter(is.finite(NOK_macchina))
+    
+    nok_macchina_media_storica <- if (nrow(storico_macchina) > 0) {
+      mean(storico_macchina$NOK_macchina, na.rm = TRUE)
+    } else NA_real_
+    nok_macchina_sigma <- if (nrow(storico_macchina) >= 2) {
+      sd(storico_macchina$NOK_macchina, na.rm = TRUE)
+    } else NA_real_
+    nok_macchina_inf <- if (is.finite(nok_macchina_media_storica) && is.finite(nok_macchina_sigma)) {
+      max(0, nok_macchina_media_storica - 3 * nok_macchina_sigma)
+    } else NA_real_
+    nok_macchina_sup <- if (is.finite(nok_macchina_media_storica) && is.finite(nok_macchina_sigma)) {
+      nok_macchina_media_storica + 3 * nok_macchina_sigma
+    } else NA_real_
+    nok_macchina_fuori <- (
+      is.finite(nok_macchina) &&
+      is.finite(nok_macchina_inf) &&
+      is.finite(nok_macchina_sup) &&
+      (nok_macchina < nok_macchina_inf || nok_macchina > nok_macchina_sup)
+    )
+    
+    calcola_utilizzo <- function(data_start, data_end) {
+      dati_u <- base_giornaliera |>
+        filter(day >= data_start, day <= data_end) |>
+        left_join(nmn, by = c("cds_name", "sensor_description")) |>
+        mutate(
+          NOK_giornaliero = if_else(
+            is.finite(daily_value) & is.finite(NMN) & NMN != 0,
+            daily_value / NMN,
+            NA_real_
+          )
+        ) |>
+        filter(is.finite(NOK_giornaliero)) |>
+        group_by(cds_name, sensor_description) |>
+        summarise(
+          media_nok = mean(NOK_giornaliero, na.rm = TRUE),
+          varianza_nok = if (n() >= 2) var(NOK_giornaliero, na.rm = TRUE) else NA_real_,
+          .groups = "drop"
+        ) |>
+        mutate(
+          U_sensore = sqrt(media_nok^2 + varianza_nok)
+        ) |>
+        filter(is.finite(U_sensore))
+      
+      if (nrow(dati_u) == 0) return(NA_real_)
+      mean(dati_u$U_sensore, na.rm = TRUE)
+    }
+    
+    utilizzo_corrente <- calcola_utilizzo(inizio, fine)
+    utilizzo_precedente <- calcola_utilizzo(prev_inizio, prev_fine)
+    utilizzo_pct <- if (
+      is.finite(utilizzo_corrente) &&
+      is.finite(utilizzo_precedente) &&
+      utilizzo_precedente != 0
+    ) {
+      100 * (utilizzo_corrente - utilizzo_precedente) /
+        abs(utilizzo_precedente)
+    } else NA_real_
+    
+    prima_data <- min(base_giornaliera$day, na.rm = TRUE)
+    ultima_start <- max(base_giornaliera$day, na.rm = TRUE) - durata + 1L
+    
+    partenze <- if (
+      is.finite(as.numeric(prima_data)) &&
+      is.finite(as.numeric(ultima_start)) &&
+      ultima_start >= prima_data
+    ) {
+      seq.Date(prima_data, ultima_start, by = "7 days")
+    } else {
+      as.Date(character(0))
+    }
+    
+    valori_u_storici <- vapply(
+      partenze,
+      function(x) calcola_utilizzo(x, x + durata - 1L),
+      numeric(1)
+    )
+    valori_u_storici <- valori_u_storici[is.finite(valori_u_storici)]
+    
+    p10_u <- if (length(valori_u_storici) > 0) {
+      as.numeric(stats::quantile(valori_u_storici, 0.10, names = FALSE, na.rm = TRUE))
+    } else NA_real_
+    p90_u <- if (length(valori_u_storici) > 0) {
+      as.numeric(stats::quantile(valori_u_storici, 0.90, names = FALSE, na.rm = TRUE))
+    } else NA_real_
+    
+    utilizzo_stato <- case_when(
+      !is.finite(utilizzo_corrente) | !is.finite(p10_u) | !is.finite(p90_u) ~ "N/D",
+      utilizzo_corrente < p10_u ~ "Basso",
+      utilizzo_corrente > p90_u ~ "Elevato",
+      TRUE ~ "Normale"
+    )
+    
+    # Anomalie attivazioni nel periodo.
+    anomalie_giornaliere <- base_giornaliera |>
+      filter(
+        outlier_lof,
+        day >= inizio,
+        day <= fine
+      ) |>
+      transmute(
+        Macchina = nome_macchina,
+        Coupon = macchina,
+        Sensore = paste(cds_name, sensor_description, sep = " - "),
+        Data = day,
+        Ora = "-",
+        Conteggio = round(daily_count),
+        Descrizione = if_else(
+          is.finite(daily_count) & daily_count == 0,
+          "Zero attivazioni",
+          "Anomalia statistica giornaliera"
+        )
+      )
+    
+    mediane_macchina <- mediane_attivazioni_orarie |>
+      filter(coupon == macchina)
+    
+    anomalie_orarie <- dati_attivazioni_orarie_base |>
+      filter(
+        coupon == macchina,
+        cds_name %in% sensori,
+        day >= inizio,
+        day <= fine
+      ) |>
+      left_join(
+        mediane_macchina |>
+          select(cds_name, sensor_description, mediana_oraria),
+        by = c("cds_name", "sensor_description")
+      ) |>
+      filter(
+        is.finite(attivazioni_orarie),
+        is.finite(mediana_oraria),
+        mediana_oraria > 0,
+        attivazioni_orarie >= 4 * mediana_oraria
+      ) |>
+      transmute(
+        Macchina = nome_macchina,
+        Coupon = macchina,
+        Sensore = paste(cds_name, sensor_description, sep = " - "),
+        Data = day,
+        Ora = format(hour, "%H:00", tz = "Europe/Rome"),
+        Conteggio = round(attivazioni_orarie),
+        Descrizione = paste0(
+          "Conteggio orario >= 4 x mediana oraria (",
+          round(mediana_oraria, 1),
+          ")"
+        )
+      )
+    
+    tab_att_anomale <- bind_rows(
+      anomalie_giornaliere,
+      anomalie_orarie
+    ) |>
+      distinct() |>
+      arrange(Data, Ora, Sensore)
+    
+    tab_nok_anomalo <- confronto |>
+      filter(nok_fuori_range) |>
+      transmute(
+        Macchina = nome_macchina,
+        Coupon = macchina,
+        Sensore = paste(cds_name, sensor_description, sep = " - "),
+        Periodo = paste(
+          format(inizio, "%d/%m/%Y"),
+          format(fine, "%d/%m/%Y"),
+          sep = " - "
+        ),
+        NOK = round(NOK, 3),
+        Descrizione = case_when(
+          NOK < limite_inf ~ paste0("NOK sotto il limite inferiore (", round(limite_inf, 3), ")"),
+          NOK > limite_sup ~ paste0("NOK sopra il limite superiore (", round(limite_sup, 3), ")"),
+          TRUE ~ "NOK fuori range"
+        )
+      )
+    
+    tab_utilizzo_anomalo <- if (
+      identical(utilizzo_stato, "Elevato") ||
+      identical(utilizzo_stato, "Basso")
+    ) {
+      tibble(
+        Macchina = nome_macchina,
+        Coupon = macchina,
+        Periodo = paste(
+          format(inizio, "%d/%m/%Y"),
+          format(fine, "%d/%m/%Y"),
+          sep = " - "
+        ),
+        Utilizzo = round(utilizzo_corrente, 3),
+        Descrizione = if (
+          identical(utilizzo_stato, "Elevato")
+        ) {
+          paste0("Utilizzo sopra P90 (", round(p90_u, 3), ")")
+        } else {
+          paste0("Utilizzo sotto P10 (", round(p10_u, 3), ")")
+        }
+      )
+    } else {
+      tibble(
+        Macchina = character(),
+        Coupon = character(),
+        Periodo = character(),
+        Utilizzo = numeric(),
+        Descrizione = character()
+      )
+    }
+    
+    list(
+      inizio = inizio,
+      fine = fine,
+      precedente_inizio = prev_inizio,
+      precedente_fine = prev_fine,
+      macchina = nome_macchina,
+      coupon = macchina,
+      confronto = confronto,
+      att_macchina = att_macchina,
+      att_macchina_pct = att_macchina_pct,
+      nok_macchina = nok_macchina,
+      nok_macchina_pct = nok_macchina_pct,
+      nok_macchina_inf = nok_macchina_inf,
+      nok_macchina_sup = nok_macchina_sup,
+      nok_macchina_fuori = nok_macchina_fuori,
+      utilizzo = utilizzo_corrente,
+      utilizzo_pct = utilizzo_pct,
+      utilizzo_stato = utilizzo_stato,
+      p10_utilizzo = p10_u,
+      p90_utilizzo = p90_u,
+      attivazioni_anomale = tab_att_anomale,
+      nok_anomalo = tab_nok_anomalo,
+      utilizzo_anomalo = tab_utilizzo_anomalo
+    )
+  }
+  
+  report_dati <- reactive({
+    periodo <- report_periodo_corrente()
+    req(!is.null(periodo))
+    
+    calcola_report_periodo(
+      periodo$start,
+      periodo$end,
+      input$macchina,
+      sensori_modal_correnti()
+    )
+  })
+  
+  formatta_variazione_report <- function(x) {
+    if (!is.finite(x)) return("N/D")
+    paste0(
+      ifelse(x > 0, "+", ""),
+      formatC(x, format = "f", digits = 1, decimal.mark = ","),
+      "%"
+    )
+  }
+  
+  testo_andamento_report <- function(x, nome) {
+    if (!is.finite(x)) return(paste(nome, "non confrontabile con il periodo precedente"))
+    if (abs(x) < 0.05) return(paste(nome, "sostanzialmente stabile"))
+    paste(
+      nome,
+      ifelse(x > 0, "in aumento del", "in diminuzione del"),
+      paste0(formatC(abs(x), format = "f", digits = 1, decimal.mark = ","), "%")
+    )
+  }
+  
+  observeEvent(input$report_periodo_click, {
+    req(input$report_periodo_click$start, input$report_periodo_click$end)
+    
+    report_periodo_corrente(list(
+      start = as.Date(input$report_periodo_click$start),
+      end = as.Date(input$report_periodo_click$end),
+      label = input$report_periodo_click$label
+    ))
+    
+    showModal(modalDialog(
+      title = NULL,
+      size = "xl",
+      easyClose = TRUE,
+      footer = NULL,
+      uiOutput("report_modal_content")
+    ))
+  })
+  
+  output$report_modal_content <- renderUI({
+    r <- report_dati()
+    
+    sensori <- r$confronto |>
+      mutate(
+        sensore_label = paste(cds_name, sensor_description, sep = " - ")
+      )
+    
+    nok_stato_macchina <- if (
+      isTRUE(r$nok_macchina_fuori)
+    ) "fuori dal range storico" else "nel range storico"
+    
+    utilizzo_stato_testo <- if (
+      identical(r$utilizzo_stato, "Normale")
+    ) "nel range storico" else if (
+      identical(r$utilizzo_stato, "Elevato")
+    ) "sopra il range storico" else if (
+      identical(r$utilizzo_stato, "Basso")
+    ) "sotto il range storico" else "non classificabile"
+    
+    cella_nok <- function(valore, fuori) {
+      classe <- if (!is.finite(valore)) {
+        "report-nd"
+      } else if (isTRUE(fuori)) {
+        "report-bad"
+      } else {
+        "report-ok"
+      }
+      tags$span(
+        class = classe,
+        if (is.finite(valore)) formatC(valore, format = "f", digits = 3, decimal.mark = ",") else "N/D"
+      )
+    }
+    
+    colonne <- c(
+      lapply(seq_len(nrow(sensori)), function(i) {
+        srow <- sensori[i, ]
+        list(
+          nome = srow$sensore_label,
+          att = paste0(
+            formatC(srow$attivazioni_medie, format = "f", digits = 1, decimal.mark = ","),
+            " (", formatta_variazione_report(srow$variazione_attivazioni_pct), ")"
+          ),
+          nok = cella_nok(srow$NOK, srow$nok_fuori_range)
+        )
+      }),
+      list(list(
+        nome = "Macchina",
+        att = paste0(
+          formatC(r$att_macchina, format = "f", digits = 1, decimal.mark = ","),
+          " (", formatta_variazione_report(r$att_macchina_pct), ")"
+        ),
+        nok = cella_nok(r$nok_macchina, r$nok_macchina_fuori)
+      ))
+    )
+    
+    tabella_sintesi <- tags$table(
+      class = "report-table",
+      tags$thead(
+        tags$tr(
+          tags$th("Metrica"),
+          lapply(colonne, function(x) tags$th(x$nome))
+        )
+      ),
+      tags$tbody(
+        tags$tr(
+          tags$td(tags$strong("Attivazioni medie")),
+          lapply(colonne, function(x) tags$td(x$att))
+        ),
+        tags$tr(
+          tags$td(tags$strong("NOK")),
+          lapply(colonne, function(x) tags$td(x$nok))
+        )
+      )
+    )
+    
+    tabella_html <- function(df, vuoto) {
+      if (nrow(df) == 0) {
+        return(div(class = "alarm-empty", vuoto))
+      }
+      tags$table(
+        class = "report-table",
+        tags$thead(
+          tags$tr(lapply(names(df), tags$th))
+        ),
+        tags$tbody(
+          lapply(seq_len(nrow(df)), function(i) {
+            tags$tr(lapply(df[i, , drop = FALSE], function(x) tags$td(as.character(x))))
+          })
+        )
+      )
+    }
+    
+    div(
+      class = "report-modal",
+      div(
+        class = "report-modal-header",
+        div(
+          h3(
+            paste0(
+              "Report anomalie - periodo ",
+              format(r$inizio, "%d/%m/%Y"),
+              " - ",
+              format(r$fine, "%d/%m/%Y"),
+              " - per macchina ",
+              r$macchina,
+              ", coupon ",
+              r$coupon
+            ),
+            style = "margin-top:0;color:#24364B;"
+          )
+        ),
+        downloadButton(
+          "download_report_pdf",
+          "Scarica PDF",
+          icon = icon("file-pdf"),
+          class = "btn-default"
+        )
+      ),
+      div(
+        class = "report-summary",
+        paste0(
+          "Nel periodo analizzato, ",
+          testo_andamento_report(r$utilizzo_pct, "l'utilizzo complessivo della macchina"),
+          ". ",
+          testo_andamento_report(r$nok_macchina_pct, "Il NOK medio della macchina"),
+          " ed è ",
+          nok_stato_macchina,
+          ". L'indice di utilizzo è ",
+          utilizzo_stato_testo,
+          " (valore ",
+          ifelse(is.finite(r$utilizzo), round(r$utilizzo, 3), "N/D"),
+          ")."
+        )
+      ),
+      h4("Sintesi per sensore e macchina"),
+      tabella_sintesi,
+      h4("Attivazioni anomale"),
+      tabella_html(
+        r$attivazioni_anomale |>
+          mutate(Data = format(Data, "%d/%m/%Y")),
+        "Nessuna attivazione anomala nel periodo."
+      ),
+      h4("NOK per sensore fuori range"),
+      tabella_html(
+        r$nok_anomalo,
+        "Nessun NOK per sensore fuori range nel periodo."
+      ),
+      h4("Utilizzo macchina fuori range"),
+      tabella_html(
+        r$utilizzo_anomalo,
+        "Utilizzo macchina nel range nel periodo."
+      )
+    )
+  })
+  
+  output$download_report_pdf <- downloadHandler(
+    filename = function() {
+      r <- report_dati()
+      paste0(
+        "report_anomalie_",
+        r$coupon,
+        "_",
+        format(r$inizio, "%Y%m%d"),
+        "_",
+        format(r$fine, "%Y%m%d"),
+        ".pdf"
+      )
+    },
+    content = function(file) {
+      r <- report_dati()
+      
+      grDevices::pdf(
+        file,
+        width = 11.69,
+        height = 8.27,
+        onefile = TRUE
+      )
+      
+      on.exit(grDevices::dev.off(), add = TRUE)
+      
+      titolo <- paste0(
+        "Report anomalie - periodo ",
+        format(r$inizio, "%d/%m/%Y"),
+        " - ",
+        format(r$fine, "%d/%m/%Y"),
+        " - per macchina ",
+        r$macchina,
+        ", coupon ",
+        r$coupon
+      )
+      
+      testo <- paste0(
+        testo_andamento_report(r$utilizzo_pct, "Utilizzo complessivo"),
+        ". ",
+        testo_andamento_report(r$nok_macchina_pct, "NOK medio"),
+        ". Stato NOK macchina: ",
+        ifelse(isTRUE(r$nok_macchina_fuori), "fuori range", "nel range"),
+        ". Stato utilizzo: ",
+        r$utilizzo_stato,
+        "."
+      )
+      
+      sensori_pdf <- r$confronto |>
+        transmute(
+          Sensore = cds_name,
+          Attivazioni = paste0(
+            round(attivazioni_medie, 1),
+            " (",
+            formatta_variazione_report(variazione_attivazioni_pct),
+            ")"
+          ),
+          NOK = ifelse(is.finite(NOK), round(NOK, 3), NA_real_)
+        )
+      
+      sintesi_pdf <- bind_rows(
+        sensori_pdf,
+        tibble(
+          Sensore = "Macchina",
+          Attivazioni = paste0(
+            round(r$att_macchina, 1),
+            " (",
+            formatta_variazione_report(r$att_macchina_pct),
+            ")"
+          ),
+          NOK = ifelse(is.finite(r$nok_macchina), round(r$nok_macchina, 3), NA_real_)
+        )
+      )
+      
+      disegna_pagina <- function(titolo_sezione, df = NULL, testo_intro = NULL) {
+        grid::grid.newpage()
+        grobs <- list(
+          grid::textGrob(
+            titolo,
+            x = 0.03,
+            y = 0.97,
+            just = c("left", "top"),
+            gp = grid::gpar(fontsize = 16, fontface = "bold")
+          )
+        )
+        
+        y <- 0.88
+        if (!is.null(testo_intro)) {
+          grobs[[length(grobs) + 1]] <- grid::textGrob(
+            testo_intro,
+            x = 0.03,
+            y = y,
+            just = c("left", "top"),
+            gp = grid::gpar(fontsize = 10),
+            width = grid::unit(0.94, "npc")
+          )
+          y <- y - 0.14
+        }
+        
+        grobs[[length(grobs) + 1]] <- grid::textGrob(
+          titolo_sezione,
+          x = 0.03,
+          y = y,
+          just = c("left", "top"),
+          gp = grid::gpar(fontsize = 12, fontface = "bold")
+        )
+        
+        if (!is.null(df) && nrow(df) > 0) {
+          tg <- gridExtra::tableGrob(
+            as.data.frame(df),
+            rows = NULL,
+            theme = gridExtra::ttheme_minimal(
+              base_size = 8,
+              core = list(
+                fg_params = list(hjust = 0, x = 0.03)
+              ),
+              colhead = list(
+                fg_params = list(fontface = "bold")
+              )
+            )
+          )
+          grid::pushViewport(
+            grid::viewport(
+              x = 0.03,
+              y = y - 0.04,
+              width = 0.94,
+              height = max(0.15, y - 0.10),
+              just = c("left", "top")
+            )
+          )
+          grid::grid.draw(tg)
+          grid::popViewport()
+        } else {
+          grobs[[length(grobs) + 1]] <- grid::textGrob(
+            "Nessuna anomalia rilevata.",
+            x = 0.03,
+            y = y - 0.06,
+            just = c("left", "top"),
+            gp = grid::gpar(fontsize = 9)
+          )
+        }
+        
+        lapply(grobs, grid::grid.draw)
+      }
+      
+      disegna_pagina(
+        "Sintesi",
+        sintesi_pdf,
+        testo
+      )
+      
+      att_pdf <- r$attivazioni_anomale |>
+        mutate(Data = format(Data, "%d/%m/%Y"))
+      disegna_pagina("Attivazioni anomale", att_pdf)
+      
+      disegna_pagina("NOK per sensore fuori range", r$nok_anomalo)
+      
+      disegna_pagina("Utilizzo macchina fuori range", r$utilizzo_anomalo)
+    },
+    contentType = "application/pdf"
+  )
   
   output$modal_panel_dati_attivazioni <- renderUI({
     if (!mostra_dati_attivazioni()) return(NULL)
