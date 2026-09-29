@@ -1601,7 +1601,7 @@ server <- function(input, output, session) {
           class = "alarm-section",
           h4("Attivazioni anomale", class = "titolo-sezione"),
           p(
-            "Giornate con attivazioni anomale. Le anomalie statistiche e le giornate a 0 restano nel NOK del periodo selezionato e vengono escluse solo dal riferimento storico NMN; i giorni con conteggi negativi restano esclusi dal NOK."
+            "Giornate con attivazioni anomale. Le anomalie statistiche e le giornate a 0 restano nel NOK del periodo selezionato e vengono escluse solo dal riferimento storico NMN."
           ),
           uiOutput("modal_allarmi_attivazioni_panel")
         ),
@@ -1828,7 +1828,7 @@ server <- function(input, output, session) {
       class = "modal-data-panel",
       p(
         "Attivazioni giornaliere anomale rilevate nel periodo selezionato. ",
-        "Le anomalie statistiche e le giornate con 0 attivazioni restano nel calcolo dell'NMM e quindi del NOK del periodo; il filtro anomalie viene usato per pulire l'NMN storico. I giorni con conteggi negativi restano esclusi dal NOK perché non rappresentano attivazioni reali."
+        "Le anomalie statistiche e le giornate con 0 attivazioni restano nel calcolo dell'NMM e quindi del NOK del periodo; il filtro anomalie viene usato per pulire l'NMN storico."
       ),
       DTOutput("modal_tabella_outlier_nok")
     )
@@ -1856,24 +1856,11 @@ server <- function(input, output, session) {
       ) |>
       group_by(cds_name, sensor_description, day) |>
       summarise(
-        ha_incrementi_negativi = any(
-          is.finite(increment) & increment < 0
-        ),
-        attivazioni_negative = if (
-          any(is.finite(increment) & increment < 0)
-        ) {
-          sum(
-            increment[is.finite(increment) & increment < 0],
-            na.rm = TRUE
-          )
-        } else {
-          NA_real_
-        },
         daily_count = if (
-          any(is.finite(increment) & increment >= 0)
+          any(is.finite(increment))
         ) {
           sum(
-            increment[is.finite(increment) & increment >= 0],
+            increment[is.finite(increment)],
             na.rm = TRUE
           )
         } else {
@@ -1895,11 +1882,10 @@ server <- function(input, output, session) {
       group_by(cds_name, sensor_description) |>
       group_modify(~ {
         x <- .x$daily_count
-        negativo_anomalo <- .x$ha_incrementi_negativi %in% TRUE
-        validi <- is.finite(x) & !negativo_anomalo
+        validi <- is.finite(x)
         
         .x$lof_score <- NA_real_
-        .x$outlier_lof <- negativo_anomalo
+        .x$outlier_lof <- FALSE
         
         n_validi <- sum(validi)
         media_attivazioni_giornaliere <- if (n_validi > 0) {
@@ -1918,8 +1904,7 @@ server <- function(input, output, session) {
         )
         .x$outlier_lof[zero_anomalo] <- TRUE
         
-        # I giorni con conteggi negativi sono gia' esclusi.
-        # Il LOF viene calcolato solo sulle giornate senza valori negativi.
+        # Il LOF viene calcolato sui conteggi giornalieri finiti.
         if (n_validi >= 6L && dplyr::n_distinct(x[validi]) >= 3L) {
           k <- min(4L, n_validi - 1L)
           score <- dbscan::lof(
@@ -2017,7 +2002,6 @@ server <- function(input, output, session) {
     
     nmm_per_sensore <- valori_giornalieri() |>
       filter(
-        !ha_incrementi_negativi,
         day >= filtri$date[1],
         day <= filtri$date[2]
       ) |>
@@ -2102,10 +2086,10 @@ server <- function(input, output, session) {
         group_by(cds_name, day) |>
         summarise(
           daily_count = if (
-            any(is.finite(increment) & increment >= 0)
+            any(is.finite(increment))
           ) {
             sum(
-              increment[is.finite(increment) & increment >= 0],
+              increment[is.finite(increment)],
               na.rm = TRUE
             )
           } else {
@@ -2294,7 +2278,6 @@ server <- function(input, output, session) {
     
     nmm_per_sensore <- valori_giornalieri_modal_nok() |>
       filter(
-        !ha_incrementi_negativi,
         day >= filtri$date[1],
         day <= filtri$date[2]
       ) |>
@@ -2379,12 +2362,8 @@ server <- function(input, output, session) {
       transmute(
         Sensore = paste(cds_name, sensor_description, sep = " - "),
         Data = day,
-        Attivazioni = case_when(
-          ha_incrementi_negativi ~ round(attivazioni_negative),
-          TRUE ~ round(daily_count)
-        ),
+        Attivazioni = round(daily_count),
         Motivo = case_when(
-          ha_incrementi_negativi ~ "Conteggio negativo",
           is.finite(daily_count) & daily_count == 0 ~ "Zero attivazioni",
           TRUE ~ "Anomalia statistica"
         )
@@ -2512,7 +2491,6 @@ server <- function(input, output, session) {
     
     valori_giornalieri_modal_nok() |>
       filter(
-        !ha_incrementi_negativi,
         day >= filtri$date[1],
         day <= filtri$date[2]
       ) |>
@@ -2901,10 +2879,10 @@ server <- function(input, output, session) {
       ) |>
       summarise(
         attivazioni_giornaliere = if (
-          any(is.finite(increment) & increment >= 0)
+          any(is.finite(increment))
         ) {
           sum(
-            increment[is.finite(increment) & increment >= 0],
+            increment[is.finite(increment)],
             na.rm = TRUE
           )
         } else {
@@ -3154,7 +3132,6 @@ server <- function(input, output, session) {
     
     valori_giornalieri_modal_nok() |>
       filter(
-        !ha_incrementi_negativi,
         day >= filtri$date[1],
         day <= filtri$date[2]
       ) |>
@@ -3194,7 +3171,7 @@ server <- function(input, output, session) {
     periodo_precedente_inizio <- filtri$date[1] - durata_giorni
     
     base <- valori_giornalieri_modal_nok() |>
-      filter(!ha_incrementi_negativi) |>
+
       left_join(
         nmn_storico_modal_nok(),
         by = c("cds_name", "sensor_description")
@@ -3288,7 +3265,7 @@ server <- function(input, output, session) {
     filtri <- filtri_nok_modal()
     
     base_completa <- valori_giornalieri_modal_nok() |>
-      filter(!ha_incrementi_negativi) |>
+
       left_join(
         nmn_storico_modal_nok(),
         by = c("cds_name", "sensor_description")
@@ -4474,12 +4451,8 @@ server <- function(input, output, session) {
       transmute(
         Sensore = paste(cds_name, sensor_description, sep = " - "),
         Data = format(day, "%d-%m-%Y"),
-        Attivazioni = case_when(
-          ha_incrementi_negativi ~ round(attivazioni_negative),
-          TRUE ~ round(daily_count)
-        ),
+        Attivazioni = round(daily_count),
         Motivo = case_when(
-          ha_incrementi_negativi ~ "Conteggio negativo",
           is.finite(daily_count) & daily_count == 0 ~ "Zero attivazioni",
           TRUE ~ "Anomalia statistica"
         )
