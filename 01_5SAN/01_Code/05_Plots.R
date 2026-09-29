@@ -2673,11 +2673,10 @@ server <- function(input, output, session) {
       is.finite(r$p90_utilizzo)
     ) {
       paste0(
-        "intervallo storico di riferimento [",
+        "intervallo storico di riferimento da ",
         formatC(r$p10_utilizzo, format = "f", digits = 3, decimal.mark = ","),
-        " - ",
-        formatC(r$p90_utilizzo, format = "f", digits = 3, decimal.mark = ","),
-        "]"
+        " a ",
+        formatC(r$p90_utilizzo, format = "f", digits = 3, decimal.mark = ",")
       )
     } else {
       "intervallo storico non disponibile"
@@ -2688,11 +2687,10 @@ server <- function(input, output, session) {
       is.finite(r$nok_macchina_sup)
     ) {
       paste0(
-        "range storico [",
+        "range storico da ",
         formatC(r$nok_macchina_inf, format = "f", digits = 3, decimal.mark = ","),
-        " - ",
-        formatC(r$nok_macchina_sup, format = "f", digits = 3, decimal.mark = ","),
-        "]"
+        " a ",
+        formatC(r$nok_macchina_sup, format = "f", digits = 3, decimal.mark = ",")
       )
     } else {
       "range storico non disponibile"
@@ -2772,11 +2770,11 @@ server <- function(input, output, session) {
         n_att_anomale,
         " segnalazioni di attivazioni anomale distribuite su ",
         sensori_att_anomali,
-        " sensori. In questo report vengono riportate esclusivamente le anomalie con un conteggio superiore a 6 attivazioni, in modo da concentrare la lettura sugli eventi quantitativamente più rilevanti. Le tabelle successive permettono di risalire al sensore, alla data e, quando disponibile, all'ora dell'evento."
+        " sensori. Le tabelle successive permettono di risalire al sensore, alla data e, quando disponibile, all'ora dell'evento."
       )
     } else {
       paste0(
-        "Nel periodo non risultano anomalie di attivazione con conteggio superiore a 6. Le eventuali segnalazioni statistiche di intensità minore non vengono incluse in questo report, che mantiene volutamente una soglia di rilevanza operativa più alta per rendere la lettura sintetica."
+        "Nel periodo non risultano anomalie di attivazione rilevanti. Il quadro operativo non evidenzia quindi eventi di conteggio meritevoli di segnalazione nel periodo considerato."
       )
     }
     
@@ -3069,7 +3067,7 @@ server <- function(input, output, session) {
           class = "report-kpi-card",
           div("Anomalie attivazioni", class = "report-kpi-label"),
           div(n_att, class = "report-kpi-value"),
-          div("Solo eventi con conteggio > 6", class = "report-kpi-note")
+          div("Eventi rilevanti nel periodo", class = "report-kpi-note")
         ),
         div(
           class = "report-kpi-card",
@@ -3098,11 +3096,11 @@ server <- function(input, output, session) {
       sezione(
         "2",
         "Attivazioni anomale rilevanti",
-        "Sono riportate esclusivamente le anomalie con più di 6 attivazioni.",
+        "Dettaglio degli eventi di attivazione anomali rilevati nel periodo.",
         tabella_html(
           r$attivazioni_anomale |>
             mutate(Data = format(Data, "%d/%m/%Y")),
-          "Nessuna attivazione anomala con conteggio superiore a 6 nel periodo."
+          "Nessuna attivazione anomala rilevante nel periodo."
         )
       ),
       
@@ -3323,7 +3321,7 @@ server <- function(input, output, session) {
           format(r$precedente_inizio, "%d/%m/%Y"),
           " - ",
           format(r$precedente_fine, "%d/%m/%Y"),
-          " · Anomalie attivazioni incluse solo se > 6"
+          ""
         ),
         x = 0.04,
         y = 0.832,
@@ -3363,7 +3361,7 @@ server <- function(input, output, session) {
         0.625,
         "ANOMALIE ATTIVAZIONI",
         as.character(nrow(r$attivazioni_anomale)),
-        "Conteggio > 6",
+        "Eventi rilevanti",
         if (nrow(r$attivazioni_anomale) > 0) "bad" else "good"
       )
       kpi_card(
@@ -3588,7 +3586,7 @@ server <- function(input, output, session) {
       disegna_tabella_paginata(
         "Attivazioni anomale rilevanti",
         att_pdf,
-        "Nessuna anomalia di attivazione con conteggio superiore a 6."
+        "Nessuna attivazione anomala rilevante nel periodo."
       )
       
       disegna_tabella_paginata(
