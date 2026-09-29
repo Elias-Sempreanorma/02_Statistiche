@@ -766,6 +766,8 @@ ui <- fluidPage(
       .report-modal {
         color: #334155;
         padding-bottom: 18px;
+        font-family: "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif;
+        letter-spacing: -0.005em;
       }
       .report-hero {
         margin: -15px -15px 22px -15px;
@@ -781,26 +783,19 @@ ui <- fluidPage(
         align-items: flex-start;
         gap: 22px;
       }
-      .report-eyebrow {
-        margin-bottom: 7px;
-        color: #DDD6BD;
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: 0.13em;
-        text-transform: uppercase;
-      }
       .report-title {
         margin: 0;
         color: #FFFFFF;
-        font-size: 27px;
-        line-height: 1.18;
-        font-weight: 750;
+        font-size: 32px;
+        line-height: 1.12;
+        font-weight: 780;
+        letter-spacing: -0.025em;
       }
       .report-subtitle {
-        margin-top: 9px;
-        color: #DDE5EC;
-        font-size: 13px;
-        line-height: 1.5;
+        margin-top: 10px;
+        color: #E6EDF3;
+        font-size: 15px;
+        line-height: 1.42;
       }
       .report-download.btn {
         flex-shrink: 0;
@@ -825,12 +820,12 @@ ui <- fluidPage(
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        padding: 5px 9px;
+        padding: 6px 10px;
         border: 1px solid rgba(255,255,255,0.18);
         border-radius: 999px;
         background: rgba(255,255,255,0.07);
         color: #EEF3F7;
-        font-size: 11px;
+        font-size: 12px;
         font-weight: 650;
       }
       .report-kpi-grid {
@@ -869,23 +864,24 @@ ui <- fluidPage(
       }
       .report-summary {
         margin: 0 0 24px 0;
-        padding: 18px 20px;
+        padding: 20px 22px;
         border: 1px solid #E1DCCB;
         border-left: 5px solid #B6A878;
         border-radius: 10px;
         background: #F8F6EE;
         color: #334155;
-        line-height: 1.67;
-        font-size: 13px;
+        line-height: 1.58;
+        font-size: 15px;
       }
       .report-summary-title {
-        margin: 0 0 10px 0;
+        margin: 0 0 12px 0;
         color: #24364B;
-        font-size: 15px;
+        font-size: 20px;
         font-weight: 800;
+        letter-spacing: -0.015em;
       }
       .report-summary p {
-        margin: 0 0 10px 0;
+        margin: 0 0 12px 0;
       }
       .report-summary p:last-child {
         margin-bottom: 0;
@@ -2677,7 +2673,7 @@ server <- function(input, output, session) {
       is.finite(r$p90_utilizzo)
     ) {
       paste0(
-        "intervallo storico P10-P90 [",
+        "intervallo storico di riferimento [",
         formatC(r$p10_utilizzo, format = "f", digits = 3, decimal.mark = ","),
         " - ",
         formatC(r$p90_utilizzo, format = "f", digits = 3, decimal.mark = ","),
@@ -2784,7 +2780,10 @@ server <- function(input, output, session) {
       )
     }
     
-    c(p1, p2, p3, p4)
+    c(
+      paste(p1, p2),
+      paste(p3, p4)
+    )
   }
   
   observeEvent(input$report_periodo_click, {
@@ -2993,7 +2992,6 @@ server <- function(input, output, session) {
         div(
           class = "report-modal-header",
           div(
-            div("5SAN · MONITORAGGIO OPERATIVO", class = "report-eyebrow"),
             h2("Rapporto anomalie e utilizzo", class = "report-title"),
             div(
               paste0(
@@ -3032,11 +3030,6 @@ server <- function(input, output, session) {
             ),
             class = "report-meta-chip"
           ),
-          span(
-            icon("filter"),
-            "Anomalie attivazioni incluse solo se > 6",
-            class = "report-meta-chip"
-          )
         )
       ),
       
