@@ -196,6 +196,16 @@ if (!is.null(existing_raw_data)) {
   raw_data <- new_raw_data
 }
 
+# Correzione puntuale: per questo sensore il valore count = 462 e' noto
+# come record non valido e viene rimosso a monte da tutto lo storico.
+raw_data <- raw_data |>
+  filter(
+    !(
+      coalesce(sensor_id == "Sensor0123000202B4", FALSE) &
+      coalesce(count == 462, FALSE)
+    )
+  )
+
 saveRDS(raw_data, raw_data_path)
 
 # ---------------------------------------------------------------------------
