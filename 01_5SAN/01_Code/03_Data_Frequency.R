@@ -239,7 +239,7 @@ all_intervals <- bind_rows(base_intervals, recovered_intervals)
 # Unione intervalli per gateway, poi spezzatura per giornata.
 # ---------------------------------------------------------------------------
 merged_intervals <- all_intervals |>
-  group_by(coupon, gateway_id, gateway_name) |>
+  group_by(coupon, gateway_id) |>
   group_modify(~ {
     merged <- merge_intervals(.x |> select(start, end))
     merged
@@ -251,10 +251,9 @@ daily_intervals <- lapply(seq_len(nrow(merged_intervals)), function(i) {
   split_interval_by_day(row$start, row$end) |>
     mutate(
       coupon = row$coupon,
-      gateway_id = row$gateway_id,
-      gateway_name = row$gateway_name
+      gateway_id = row$gateway_id
     ) |>
-    select(coupon, gateway_id, gateway_name, day, start, end)
+    select(coupon, gateway_id, day, start, end)
 }) |>
   bind_rows()
 
@@ -262,7 +261,7 @@ uptime <- daily_intervals |>
   mutate(
     interval_hours = as.numeric(difftime(end, start, units = "hours"))
   ) |>
-  group_by(coupon, gateway_id, gateway_name, day) |>
+  group_by(coupon, gateway_id, day) |>
   summarise(
     observed_uptime = sum(interval_hours, na.rm = TRUE),
     .groups = "drop"
@@ -272,6 +271,6 @@ uptime <- daily_intervals |>
     # possono esserci fino a circa 60 minuti di accensione non ancora inviati.
     daily_uptime = pmin(observed_uptime + 1, 24)
   ) |>
-  select(coupon, gateway_id, gateway_name, day, daily_uptime)
+  select(coupon, gateway_id, day, daily_uptime)
 
 saveRDS(uptime, here("02_Output", "uptime.rds"))
