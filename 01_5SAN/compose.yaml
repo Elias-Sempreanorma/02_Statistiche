@@ -13,6 +13,18 @@ services:
       - ./02_Output:/srv/shiny-server/02_Output:ro
     environment:
       TZ: Europe/Rome
+      APP_MODE: internal
+
+  shiny_web:
+    image: san-dashboard:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3841:3838"
+    volumes:
+      - ./02_Output:/srv/shiny-server/02_Output:ro
+    environment:
+      TZ: Europe/Rome
+      APP_MODE: web
 
   etl:
     image: san-dashboard:latest
