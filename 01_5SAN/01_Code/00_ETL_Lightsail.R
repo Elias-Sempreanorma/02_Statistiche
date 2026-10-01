@@ -10,7 +10,8 @@ scripts <- c(
   "01_Functions.R",
   "02_Data_Load.R",
   "03_Data_Frequency.R",
-  "04_Counter_Analysis.R"
+  "04_Counter_Analysis.R",
+  "05_Gateway_Alerts.R"
 )
 
 for (script in scripts) {
