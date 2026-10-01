@@ -12,6 +12,16 @@ library(scales)
 library(DT)
 library(dbscan)
 
+# Modalita' applicativa:
+# - internal: dashboard completa con selezione Azienda/Stabilimento/Macchina
+# - web: macchina fissata dal parametro ?coupon=... della querystring
+APP_MODE <- tolower(trimws(Sys.getenv("APP_MODE", unset = "internal")))
+if (!APP_MODE %in% c("internal", "web")) {
+  warning("APP_MODE non riconosciuto: uso 'internal'.")
+  APP_MODE <- "internal"
+}
+IS_WEB_MODE <- identical(APP_MODE, "web")
+
 # Le immagini non sono nella cartella www: le espongo a Shiny con un
 # resource path dedicato. Se la cartella non esiste, l'app continua comunque
 # a funzionare e nella Home non viene mostrato alcuno schema.
@@ -1396,25 +1406,32 @@ ui <- fluidPage(
   
   titlePanel("Dashboard 5SAN"),
   
-  # Filtri in orizzontale, a piena larghezza, sempre visibili
+  # Filtri in orizzontale, a piena larghezza, sempre visibili.
+  # In modalita' web la macchina arriva dalla querystring e i filtri
+  # Azienda/Stabilimento/Macchina non vengono mostrati.
   div(
     class = "pannello-filtri",
     fluidRow(
-      column(2, selectInput("azienda", "Azienda:", choices = company)),
-      column(2, selectInput("stabilimento", "Stabilimento:", choices = NULL)),
-      column(3, selectInput("macchina", "Macchina:", choices = NULL)),
-      column(3,
-             dateRangeInput(
-               "date",
-               "Periodo:",
-               start = data_start_default,
-               end = data_max,
-               min = data_min,
-               max = data_max,
-               format = "dd-mm-yyyy",
-               separator = " a ",
-               language = "it"
-             )
+      if (!IS_WEB_MODE) {
+        tagList(
+          column(2, selectInput("azienda", "Azienda:", choices = company)),
+          column(2, selectInput("stabilimento", "Stabilimento:", choices = NULL)),
+          column(3, selectInput("macchina", "Macchina:", choices = NULL))
+        )
+      },
+      column(
+        width = if (IS_WEB_MODE) 4 else 3,
+        dateRangeInput(
+          "date",
+          "Periodo:",
+          start = data_start_default,
+          end = data_max,
+          min = data_min,
+          max = data_max,
+          format = "dd-mm-yyyy",
+          separator = " a ",
+          language = "it"
+        )
       )
     )
   ),
@@ -1486,6 +1503,33 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
   
+  # Parametri della querystring, usati soltanto in modalita' web.
+  web_query <- reactive({
+    search <- session$clientData$url_search
+    if (is.null(search) || !nzchar(search)) {
+      return(list())
+    }
+    parseQueryString(search)
+  })
+  
+  # Sorgente unica della macchina per tutta la dashboard.
+  # Internal -> selectInput; Web -> ?coupon=...
+  macchina_attiva <- reactive({
+    if (!IS_WEB_MODE) {
+      req(input$macchina)
+      return(as.character(input$macchina))
+    }
+    
+    query <- web_query()
+    coupon <- query[["coupon"]]
+    
+    req(!is.null(coupon), length(coupon) >= 1)
+    coupon <- trimws(as.character(coupon[[1]]))
+    req(nzchar(coupon), coupon %in% macchine_lookup$coupon)
+    
+    coupon
+  })
+  
   # Download dei DOCX presenti in 00_Data/03_Documenti.
   if (length(documenti_files) > 0) {
     for (i in seq_along(documenti_files)) {
@@ -1510,42 +1554,45 @@ server <- function(input, output, session) {
     }
   }
   
-  # 1. Quando cambia l'azienda, aggiorno gli stabilimenti disponibili
-  observeEvent(input$azienda, {
-    
-    req(input$azienda)
-    
-    stabilimenti <- stabilimenti_lookup |>
-      filter(company == input$azienda) |>
-      pull(field)
-    
-    updateSelectInput(
-      session,
-      "stabilimento",
-      choices = stabilimenti
-    )
-  })
-  
-  # 2. Quando cambia lo stabilimento (o l'azienda), aggiorno le macchine disponibili
-  observeEvent(input$stabilimento, {
-    
-    req(input$azienda, input$stabilimento)
-    
-    macchine_filtrate <- macchine_lookup |>
-      filter(
-        company == input$azienda,
-        field == input$stabilimento
+  # I filtri a cascata esistono solo nella dashboard interna.
+  if (!IS_WEB_MODE) {
+    # 1. Quando cambia l'azienda, aggiorno gli stabilimenti disponibili
+    observeEvent(input$azienda, {
+      
+      req(input$azienda)
+      
+      stabilimenti <- stabilimenti_lookup |>
+        filter(company == input$azienda) |>
+        pull(field)
+      
+      updateSelectInput(
+        session,
+        "stabilimento",
+        choices = stabilimenti
       )
+    })
     
-    updateSelectInput(
-      session,
-      "macchina",
-      choices = setNames(
-        macchine_filtrate$coupon,
-        paste(macchine_filtrate$project, macchine_filtrate$machine_name, sep = " - ")
+    # 2. Quando cambia lo stabilimento, aggiorno le macchine disponibili
+    observeEvent(input$stabilimento, {
+      
+      req(input$azienda, input$stabilimento)
+      
+      macchine_filtrate <- macchine_lookup |>
+        filter(
+          company == input$azienda,
+          field == input$stabilimento
+        )
+      
+      updateSelectInput(
+        session,
+        "macchina",
+        choices = setNames(
+          macchine_filtrate$coupon,
+          paste(macchine_filtrate$project, macchine_filtrate$machine_name, sep = " - ")
+        )
       )
-    )
-  })
+    })
+  }
   
   # 3. Quando cambia la macchina, aggiorno i sensori disponibili
   
@@ -1575,13 +1622,13 @@ server <- function(input, output, session) {
   report_periodo_corrente <- reactiveVal(NULL)
   
   filtri_principali <- reactive({
-    req(input$macchina, input$date)
+    req(macchina_attiva(), input$date)
     
     list(
-      macchina = input$macchina,
+      macchina = macchina_attiva(),
       date = as.Date(input$date),
       sensori = sensori_lookup |>
-        filter(coupon == input$macchina) |>
+        filter(coupon == macchina_attiva()) |>
         pull(cds_name) |>
         normalizza_sensori()
     )
@@ -1604,7 +1651,7 @@ server <- function(input, output, session) {
   ) {
     if (is.null(sensori_iniziali)) {
       sensori_iniziali <- sensori_lookup |>
-        filter(coupon == isolate(input$macchina)) |>
+        filter(coupon == isolate(macchina_attiva())) |>
         pull(cds_name)
     }
     
@@ -1616,7 +1663,7 @@ server <- function(input, output, session) {
     date_modal_corrente(as.Date(date_iniziali))
     
     macchina_corrente <- macchine_lookup |>
-      filter(coupon == isolate(input$macchina)) |>
+      filter(coupon == isolate(macchina_attiva())) |>
       slice_head(n = 1)
     
     riferimento_macchina <- if (nrow(macchina_corrente) > 0) {
@@ -1626,7 +1673,7 @@ server <- function(input, output, session) {
         sep = " – "
       )
     } else {
-      as.character(isolate(input$macchina))
+      as.character(isolate(macchina_attiva()))
     }
     
     granularita_attivazioni_corrente("Giorno")
@@ -1686,33 +1733,33 @@ server <- function(input, output, session) {
   }
   
   observeEvent(input$home_attivazioni, {
-    req(input$macchina, input$date)
+    req(macchina_attiva(), input$date)
     apri_modal("attivazioni")
   })
   
   observeEvent(input$home_vita, {
-    req(input$macchina)
+    req(macchina_attiva())
     apri_modal("vita")
   })
   
   observeEvent(input$home_nok, {
-    req(input$macchina, input$date)
+    req(macchina_attiva(), input$date)
     apri_modal("nok")
   })
   
   observeEvent(input$home_allarmi, {
-    req(input$macchina)
+    req(macchina_attiva())
     apri_modal("allarmi")
   })
   
   # Click su un CdS nello schema: seleziona quel sensore e apre la tenda
   # direttamente sulla vista Conteggio attivazioni.
   observeEvent(input$schema_sensor_click, {
-    req(input$macchina, input$date, input$schema_sensor_click$sensor)
+    req(macchina_attiva(), input$date, input$schema_sensor_click$sensor)
     
     sensore_cliccato <- input$schema_sensor_click$sensor
     sensori_validi <- sensori_lookup |>
-      filter(coupon == input$macchina) |>
+      filter(coupon == macchina_attiva()) |>
       pull(cds_name)
     
     req(sensore_cliccato %in% sensori_validi)
@@ -1734,13 +1781,13 @@ server <- function(input, output, session) {
   
   # Contenuto del modal: si aggiorna al cambio di vista senza chiudere il dialogo
   output$modal_contenuto <- renderUI({
-    req(input$vista_selezionata, input$macchina)
+    req(input$vista_selezionata, macchina_attiva())
     modal_apertura_id()
     
     vista <- input$vista_selezionata
     
     sensori_macchina <- sensori_lookup |>
-      filter(coupon == input$macchina)
+      filter(coupon == macchina_attiva())
     
     sensori_selezionati <- intersect(
       isolate(sensori_modal_correnti()),
@@ -2157,7 +2204,7 @@ server <- function(input, output, session) {
   }, ignoreNULL = TRUE)
   
   filtri_attivazioni_modal <- reactive({
-    req(input$macchina)
+    req(macchina_attiva())
     
     date_corrente <- date_modal_corrente()
     req(
@@ -2166,7 +2213,7 @@ server <- function(input, output, session) {
     )
     
     list(
-      macchina = input$macchina,
+      macchina = macchina_attiva(),
       date = date_corrente,
       sensori = sensori_modal_correnti(),
       granularita = granularita_attivazioni_corrente()
@@ -2174,16 +2221,16 @@ server <- function(input, output, session) {
   })
   
   filtri_vita_modal <- reactive({
-    req(input$macchina)
+    req(macchina_attiva())
     
     list(
-      macchina = input$macchina,
+      macchina = macchina_attiva(),
       sensori = sensori_modal_correnti()
     )
   })
   
   filtri_nok_modal <- reactive({
-    req(input$macchina)
+    req(macchina_attiva())
     
     date_corrente <- date_modal_corrente()
     req(
@@ -2192,7 +2239,7 @@ server <- function(input, output, session) {
     )
     
     list(
-      macchina = input$macchina,
+      macchina = macchina_attiva(),
       date = date_corrente,
       sensori = sensori_modal_correnti(),
       granularita = granularita_nok_corrente()
@@ -2701,7 +2748,7 @@ server <- function(input, output, session) {
     calcola_report_periodo(
       periodo$start,
       periodo$end,
-      input$macchina,
+      macchina_attiva(),
       sensori_modal_correnti()
     )
   })
