@@ -25,7 +25,7 @@ uptime <- readRDS(here("02_Output", "uptime.rds"))
 # ---------------------------------------------------------------------------
 gruppi_sensore <- c(
   "company", "field", "project", "coupon", "machine_name",
-  "gateway_name", "cds_name", "cds_description",
+  "gateway_id", "gateway_name", "cds_name", "cds_description",
   "cds_brand", "cds_use", "cds_vds", "sensor_description"
 )
 
@@ -158,7 +158,7 @@ sensor_open_daily <- raw_data |>
 
 # calcola gli incrementi dei conteggi per ogni sensore e li classifico
 sensor_count_increment <- raw_data |>
-  group_by(company, field, project, coupon, machine_name, gateway_name, cds_name, cds_description, 
+  group_by(company, field, project, coupon, machine_name, gateway_id, gateway_name, cds_name, cds_description, 
            cds_brand, cds_use, cds_vds, sensor_description) |>
   arrange(timestamp, .by_group = TRUE) |>
   mutate(count_type = case_when(row_number() == 1 ~ "first_count",
@@ -174,13 +174,13 @@ sensor_count_increment <- raw_data |>
          hour =  floor_date(timestamp, "hour"),
          day = as.Date(timestamp)) |>
   # unisce l'uptime gionaliero
-  left_join(uptime, by = c("coupon", "day")) |>
+  left_join(uptime, by = c("coupon", "gateway_id", "gateway_name", "day")) |>
   # storicizza le ore giornaliere in cui il sensore e' risultato aperto
   left_join(
     sensor_open_daily,
     by = c(
       "company", "field", "project", "coupon", "machine_name",
-      "gateway_name", "cds_name", "cds_description",
+      "gateway_id", "gateway_name", "cds_name", "cds_description",
       "cds_brand", "cds_use", "cds_vds",
       "sensor_description", "day"
     )
