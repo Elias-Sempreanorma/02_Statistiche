@@ -27,7 +27,8 @@ RUN install2.r --error --skipinstalled \
     purrr \
     DT \
     dbscan \
-    gridExtra 
+    gridExtra \
+    blastula 
 
 RUN rm -rf /srv/shiny-server/*
 
