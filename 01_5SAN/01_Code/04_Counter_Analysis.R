@@ -174,7 +174,7 @@ sensor_count_increment <- raw_data |>
          hour =  floor_date(timestamp, "hour"),
          day = as.Date(timestamp)) |>
   # unisce l'uptime gionaliero
-  left_join(uptime, by = c("coupon", "gateway_id", "gateway_name", "day")) |>
+  left_join(uptime, by = c("coupon", "gateway_id", "day")) |>
   # storicizza le ore giornaliere in cui il sensore e' risultato aperto
   left_join(
     sensor_open_daily,
