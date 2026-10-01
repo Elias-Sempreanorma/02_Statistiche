@@ -20,8 +20,8 @@ library(here)
 # - i sensori senza un count successivo a restart_ts non partecipano
 #   alla classificazione.
 # - gli intervalli vengono uniti prima della somma per evitare doppi conteggi.
-# - aggiungo 1 ora finale di buffer giornaliero, per coprire la possibile
-#   coda dopo l'ultimo SystemInfo della giornata; massimo 24 ore.
+# - il buffer finale e' modellato come intervallo di 1 ora dopo l'ultimo
+#   SystemInfo giornaliero e viene unito agli altri intervalli.
 # ---------------------------------------------------------------------------
 
 raw_data <- readRDS(here("02_Output", "raw_data.rds"))
@@ -51,7 +51,7 @@ count_events <- raw_data |>
   ) |>
   ungroup()
 
-# Helper: unisce intervalli sovrapposti/adiacenti per gateway.
+# Helper: unisce intervalli sovrapposti/adiacenti.
 merge_intervals <- function(df) {
   if (nrow(df) == 0) return(df)
 
@@ -83,17 +83,24 @@ merge_intervals <- function(df) {
 # Helper: spezza un intervallo sulle giornate locali Europe/Rome.
 split_interval_by_day <- function(start, end) {
   if (is.na(start) || is.na(end) || end <= start) {
-    return(tibble(day = as.Date(character()), start = as.POSIXct(character()), end = as.POSIXct(character())))
+    return(
+      tibble(
+        day = as.Date(character()),
+        start = as.POSIXct(character()),
+        end = as.POSIXct(character())
+      )
+    )
   }
 
   tz_use <- "Europe/Rome"
-  day_start <- as.Date(start, tz = tz_use)
-  day_end <- as.Date(end - seconds(1), tz = tz_use)
-  days <- seq(day_start, day_end, by = "day")
+  first_day <- as.Date(start, tz = tz_use)
+  last_day <- as.Date(end - seconds(1), tz = tz_use)
+  day_seq <- seq(first_day, last_day, by = "day")
 
-  bind_rows(lapply(days, function(d) {
+  bind_rows(lapply(day_seq, function(d) {
     d_start <- as.POSIXct(d, tz = tz_use)
-    d_end <- d_start + days(1)
+    d_end <- as.POSIXct(d + 1, tz = tz_use)
+
     tibble(
       day = d,
       start = max(start, d_start),
@@ -104,9 +111,8 @@ split_interval_by_day <- function(start, end) {
 
 # ---------------------------------------------------------------------------
 # Intervalli certi derivati direttamente dall'uptime.
-#
-# Ogni SystemInfo B certifica che il gateway e' rimasto acceso almeno
-# nell'intervallo [timestamp_B - uptime_B, timestamp_B].
+# Ogni SystemInfo certifica l'intervallo:
+# [timestamp - uptime, timestamp].
 # ---------------------------------------------------------------------------
 system_info_clean <- system_info |>
   filter(
@@ -123,7 +129,6 @@ base_intervals <- system_info_clean |>
   transmute(
     coupon,
     gateway_id,
-    gateway_name,
     start = timestamp - seconds(uptime),
     end = timestamp,
     source = "systeminfo"
@@ -131,7 +136,7 @@ base_intervals <- system_info_clean |>
   filter(end > start)
 
 # ---------------------------------------------------------------------------
-# Classificazione dei reset e recupero dei buchi da disconnessione gateway.
+# Reset SystemInfo e classificazione disconnessione/riavvio macchina.
 # ---------------------------------------------------------------------------
 reset_candidates <- system_info_clean |>
   group_by(gateway_id) |>
@@ -145,7 +150,11 @@ reset_candidates <- system_info_clean |>
   filter(reset) |>
   ungroup()
 
-recovered_intervals <- lapply(seq_len(nrow(reset_candidates)), function(i) {
+empty_reset_result <- function() {
+  list(intervals = NULL, event = NULL)
+}
+
+reset_results <- lapply(seq_len(nrow(reset_candidates)), function(i) {
   reset_row <- reset_candidates[i, ]
 
   gateway_counts <- count_events |>
@@ -155,7 +164,7 @@ recovered_intervals <- lapply(seq_len(nrow(reset_candidates)), function(i) {
     distinct(sensor_id) |>
     pull(sensor_id)
 
-  if (length(sensor_ids) == 0) return(NULL)
+  if (length(sensor_ids) == 0) return(empty_reset_result())
 
   first_after_by_sensor <- lapply(sensor_ids, function(sid) {
     sensor_data <- gateway_counts |>
@@ -176,30 +185,29 @@ recovered_intervals <- lapply(seq_len(nrow(reset_candidates)), function(i) {
   }) |>
     bind_rows()
 
-  # Sensori senza misura successiva non partecipano.
+  # Sensori senza una coppia di count valida non partecipano.
   observable <- first_after_by_sensor |>
     filter(is.finite(first_increment))
 
-  if (nrow(observable) == 0) return(NULL)
+  if (nrow(observable) == 0) return(empty_reset_result())
 
-  # Disconnessione gateway se almeno un sensore mostra incremento 0 o >1.
-  gateway_disconnect <- any(
-    observable$first_increment == 0 |
-      observable$first_increment > 1
-  )
+  # Evidenza di disconnessione: almeno un primo incremento = 0 oppure > 1.
+  evidence <- observable |>
+    filter(first_increment == 0 | first_increment > 1)
 
-  # Riavvio macchina solo se tutti i sensori osservabili mostrano +1.
+  # Riavvio macchina solo quando tutti i sensori osservabili mostrano +1.
   machine_restart <- all(observable$first_increment == 1)
 
-  if (!gateway_disconnect || machine_restart) return(NULL)
+  if (nrow(evidence) == 0 || machine_restart) {
+    return(empty_reset_result())
+  }
 
-  # Costruisco un intervallo recuperato per ogni sensore che ha fornito
-  # un'osservazione post-reset. Per ciascuno parto dal massimo tra:
-  # - timestamp SystemInfoA
-  # - ultimo count precedente a restart_ts dello stesso sensore
-  recovered <- lapply(seq_len(nrow(observable)), function(j) {
-    sid <- observable$sensor_id[j]
-    end_ts <- observable$first_timestamp[j]
+  # Per ogni sensore che da' evidenza di disconnessione recupero da:
+  # max(SystemInfoA, ultimo count prima del restart)
+  # fino al primo count successivo al restart.
+  recovered <- lapply(seq_len(nrow(evidence)), function(j) {
+    sid <- evidence$sensor_id[j]
+    end_ts <- evidence$first_timestamp[j]
 
     last_pre_count <- gateway_counts |>
       filter(
@@ -216,12 +224,13 @@ recovered_intervals <- lapply(seq_len(nrow(reset_candidates)), function(i) {
       start_ts <- max(reset_row$previous_timestamp, last_pre_count)
     }
 
-    if (is.na(start_ts) || is.na(end_ts) || end_ts <= start_ts) return(NULL)
+    if (is.na(start_ts) || is.na(end_ts) || end_ts <= start_ts) {
+      return(NULL)
+    }
 
     tibble(
       coupon = reset_row$coupon,
       gateway_id = reset_row$gateway_id,
-      gateway_name = reset_row$gateway_name,
       start = start_ts,
       end = end_ts,
       source = "gateway_disconnect"
@@ -229,25 +238,102 @@ recovered_intervals <- lapply(seq_len(nrow(reset_candidates)), function(i) {
   }) |>
     bind_rows()
 
-  recovered
-}) |>
-  bind_rows()
+  recovered_start <- if (nrow(recovered) > 0) min(recovered$start) else as.POSIXct(NA)
+  recovered_end <- if (nrow(recovered) > 0) max(recovered$end) else as.POSIXct(NA)
 
-all_intervals <- bind_rows(base_intervals, recovered_intervals)
+  recovered_minutes <- if (nrow(recovered) > 0) {
+    recovered |>
+      select(start, end) |>
+      merge_intervals() |>
+      mutate(minutes = as.numeric(difftime(end, start, units = "mins"))) |>
+      summarise(minutes = sum(minutes, na.rm = TRUE)) |>
+      pull(minutes)
+  } else {
+    NA_real_
+  }
+
+  event <- tibble(
+    coupon = reset_row$coupon,
+    gateway_id = reset_row$gateway_id,
+    gateway_name = reset_row$gateway_name,
+    systeminfo_a_ts = reset_row$previous_timestamp,
+    systeminfo_b_ts = reset_row$timestamp,
+    systeminfo_a_uptime_seconds = reset_row$previous_uptime,
+    systeminfo_b_uptime_seconds = reset_row$uptime,
+    restart_ts = reset_row$restart_ts,
+    recovered_start_ts = recovered_start,
+    recovered_end_ts = recovered_end,
+    recovered_minutes = recovered_minutes,
+    observed_sensors = nrow(observable),
+    evidence_sensors = nrow(evidence),
+    max_first_increment = max(evidence$first_increment, na.rm = TRUE),
+    sensor_evidence = paste0(
+      evidence$sensor_id,
+      "=",
+      evidence$first_increment,
+      collapse = "; "
+    )
+  )
+
+  list(intervals = recovered, event = event)
+})
+
+recovered_intervals <- bind_rows(
+  lapply(reset_results, function(x) x$intervals)
+)
+
+gateway_disconnect_events <- bind_rows(
+  lapply(reset_results, function(x) x$event)
+)
+
+saveRDS(
+  gateway_disconnect_events,
+  here("02_Output", "gateway_disconnect_events.rds")
+)
+
+# ---------------------------------------------------------------------------
+# Buffer giornaliero: un'ora dopo l'ultimo SystemInfo del giorno.
+# Lo tratto come intervallo per evitare doppio conteggio.
+# ---------------------------------------------------------------------------
+buffer_intervals <- system_info_clean |>
+  mutate(day = as.Date(timestamp, tz = "Europe/Rome")) |>
+  group_by(coupon, gateway_id, day) |>
+  slice_max(timestamp, n = 1, with_ties = FALSE) |>
+  ungroup() |>
+  mutate(
+    day_end = as.POSIXct(day + 1, tz = "Europe/Rome"),
+    buffer_end = if_else(
+      timestamp + hours(1) < day_end,
+      timestamp + hours(1),
+      day_end
+    )
+  ) |>
+  transmute(
+    coupon,
+    gateway_id,
+    start = timestamp,
+    end = buffer_end,
+    source = "daily_buffer"
+  ) |>
+  filter(end > start)
+
+all_intervals <- bind_rows(
+  base_intervals,
+  recovered_intervals,
+  buffer_intervals
+)
 
 # ---------------------------------------------------------------------------
 # Unione intervalli per gateway, poi spezzatura per giornata.
 # ---------------------------------------------------------------------------
 merged_intervals <- all_intervals |>
   group_by(coupon, gateway_id) |>
-  group_modify(~ {
-    merged <- merge_intervals(.x |> select(start, end))
-    merged
-  }) |>
+  group_modify(~ merge_intervals(.x |> select(start, end))) |>
   ungroup()
 
 daily_intervals <- lapply(seq_len(nrow(merged_intervals)), function(i) {
   row <- merged_intervals[i, ]
+
   split_interval_by_day(row$start, row$end) |>
     mutate(
       coupon = row$coupon,
@@ -263,14 +349,11 @@ uptime <- daily_intervals |>
   ) |>
   group_by(coupon, gateway_id, day) |>
   summarise(
-    observed_uptime = sum(interval_hours, na.rm = TRUE),
+    daily_uptime = sum(interval_hours, na.rm = TRUE),
     .groups = "drop"
   ) |>
   mutate(
-    # Buffer finale: SystemInfo e' orario, quindi dopo l'ultima osservazione
-    # possono esserci fino a circa 60 minuti di accensione non ancora inviati.
-    daily_uptime = pmin(observed_uptime + 1, 24)
-  ) |>
-  select(coupon, gateway_id, day, daily_uptime)
+    daily_uptime = pmin(pmax(daily_uptime, 0), 24)
+  )
 
 saveRDS(uptime, here("02_Output", "uptime.rds"))
