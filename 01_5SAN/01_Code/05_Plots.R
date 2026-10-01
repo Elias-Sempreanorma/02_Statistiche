@@ -46,21 +46,38 @@ if (!"daily_open_hours" %in% names(dati)) {
     mutate(daily_open_hours = 0)
 }
 
-life_data <- readRDS(here("02_Output", "raw_data.rds")) |>
-  group_by(coupon, cds_name, cds_vds, cds_t10d) |>
-  summarise(
-    count = max(count),
-    offset = max(offset),
-    lifetime = max(lifetime),
-    .groups = "drop_last"
+raw_life_data <- readRDS(here("02_Output", "raw_data.rds")) |>
+  mutate(timestamp = with_tz(timestamp, "Europe/Rome"))
+
+# La vita temporale del componente non usa piu' il campo lifetime inviato
+# dal dispositivo. Parte dalla prima osservazione assoluta del CdS sulla
+# macchina ed e' quindi legata esclusivamente a coupon + cds_name:
+# eventuali cambi di sensor_id/codice non azzerano il conteggio.
+life_reference_ts <- Sys.time()
+
+life_data <- raw_life_data |>
+  filter(
+    !is.na(coupon),
+    !is.na(cds_name),
+    !is.na(timestamp)
   ) |>
-  select(coupon, cds_name, cds_vds, cds_t10d, count, offset, lifetime) |>
-  unique() |>
+  arrange(timestamp) |>
+  group_by(coupon, cds_name) |>
+  summarise(
+    cds_vds = last(cds_vds[!is.na(cds_vds)], default = NA_real_),
+    cds_t10d = last(cds_t10d[!is.na(cds_t10d)], default = NA_real_),
+    count = if (all(is.na(count))) NA_real_ else max(count, na.rm = TRUE),
+    offset = if (all(is.na(offset))) NA_real_ else max(offset, na.rm = TRUE),
+    first_seen = min(timestamp, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
   mutate(
     count = count + offset,
-    lifetime = lifetime / 60 / 60 / 24 / 360
+    lifetime = as.numeric(
+      difftime(life_reference_ts, first_seen, units = "secs")
+    ) / 60 / 60 / 24 / 360
   ) |>
-  select(-offset)
+  select(coupon, cds_name, cds_vds, cds_t10d, count, lifetime)
 
 # Anagrafica sensori (coupon + cds_name -> descrizione), usata per
 # arricchire le etichette dei serbatoi
