@@ -20,6 +20,7 @@ con_stats <- connetti_postgres(Sys.getenv("PG_DB_STATS"))
 # Determino da dove ripartire (caricamento incrementale)
 # ---------------------------------------------------------------------------
 raw_data_path <- here("02_Output", "raw_data.rds")
+system_info_path <- here("02_Output", "system_info.rds")
 
 overlap <- as.difftime(1, units = "hours")
 default_start <- as.POSIXct("2026-07-27 00:00:00", tz = "Europe/Rome")
@@ -42,6 +43,27 @@ if (file.exists(raw_data_path)) {
 } else {
   existing_raw_data <- NULL
   start_ts <- default_start
+}
+
+# SystemInfo viene storicizzato separatamente. Al primo deploy lo ricarico
+# dall'inizio dello storico, anche se raw_data.rds esiste gia'.
+if (file.exists(system_info_path)) {
+  existing_system_info <- readRDS(system_info_path)
+  
+  if (
+    !is.null(existing_system_info) &&
+    nrow(existing_system_info) > 0 &&
+    "timestamp" %in% names(existing_system_info) &&
+    any(!is.na(existing_system_info$timestamp))
+  ) {
+    system_info_start_ts <- max(existing_system_info$timestamp, na.rm = TRUE) - overlap
+  } else {
+    existing_system_info <- NULL
+    system_info_start_ts <- default_start
+  }
+} else {
+  existing_system_info <- NULL
+  system_info_start_ts <- default_start
 }
 
 # ---------------------------------------------------------------------------
@@ -76,6 +98,7 @@ measurements <- dbGetQuery(
       END AS value_json
     FROM public.measurements
     WHERE timestamp > $1
+      AND name <> 'SystemInfo'
   )
   SELECT
     timestamp,
@@ -94,6 +117,34 @@ measurements <- dbGetQuery(
   params = list(start_ts)
 )
 
+# SystemInfo: tengo solo timestamp, gateway (thing_id) e uptime cumulativo.
+system_info_measurements <- dbGetQuery(
+  con_iot,
+  "
+  WITH parsed AS (
+    SELECT
+      timestamp,
+      thing_id,
+      CASE
+        WHEN value_string IS NOT NULL
+         AND LEFT(BTRIM(value_string), 1) = '{'
+         AND RIGHT(BTRIM(value_string), 1) = '}'
+        THEN value_string::jsonb
+        ELSE NULL::jsonb
+      END AS value_json
+    FROM public.measurements
+    WHERE timestamp > $1
+      AND name = 'SystemInfo'
+  )
+  SELECT
+    timestamp,
+    thing_id,
+    NULLIF(value_json ->> 'uptime', '')::double precision AS uptime
+  FROM parsed
+  ",
+  params = list(system_info_start_ts)
+)
+
 # ---------------------------------------------------------------------------
 # Estrazione machine_name / machine_serial_number UNA SOLA VOLTA
 # fatta sulla tabella machine (poche righe), non dopo il join su measurements
@@ -103,6 +154,31 @@ machine <- machine |>
     machine_serial_number = str_match(machine_meta_data, '"MachineSerialNumber"\\s*:\\s*"([^"]*)"')[, 2],
     machine_name = str_match(machine_meta_data, '"Name"\\s*:\\s*"([^"]*)"')[, 2]
   )
+
+# Chiave tecnica del gateway: gateway.external_id = measurements.thing_id.
+gateway_info <- gateway |>
+  left_join(
+    machine |> select(id, coupon = external_id),
+    by = c("machine_id" = "id")
+  ) |>
+  transmute(
+    coupon,
+    gateway_id = external_id,
+    gateway_name = name
+  ) |>
+  distinct()
+
+# Serve solo per migrare raw_data.rds creato prima dell'introduzione di
+# gateway_id. Se il nome non e' univoco dentro il coupon, fermo l'ETL.
+dup_gateway_name <- gateway_info |>
+  count(coupon, gateway_name) |>
+  filter(n > 1)
+
+if (nrow(dup_gateway_name) > 0) {
+  stop(
+    "Gateway name non univoco nello stesso coupon: impossibile ricostruire gateway_id nello storico."
+  )
+}
 
 # ---------------------------------------------------------------------------
 # Controllo univocità delle chiavi di join
@@ -147,7 +223,7 @@ gateway_lookup <- gateway |>
       select(coupon, id, machine_serial_number, machine_name, sensor_name, sensor_description, sensor_type, sensor_id),
     by = c("machine_id" = "id")
   ) |>
-  select(coupon, gateway_name = name, gateway_description = description, external_id,
+  select(coupon, gateway_name = name, gateway_description = description, gateway_id = external_id,
          machine_serial_number, machine_name, sensor_name, sensor_description, sensor_type, sensor_id)
 
 new_data <- measurements |>
@@ -157,11 +233,11 @@ new_data <- measurements |>
   ) |>
   inner_join(
     gateway_lookup,
-    by = c("thing_id" = "external_id", "sensor_id")
+    by = c("thing_id" = "gateway_id", "sensor_id")
   ) |>
   select(
     coupon, machine_name, machine_serial_number,
-    gateway_name, gateway_description,
+    gateway_id = thing_id, gateway_name, gateway_description,
     sensor_name, sensor_id, sensor_description, sensor_type,
     timestamp, value_type, status, count, offset, lifetime
   )
@@ -172,7 +248,7 @@ new_data <- measurements |>
 new_raw_data <- progetti_componenti_b10d_san |>
   inner_join(new_data, by = c("cds" = "sensor_name", "coupon")) |>
   select(company = azienda, field = stabilimento, project = progetto, coupon, machine_name, machine_serial_number,
-         gateway_name, cds_name = cds, cds_description = descrizione, cds_brand = marca,
+         gateway_id, gateway_name, cds_name = cds, cds_description = descrizione, cds_brand = marca,
          cds_code = codice, cds_use = utilizzo, cds_vds = b10dsan, cds_t10d = 'T10d (anni)',
          sensor_id, sensor_description, sensor_type,
          timestamp, value_type, status, count, offset, lifetime)
@@ -187,11 +263,66 @@ new_raw_data <- new_raw_data |>
   mutate(field = if_else(is.na(field) | trimws(field) == "", "(Non specificato)", field))
 
 # ---------------------------------------------------------------------------
+# Storico SystemInfo per singolo gateway
+# ---------------------------------------------------------------------------
+new_system_info <- system_info_measurements |>
+  filter(
+    !is.na(thing_id),
+    !is.na(timestamp),
+    is.finite(uptime),
+    uptime >= 0
+  ) |>
+  inner_join(
+    gateway_info,
+    by = c("thing_id" = "gateway_id")
+  ) |>
+  transmute(
+    coupon,
+    gateway_id = thing_id,
+    gateway_name,
+    timestamp,
+    uptime
+  )
+
+if (!is.null(existing_system_info)) {
+  system_info <- bind_rows(existing_system_info, new_system_info) |>
+    distinct(gateway_id, timestamp, .keep_all = TRUE) |>
+    arrange(gateway_id, timestamp)
+} else {
+  system_info <- new_system_info |>
+    distinct(gateway_id, timestamp, .keep_all = TRUE) |>
+    arrange(gateway_id, timestamp)
+}
+
+saveRDS(system_info, system_info_path)
+
+# ---------------------------------------------------------------------------
+# Migrazione dello storico raw_data precedente: aggiungo gateway_id usando
+# coupon + gateway_name. Per i nuovi dati gateway_id arriva direttamente
+# da measurements.thing_id.
+# ---------------------------------------------------------------------------
+if (!is.null(existing_raw_data)) {
+  if (!"gateway_id" %in% names(existing_raw_data)) {
+    existing_raw_data <- existing_raw_data |>
+      left_join(gateway_info, by = c("coupon", "gateway_name"))
+  } else if (any(is.na(existing_raw_data$gateway_id))) {
+    existing_raw_data <- existing_raw_data |>
+      left_join(
+        gateway_info |>
+          rename(gateway_id_lookup = gateway_id),
+        by = c("coupon", "gateway_name")
+      ) |>
+      mutate(gateway_id = coalesce(gateway_id, gateway_id_lookup)) |>
+      select(-gateway_id_lookup)
+  }
+}
+
+# ---------------------------------------------------------------------------
 # Unisco allo storico (deduplicando l'overlap) e salvo
 # ---------------------------------------------------------------------------
 if (!is.null(existing_raw_data)) {
   raw_data <- bind_rows(existing_raw_data, new_raw_data) |>
-    distinct(coupon, sensor_id, timestamp, .keep_all = TRUE)
+    distinct(coupon, gateway_id, sensor_id, timestamp, .keep_all = TRUE)
 } else {
   raw_data <- new_raw_data
 }
@@ -219,5 +350,6 @@ dbDisconnect(con_stats)
 # Nel caso serva aggiornare tutti i dati da 0 runnare
 # ---------------------------------------------------------------------------
 # saveRDS(NULL, raw_data_path)
+# saveRDS(NULL, system_info_path)
 
 # 
