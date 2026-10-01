@@ -174,9 +174,10 @@ data_start_default <- max(data_min, data_max - 27)
 # quando l'immagine si ridimensiona.
 # ---------------------------------------------------------------------------
 immagini_progetti <- data.frame(
-  project = c("A3020", "C14GR", "E11RI", "F0400"),
+  project = c("A3020", "A1220", "C14GR", "E11RI", "F0400"),
   file_name = c(
     "Giacomini_G1_A3020.png",
+    "Giacomini_G1_A1220.png",
     "Giacomini_G1_C14GR.png",
     "Giacomini_G1_E11RI.png",
     "Giacomini_G1_F0400.png"
@@ -199,6 +200,24 @@ mappa_sensori <- bind_rows(
     y = c(
       29, 78, 121, 142, 161, 161, 160, 171, 170, 188,
       200, 223, 231, 236, 252, 255, 268, 268, 277
+    )
+  ),
+  data.frame(
+    project = "A1220", image_width = 898, image_height = 325,
+    cds_name = c(
+      "EML", "REG", "FCM5", "FCM4", "FCM3", "FCM2", "FCM1",
+      "FCM7", "FCM8", "FCM12", "FCM11", "FCM10", "FCM9",
+      "FCM14", "FCM15", "PE1", "FCM13", "BIM1 - A", "BIM2 - A"
+    ),
+    x = c(
+      485, 505, 93, 108, 273, 290, 321,
+      11, 11, 100, 273, 290, 320,
+      355, 387, 406, 422, 90, 65
+    ),
+    y = c(
+      32, 81, 164, 163, 174, 173, 191,
+      203, 226, 254, 271, 271, 255,
+      242, 236, 239, 234, 304, 137
     )
   ),
   data.frame(
