@@ -4028,12 +4028,15 @@ server <- function(input, output, session) {
         ) |>
         mutate(cds_key = str_to_upper(str_squish(cds_name)))
       
-      kpi_nok() |>
+      nok_home <- kpi_nok() |>
         mutate(cds_key = str_to_upper(str_squish(cds_name))) |>
         select(cds_key, NOK) |>
         group_by(cds_key) |>
-        summarise(NOK = first(NOK), .groups = "drop") |>
-        left_join(select(raw_avg, cds_key, N_medio, ore_aperte_medie), by = "cds_key")
+        summarise(NOK = first(NOK), .groups = "drop")
+      
+      raw_avg |>
+        select(cds_key, N_medio, ore_aperte_medie) |>
+        left_join(nok_home, by = "cds_key")
     }
     
     punti <- mappa_sensori |>
@@ -4992,6 +4995,13 @@ server <- function(input, output, session) {
     
     n_sensori <- dplyr::n_distinct(grafico$etichetta_completa)
     palette_sensori <- colorRampPalette(brewer.pal(8, "Set2"))(n_sensori)
+    padding_x <- if (n_sensori <= 1) {
+      1.60
+    } else if (n_sensori == 2) {
+      0.80
+    } else {
+      0.35
+    }
     
     ggplot(
       grafico,
@@ -5017,7 +5027,7 @@ server <- function(input, output, session) {
         width = 0.62
       ) +
       scale_x_discrete(
-        expand = expansion(add = 0.35)
+        expand = expansion(add = padding_x)
       ) +
       facet_grid(
         cols = vars(periodo_label),
@@ -5256,7 +5266,10 @@ server <- function(input, output, session) {
         n_periodi * max(90, n_sensori * 16)
       )
     } else {
-      max(w_px, 2200)
+      max(
+        w_px,
+        n_periodi * max(220, n_sensori * 85)
+      )
     }
     
     div(
@@ -5318,7 +5331,10 @@ server <- function(input, output, session) {
         n_periodi * max(90, n_sensori * 16)
       )
     } else {
-      max(w_px, 2200)
+      max(
+        w_px,
+        n_periodi * max(220, n_sensori * 85)
+      )
     }
     
     girafe(
