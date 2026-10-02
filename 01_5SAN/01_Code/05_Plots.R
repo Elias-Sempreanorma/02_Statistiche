@@ -5415,18 +5415,24 @@ server <- function(input, output, session) {
     n_periodi <- dplyr::n_distinct(grafico$periodo)
     n_sensori <- dplyr::n_distinct(grafico$etichetta_completa)
     
-    plot_px <- if (
-      identical(filtri_attivazioni_modal()$granularita, "Ora")
-    ) {
+    granularita <- filtri_attivazioni_modal()$granularita
+    
+    plot_px <- if (identical(granularita, "Ora")) {
+      # La vista oraria resta volutamente larga e scrollabile.
       max(
         w_px,
         n_periodi * max(90, n_sensori * 16)
       )
-    } else {
+    } else if (identical(granularita, "Giorno")) {
+      # La vista giornaliera puo' avere molti periodi, ma non deve diventare
+      # una striscia enorme: al massimo circa due larghezze del modal.
       max(
         w_px,
-        n_periodi * max(220, n_sensori * 85)
+        min(w_px * 2, n_periodi * 120)
       )
+    } else {
+      # Settimana / Mese / Trimestre / Anno: tutto compatto nel modal.
+      w_px
     }
     
     div(
@@ -5455,7 +5461,7 @@ server <- function(input, output, session) {
     ) {
       max(w_px, n_periodi * 55)
     } else {
-      max(w_px, 2200)
+      w_px
     }
     
     div(
@@ -5480,18 +5486,24 @@ server <- function(input, output, session) {
     n_periodi <- dplyr::n_distinct(grafico$periodo)
     n_sensori <- dplyr::n_distinct(grafico$etichetta_completa)
     
-    plot_px <- if (
-      identical(filtri_attivazioni_modal()$granularita, "Ora")
-    ) {
+    granularita <- filtri_attivazioni_modal()$granularita
+    
+    plot_px <- if (identical(granularita, "Ora")) {
+      # La vista oraria resta volutamente larga e scrollabile.
       max(
         w_px,
         n_periodi * max(90, n_sensori * 16)
       )
-    } else {
+    } else if (identical(granularita, "Giorno")) {
+      # La vista giornaliera puo' avere molti periodi, ma non deve diventare
+      # una striscia enorme: al massimo circa due larghezze del modal.
       max(
         w_px,
-        n_periodi * max(220, n_sensori * 85)
+        min(w_px * 2, n_periodi * 120)
       )
+    } else {
+      # Settimana / Mese / Trimestre / Anno: tutto compatto nel modal.
+      w_px
     }
     
     girafe(
@@ -5520,7 +5532,7 @@ server <- function(input, output, session) {
     ) {
       max(w_px, n_periodi * 55)
     } else {
-      max(w_px, 2200)
+      w_px
     }
     
     girafe(
