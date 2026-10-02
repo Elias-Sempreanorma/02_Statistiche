@@ -104,6 +104,36 @@ sensori_info <- dati |>
   distinct(coupon, cds_name, sensor_description)
 
 # ---------------------------------------------------------------------------
+# Identita' visiva Sempreanorma.
+# Il giallo viene usato come accento, mentre blu, grigi e bianco restano
+# i colori dominanti dell'interfaccia e dei grafici.
+# ---------------------------------------------------------------------------
+SAN_BLUE <- "#234A66"
+SAN_BLUE_2 <- "#5F748C"
+SAN_YELLOW <- "#EBBD55"
+SAN_GREY <- "#A9B2BA"
+SAN_GREY_LIGHT <- "#D4D9DD"
+
+palette_sensori_brand <- function(n) {
+  base <- c(
+    SAN_BLUE,
+    "#3D617A",
+    SAN_BLUE_2,
+    "#7D919F",
+    "#9EABB4",
+    "#BCC4CA",
+    SAN_YELLOW,
+    "#D4A23B"
+  )
+
+  if (n <= length(base)) {
+    base[seq_len(n)]
+  } else {
+    grDevices::colorRampPalette(base)(n)
+  }
+}
+
+# ---------------------------------------------------------------------------
 # Lookup precalcolati per i filtri a cascata: tabelle piccole, distinct
 # su poche colonne, cosi' gli observeEvent non devono piu' scandire
 # l'intero dataset `dati` ogni volta che cambia un filtro.
@@ -425,7 +455,7 @@ ui <- fluidPage(
         text-align: center !important;
         padding: 10px 12px;
         border-bottom: 1px solid #E4E7EB;
-        color: #24364B;
+        color: #234A66;
         font-weight: 700;
         font-size: 18px;
       }
@@ -473,15 +503,15 @@ ui <- fluidPage(
         flex-wrap: wrap;
         margin: 0 0 10px 0;
         padding: 9px 13px;
-        border: 1px solid #D8D3C3;
+        border: 1px solid #D9DDE0;
         border-radius: 7px;
-        background: #F8F6EE;
+        background: #F7F7F7;
       }
       .documenti-title {
         display: flex;
         align-items: center;
         gap: 7px;
-        color: #24364B;
+        color: #234A66;
         font-size: 13px;
         font-weight: 700;
       }
@@ -494,18 +524,18 @@ ui <- fluidPage(
       .documento-download {
         display: inline-block;
         padding: 5px 9px;
-        border: 1px solid #C8C0A7;
+        border: 1px solid #CDD2D6;
         border-radius: 6px;
         background: #FFFFFF;
-        color: #24364B !important;
+        color: #234A66 !important;
         font-size: 12px;
         font-weight: 600;
         text-decoration: none !important;
       }
       .documento-download:hover,
       .documento-download:focus {
-        background: #EDE8D8;
-        color: #24364B !important;
+        background: #F1F2F3;
+        color: #234A66 !important;
       }
       .modal-documenti {
         padding-top: 2px;
@@ -515,7 +545,7 @@ ui <- fluidPage(
         align-items: center;
         gap: 7px;
         margin-bottom: 6px;
-        color: #24364B;
+        color: #234A66;
         font-size: 12px;
         font-weight: 700;
       }
@@ -543,11 +573,11 @@ ui <- fluidPage(
       .card-home:hover {
         transform: translateY(-3px);
         box-shadow: 0 8px 18px rgba(0,0,0,0.10);
-        border-color: #7FA6C9;
+        border-color: #5F748C;
       }
       .card-home .card-icona {
         font-size: 20px;
-        color: #7FA6C9;
+        color: #5F748C;
         margin-bottom: 4px;
       }
       .card-home h4 {
@@ -597,7 +627,7 @@ ui <- fluidPage(
       .sensor-hotspot:hover,
       .sensor-hotspot:focus {
         background: rgba(127, 166, 201, 0.58);
-        border-color: #2C3E50;
+        border-color: #234A66;
         z-index: 20;
       }
       .sensor-tooltip {
@@ -609,7 +639,7 @@ ui <- fluidPage(
         min-width: 220px;
         padding: 10px 12px;
         border-radius: 7px;
-        background: #2C3E50;
+        background: #234A66;
         color: #FFFFFF;
         text-align: left;
         font-size: 13px;
@@ -626,7 +656,7 @@ ui <- fluidPage(
         margin-left: -6px;
         border-width: 6px;
         border-style: solid;
-        border-color: #2C3E50 transparent transparent transparent;
+        border-color: #234A66 transparent transparent transparent;
       }
       .sensor-hotspot:hover .sensor-tooltip,
       .sensor-hotspot:focus .sensor-tooltip {
@@ -647,7 +677,7 @@ ui <- fluidPage(
         min-height: 600px;
         margin: 0 0 12px 0;
         overflow: hidden;
-        background: #F4F2E8;
+        background: #F4F5F6;
       }
 
       /* Schema grande, centrato e sopra ai quattro pulsanti. */
@@ -706,7 +736,7 @@ ui <- fluidPage(
         padding: 0;
         border: 0;
         border-radius: 0;
-        background: #F4F2E8;
+        background: #F4F5F6;
         box-shadow: none;
         text-align: left;
         transition: background-color 0.15s ease;
@@ -718,14 +748,14 @@ ui <- fluidPage(
         box-shadow: inset 0 0 0 2px rgba(161, 148, 103, 0.12);
       }
       .home-corner-tl .card-home {
-        border-right: 2px solid #C8C0A7;
-        border-bottom: 2px solid #C8C0A7;
+        border-right: 2px solid #CDD2D6;
+        border-bottom: 2px solid #CDD2D6;
       }
       .home-corner-tr .card-home {
-        border-bottom: 2px solid #C8C0A7;
+        border-bottom: 2px solid #CDD2D6;
       }
       .home-corner-bl .card-home {
-        border-right: 2px solid #C8C0A7;
+        border-right: 2px solid #CDD2D6;
       }
 
       /* Descrizione visibile nell'angolo esterno del relativo rettangolo. */
@@ -736,19 +766,19 @@ ui <- fluidPage(
         padding: 13px 15px;
         border: 0;
         border-radius: 9px;
-        background: #EFECDE;
+        background: #FFFFFF;
         box-shadow: none;
         z-index: 2;
       }
       .home-corner .card-home:hover .home-card-label {
-        background: #DED5B8;
+        background: #F3F4F5;
         box-shadow: none;
       }
       .home-corner .card-home h4 {
         font-size: 17px;
         font-weight: 700;
         margin: 0 0 5px 0;
-        color: #24364B;
+        color: #234A66;
       }
       .home-corner .card-home p {
         font-size: 12.5px;
@@ -795,9 +825,9 @@ ui <- fluidPage(
       .report-panel {
         margin: 0 0 28px 0;
         padding: 18px 20px;
-        border: 1px solid #D8D3C3;
+        border: 1px solid #D9DDE0;
         border-radius: 12px;
-        background: linear-gradient(135deg, #FBFAF6 0%, #F4F1E7 100%);
+        background: linear-gradient(135deg, #FBFAF6 0%, #F1F3F4 100%);
         box-shadow: 0 3px 12px rgba(36,54,75,0.06);
       }
       .report-buttons {
@@ -807,10 +837,10 @@ ui <- fluidPage(
         margin-top: 10px;
       }
       .report-period-btn {
-        border: 1px solid #C8C0A7;
+        border: 1px solid #CDD2D6;
         border-radius: 999px;
         background: #FFFFFF;
-        color: #24364B;
+        color: #234A66;
         font-size: 12px;
         font-weight: 700;
         padding: 8px 13px;
@@ -819,7 +849,7 @@ ui <- fluidPage(
         transition: background 0.15s ease, transform 0.15s ease;
       }
       .report-period-btn:hover {
-        background: #EDE8D8;
+        background: #F1F2F3;
         transform: translateY(-1px);
       }
       .report-modal {
@@ -831,7 +861,7 @@ ui <- fluidPage(
       .report-hero {
         margin: -15px -15px 22px -15px;
         padding: 25px 28px 24px 28px;
-        background: linear-gradient(135deg, #24364B 0%, #354C65 100%);
+        background: linear-gradient(135deg, #234A66 0%, #354C65 100%);
         color: #FFFFFF;
         border-radius: 8px 8px 14px 14px;
         box-shadow: 0 7px 20px rgba(36,54,75,0.16);
@@ -935,7 +965,7 @@ ui <- fluidPage(
       }
       .report-kpi-value {
         margin-top: 5px;
-        color: #24364B;
+        color: #234A66;
         font-size: 23px;
         line-height: 1.12;
         font-weight: 800;
@@ -949,17 +979,17 @@ ui <- fluidPage(
       .report-summary {
         margin: 0 0 24px 0;
         padding: 20px 22px;
-        border: 1px solid #E1DCCB;
-        border-left: 5px solid #B6A878;
+        border: 1px solid #D9DDE0;
+        border-left: 5px solid #EBBD55;
         border-radius: 10px;
-        background: #F8F6EE;
+        background: #F7F7F7;
         color: #334155;
         line-height: 1.58;
         font-size: 15px;
       }
       .report-summary-title {
         margin: 0 0 12px 0;
-        color: #24364B;
+        color: #234A66;
         font-size: 20px;
         font-weight: 800;
         letter-spacing: -0.015em;
@@ -988,14 +1018,14 @@ ui <- fluidPage(
         width: 24px;
         height: 24px;
         border-radius: 50%;
-        background: #24364B;
+        background: #234A66;
         color: #FFFFFF;
         font-size: 11px;
         font-weight: 800;
       }
       .report-section-title {
         margin: 0;
-        color: #24364B;
+        color: #234A66;
         font-size: 16px;
         font-weight: 800;
       }
@@ -1019,7 +1049,7 @@ ui <- fluidPage(
       }
       .report-table th {
         background: #EDF1F4;
-        color: #24364B;
+        color: #234A66;
         border-bottom: 1px solid #D8E0E6;
         border-right: 1px solid #E1E6EA;
         padding: 9px 10px;
@@ -1107,7 +1137,7 @@ ui <- fluidPage(
         padding: 2px 0 10px 0;
       }
       .modal-machine-title {
-        color: #24364B;
+        color: #234A66;
         font-size: 18px;
         font-weight: 700;
         line-height: 1.25;
@@ -1126,7 +1156,7 @@ ui <- fluidPage(
       }
       .modal-close-x:hover,
       .modal-close-x:focus {
-        color: #24364B;
+        color: #234A66;
         opacity: 1;
         outline: none;
       }
@@ -1139,23 +1169,23 @@ ui <- fluidPage(
         font-weight: 700;
         font-size: 14px;
         padding: 9px 19px;
-        color: #24364B !important;
-        background: #EFECDE !important;
-        border-color: #D3CBAF !important;
+        color: #234A66 !important;
+        background: #FFFFFF !important;
+        border-color: #D6DADF !important;
         box-shadow: none !important;
       }
       .modal-nav-bar .btn-group .btn:hover,
       .modal-nav-bar .btn-group .btn:focus {
-        color: #24364B !important;
-        background: #E4DEC8 !important;
-        border-color: #C5B995 !important;
+        color: #234A66 !important;
+        background: #F3F4F5 !important;
+        border-color: #EBBD55 !important;
       }
       .modal-nav-bar .btn-group .btn.active,
       .modal-nav-bar .btn-group .btn.active:hover,
       .modal-nav-bar .btn-group .btn.active:focus {
-        color: #24364B !important;
-        background: #D8CEAB !important;
-        border-color: #BBAE82 !important;
+        color: #234A66 !important;
+        background: #EBBD55 !important;
+        border-color: #D4A23B !important;
         box-shadow: inset 0 1px 3px rgba(36,54,75,0.12) !important;
       }
 
@@ -1171,7 +1201,7 @@ ui <- fluidPage(
       }
       .life-header-title {
         margin: 0;
-        color: #24364B;
+        color: #234A66;
         font-size: 23px;
         font-weight: 700;
       }
@@ -1205,7 +1235,7 @@ ui <- fluidPage(
       }
       .life-card-title {
         min-width: 0;
-        color: #24364B;
+        color: #234A66;
         font-size: 14px;
         line-height: 1.25;
         font-weight: 700;
@@ -1251,12 +1281,12 @@ ui <- fluidPage(
       }
       .life-metric {
         flex-shrink: 0;
-        color: #24364B;
+        color: #234A66;
         font-size: 13px;
         font-weight: 700;
       }
       .life-value {
-        color: #24364B;
+        color: #234A66;
         font-size: 12px;
         font-weight: 600;
         text-align: right;
@@ -1413,6 +1443,278 @@ ui <- fluidPage(
           font-size: 12px;
           white-space: normal;
         }
+      }
+
+      /* ==============================================================
+         TEMA SEMPREANORMA
+         Layout invariato: si interviene solo su colori, tipografia,
+         bordi, hover e gerarchia visiva.
+         ============================================================== */
+      :root {
+        --san-blue: #234A66;
+        --san-blue-2: #5F748C;
+        --san-yellow: #EBBD55;
+        --san-yellow-dark: #D4A23B;
+        --san-bg: #F4F5F6;
+        --san-panel: #FFFFFF;
+        --san-panel-soft: #F0F2F3;
+        --san-border: #C5CDD3;
+        --san-border-soft: #DDE1E4;
+        --san-text: #202326;
+        --san-muted: #66717A;
+      }
+
+      body,
+      .form-control,
+      .btn,
+      .dropdown-menu,
+      .modal-content,
+      .selectize-input,
+      .selectize-dropdown {
+        font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif;
+      }
+
+      body {
+        color: var(--san-text);
+        background: #FFFFFF;
+      }
+
+      /* Fascia alta: il blu resta concentrato qui, come nel sito. */
+      .container-fluid > h2:first-of-type {
+        margin: 0 -15px;
+        padding: 13px 20px 12px 20px;
+        background: var(--san-blue);
+        border-bottom: 4px solid var(--san-yellow);
+        color: #FFFFFF;
+        font-size: 29px;
+        font-weight: 500;
+        letter-spacing: -0.02em;
+      }
+
+      .pannello-filtri {
+        margin: 0 -7px 8px -7px;
+        padding: 10px 14px 1px 14px;
+        background: var(--san-panel-soft);
+        border: 1px solid var(--san-border-soft);
+        border-top: 0;
+        border-radius: 0 0 7px 7px;
+        box-shadow: none;
+      }
+      .pannello-filtri label,
+      .modal-filters label {
+        color: var(--san-blue);
+        font-weight: 700;
+      }
+      .pannello-filtri .form-control,
+      .modal-filters .form-control,
+      .bootstrap-select > .dropdown-toggle {
+        background: #FFFFFF;
+        border-color: #C8CFD4;
+        color: var(--san-text);
+        box-shadow: none;
+      }
+      .pannello-filtri .form-control:focus,
+      .modal-filters .form-control:focus,
+      .bootstrap-select.open > .dropdown-toggle {
+        border-color: var(--san-blue-2);
+        box-shadow: 0 0 0 2px rgba(95,116,140,0.10);
+      }
+
+      input[type='radio'],
+      input[type='checkbox'] {
+        accent-color: var(--san-yellow-dark);
+      }
+
+      /* Home: grigio/bianco al centro, giallo solo come richiamo. */
+      .home-stage {
+        background: var(--san-bg);
+        border: 1px solid var(--san-border-soft);
+      }
+      .home-corner .card-home {
+        background: #F7F8F8;
+        border: 0 !important;
+        box-shadow: inset 0 0 0 1px #AEB8C1;
+        transition:
+          background-color 0.16s ease,
+          box-shadow 0.16s ease;
+      }
+      .home-corner .card-home:hover,
+      .home-corner .card-home:focus {
+        background: #FFFFFF;
+        box-shadow:
+          inset 0 0 0 2px var(--san-yellow),
+          inset 0 4px 0 var(--san-yellow);
+        outline: none;
+      }
+
+      .home-corner .card-home .home-card-label {
+        background: #FFFFFF;
+        border: 1px solid #D4D9DD;
+        border-left: 4px solid var(--san-yellow);
+        border-radius: 6px;
+        box-shadow: 0 2px 8px rgba(35,74,102,0.06);
+      }
+      .home-corner .card-home:hover .home-card-label,
+      .home-corner .card-home:focus .home-card-label {
+        background: #FFFFFF;
+        border-color: #D4D9DD;
+        border-left-color: var(--san-yellow);
+        box-shadow: 0 4px 12px rgba(35,74,102,0.10);
+      }
+      .home-corner .card-home h4 {
+        color: var(--san-blue);
+        font-weight: 700;
+      }
+      .home-corner .card-home p {
+        color: var(--san-muted);
+      }
+
+      .schema-frame img {
+        border: 1.5px solid var(--san-blue-2);
+        border-radius: 6px;
+        background: #FFFFFF;
+        box-shadow: 0 4px 14px rgba(35,74,102,0.10);
+      }
+
+      /* Hotspot: blu in hover, bordo giallo come accento. */
+      .sensor-hotspot:hover,
+      .sensor-hotspot:focus {
+        background: rgba(95,116,140,0.26);
+        border-color: var(--san-yellow);
+      }
+      .sensor-tooltip {
+        background: var(--san-blue);
+        border-left: 3px solid var(--san-yellow);
+      }
+      .sensor-tooltip::after {
+        border-color: var(--san-blue) transparent transparent transparent;
+      }
+
+      /* Modali: testata blu, contenuto bianco/grigio, selezione gialla. */
+      .modal-content {
+        border: 1px solid #C7CDD2;
+        border-radius: 8px;
+        box-shadow: 0 12px 38px rgba(29,45,58,0.18);
+      }
+      .modal-machine-header {
+        margin: -15px -15px 14px -15px;
+        padding: 14px 18px;
+        background: var(--san-blue);
+        border-bottom: 3px solid var(--san-yellow);
+      }
+      .modal-machine-title {
+        color: #FFFFFF;
+        font-weight: 600;
+      }
+      .modal-close-x,
+      .modal-close-x:hover,
+      .modal-close-x:focus {
+        color: #FFFFFF;
+      }
+
+      .modal-filters {
+        background: #F1F3F4;
+        border: 1px solid #DDE1E4;
+        border-radius: 6px;
+      }
+      .modal-nav-bar {
+        border-bottom-color: #D8DDE1;
+      }
+      .modal-nav-bar .btn-group .btn {
+        color: var(--san-blue) !important;
+        background: #FFFFFF !important;
+        border-color: #CDD3D8 !important;
+        font-weight: 600;
+      }
+      .modal-nav-bar .btn-group .btn:hover,
+      .modal-nav-bar .btn-group .btn:focus {
+        color: var(--san-blue) !important;
+        background: #F2F4F5 !important;
+        border-color: var(--san-yellow) !important;
+      }
+      .modal-nav-bar .btn-group .btn.active,
+      .modal-nav-bar .btn-group .btn.active:hover,
+      .modal-nav-bar .btn-group .btn.active:focus {
+        color: #202326 !important;
+        background: var(--san-yellow) !important;
+        border-color: var(--san-yellow-dark) !important;
+        box-shadow: none !important;
+      }
+
+      .titolo-sezione,
+      .life-header-title,
+      .life-card-title,
+      .life-metric,
+      .modal-machine-title,
+      .documenti-title,
+      .modal-documenti-title {
+        color: var(--san-blue);
+      }
+      .modal-machine-title {
+        color: #FFFFFF;
+      }
+
+      /* Card, report e tabelle: bianchi con bordi grigi puliti. */
+      .life-card,
+      .modal-data-panel,
+      .report-table-wrap,
+      .report-panel,
+      .documenti-bar {
+        background: #FFFFFF;
+        border-color: #D5DADF;
+        box-shadow: 0 2px 8px rgba(35,74,102,0.045);
+      }
+
+      #nok_table th,
+      #modal_nok_table th,
+      .report-table th {
+        background: var(--san-blue);
+        color: #FFFFFF;
+        border-bottom-color: var(--san-yellow);
+      }
+      #nok_table td,
+      #modal_nok_table td,
+      .report-table td {
+        color: var(--san-text);
+        border-bottom-color: #E3E6E8;
+      }
+      .report-table tbody tr:nth-child(even) {
+        background: #F6F7F8;
+      }
+
+      .documento-download,
+      .modal-data-button .btn {
+        background: #FFFFFF;
+        color: var(--san-blue) !important;
+        border-color: #C7CED3;
+      }
+      .documento-download:hover,
+      .documento-download:focus,
+      .modal-data-button .btn:hover,
+      .modal-data-button .btn:focus {
+        background: #F7F8F8;
+        color: var(--san-blue) !important;
+        border-color: var(--san-yellow);
+      }
+
+      .report-summary {
+        background: #F7F8F8;
+        border-color: #D8DDE0;
+        border-left-color: var(--san-yellow);
+      }
+      .report-section-number {
+        background: var(--san-blue);
+      }
+
+      /* Piccoli elementi di evidenza: giallo, mai grandi campiture. */
+      .report-period-btn:hover,
+      .report-period-btn:focus {
+        border-color: var(--san-yellow) !important;
+      }
+      .report-period-btn.active {
+        background: var(--san-yellow) !important;
+        border-color: var(--san-yellow-dark) !important;
+        color: #202326 !important;
       }
     "))
   ),
@@ -3362,11 +3664,11 @@ server <- function(input, output, session) {
       )
       on.exit(grDevices::dev.off(), add = TRUE)
       
-      navy <- "#24364B"
+      navy <- "#234A66"
       slate <- "#334155"
       muted <- "#718096"
-      beige <- "#F4F1E7"
-      beige_dark <- "#B6A878"
+      beige <- "#F1F3F4"
+      beige_dark <- "#EBBD55"
       border <- "#DDE4EA"
       green <- "#19764A"
       red <- "#B42318"
@@ -3601,7 +3903,7 @@ server <- function(input, output, session) {
         height = 0.38,
         gp = grid::gpar(
           fill = beige,
-          col = "#E1DCCB"
+          col = "#D9DDE0"
         )
       )
       
@@ -3738,7 +4040,7 @@ server <- function(input, output, session) {
             width = 0.88,
             height = 0.18,
             r = grid::unit(0.03, "snpc"),
-            gp = grid::gpar(fill = beige, col = "#E1DCCB")
+            gp = grid::gpar(fill = beige, col = "#D9DDE0")
           )
           grid::grid.text(
             empty_text,
@@ -5131,8 +5433,9 @@ server <- function(input, output, session) {
   
   # CSS del tooltip, condiviso tra main e modal
   tooltip_css <- paste0(
-    "background-color:#2C3E50;",
+    "background-color:#234A66;",
     "color:#FFFFFF;",
+    "border-left:3px solid #EBBD55;",
     "padding:8px 12px;",
     "border-radius:6px;",
     "font-size:13px;",
@@ -5151,7 +5454,7 @@ server <- function(input, output, session) {
     )
     
     n_sensori <- dplyr::n_distinct(grafico$etichetta_completa)
-    palette_sensori <- colorRampPalette(brewer.pal(8, "Set2"))(n_sensori)
+    palette_sensori <- palette_sensori_brand(n_sensori)
     padding_x <- if (n_sensori <= 1) {
       1.60
     } else if (n_sensori == 2) {
@@ -5231,7 +5534,7 @@ server <- function(input, output, session) {
     )
     
     n_sensori <- dplyr::n_distinct(grafico$etichetta_completa)
-    palette_sensori <- colorRampPalette(brewer.pal(8, "Set2"))(n_sensori)
+    palette_sensori <- palette_sensori_brand(n_sensori)
     
     tooltip_punti <- paste0(
       "<b>", grafico$etichetta_completa, "</b><br/>",
@@ -6487,12 +6790,12 @@ server <- function(input, output, session) {
     ggplot(profilo, aes(x = x)) +
       geom_ribbon(
         aes(ymin = banda_min, ymax = banda_max),
-        fill = "#7FA6C9",
+        fill = "#5F748C",
         alpha = 0.22
       ) +
       geom_line(
         aes(y = media_nok),
-        color = "#2C3E50",
+        color = "#234A66",
         linewidth = 1
       ) +
       geom_point_interactive(
@@ -6501,7 +6804,7 @@ server <- function(input, output, session) {
           tooltip = tooltip_utilizzo,
           data_id = paste(confronto, etichetta_sensore, sep = "__")
         ),
-        color = "#2C3E50",
+        color = "#234A66",
         size = 2.6
       ) +
       facet_grid(
@@ -6525,13 +6828,13 @@ server <- function(input, output, session) {
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank(),
         strip.background = element_rect(
-          fill = "#F4F2E8",
-          color = "#C8C0A7"
+          fill = "#F4F5F6",
+          color = "#CDD2D6"
         ),
         strip.text = element_text(
           size = 13,
           face = "bold",
-          color = "#24364B"
+          color = "#234A66"
         ),
         axis.text.x = element_text(
           size = 10,
@@ -6615,7 +6918,7 @@ server <- function(input, output, session) {
           y = NOK,
           group = confronto
         ),
-        color = "#24364B",
+        color = "#234A66",
         linewidth = 1.5
       ) +
       geom_point_interactive(
@@ -6635,7 +6938,7 @@ server <- function(input, output, session) {
             sep = "__"
           )
         ),
-        color = "#24364B",
+        color = "#234A66",
         size = 2.8
       ) +
       geom_hline(
@@ -6684,13 +6987,13 @@ server <- function(input, output, session) {
           linewidth = 0.4
         ),
         strip.background = element_rect(
-          fill = "#F4F2E8",
-          color = "#C8C0A7"
+          fill = "#F4F5F6",
+          color = "#CDD2D6"
         ),
         strip.text = element_text(
           size = 13,
           face = "bold",
-          color = "#24364B"
+          color = "#234A66"
         ),
         axis.text.x = element_text(
           size = 10,
@@ -6740,7 +7043,7 @@ server <- function(input, output, session) {
       )
     
     n_sensori <- dplyr::n_distinct(storico$etichetta_sensore)
-    palette_sensori <- colorRampPalette(brewer.pal(8, "Set2"))(n_sensori)
+    palette_sensori <- palette_sensori_brand(n_sensori)
     
     breaks_periodo <- calcola_breaks_periodo(storico$periodo)
     
