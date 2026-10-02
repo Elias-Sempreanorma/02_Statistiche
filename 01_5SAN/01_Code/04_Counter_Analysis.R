@@ -7,6 +7,47 @@ raw_data <- readRDS(here("02_Output", "raw_data.rds")) |>
   mutate(field = if_else(is.na(field) | trimws(field) == "", "(Non specificato)", field))
 uptime <- readRDS(here("02_Output", "uptime.rds"))
 
+disconnect_sensor_events_path <- here(
+  "02_Output",
+  "gateway_disconnect_sensor_events.rds"
+)
+
+gateway_disconnect_sensor_events <- if (
+  file.exists(disconnect_sensor_events_path)
+) {
+  readRDS(disconnect_sensor_events_path)
+} else {
+  tibble(
+    coupon = character(),
+    gateway_id = character(),
+    sensor_id = character(),
+    affected_ts = as.POSIXct(character(), tz = "Europe/Rome"),
+    accumulated_increment = double(),
+    systeminfo_b_ts = as.POSIXct(character(), tz = "Europe/Rome"),
+    restart_ts = as.POSIXct(character(), tz = "Europe/Rome"),
+    gap_minutes = double()
+  )
+}
+
+disconnect_flags <- gateway_disconnect_sensor_events |>
+  transmute(
+    coupon,
+    gateway_id,
+    sensor_id,
+    affected_ts,
+    gateway_disconnect_increment = accumulated_increment,
+    gateway_disconnect_systeminfo_b_ts = systeminfo_b_ts,
+    gateway_disconnect_restart_ts = restart_ts,
+    gateway_disconnect_gap_minutes = gap_minutes
+  ) |>
+  distinct(
+    coupon,
+    gateway_id,
+    sensor_id,
+    affected_ts,
+    .keep_all = TRUE
+  )
+
 # ---------------------------------------------------------------------------
 # Rilevo i periodi in cui un sensore risulta aperto mentre la macchina
 # risulta accesa.
@@ -188,7 +229,19 @@ sensor_count_increment <- raw_data |>
   mutate(
     daily_open_hours = coalesce(daily_open_hours, 0)
   ) |>
-  ungroup()
+  ungroup() |>
+  left_join(
+    disconnect_flags,
+    by = c(
+      "coupon",
+      "gateway_id",
+      "sensor_id",
+      "timestamp" = "affected_ts"
+    )
+  ) |>
+  mutate(
+    gateway_disconnect_affected = !is.na(gateway_disconnect_increment)
+  )
 
 # cds_colors <- sensor_count_increment |>
 #   distinct(cds_name) |>

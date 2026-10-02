@@ -56,6 +56,15 @@ if (!"daily_open_hours" %in% names(dati)) {
     mutate(daily_open_hours = 0)
 }
 
+# Compatibilita' con dataset precedenti al flag di disconnessione gateway.
+if (!"gateway_disconnect_affected" %in% names(dati)) {
+  dati <- dati |>
+    mutate(gateway_disconnect_affected = FALSE)
+}
+
+nota_disconnessione_gateway <-
+  ", dato possibilmente alterato da una disconnessione del gateway"
+
 raw_life_data <- readRDS(here("02_Output", "raw_data.rds")) |>
   mutate(timestamp = with_tz(timestamp, "Europe/Rome"))
 
@@ -142,6 +151,10 @@ dati_attivazioni_orarie_base <- dati |>
     } else {
       NA_real_
     },
+    gateway_disconnect_affected = any(
+      gateway_disconnect_affected,
+      na.rm = TRUE
+    ),
     .groups = "drop"
   )
 
@@ -2410,6 +2423,10 @@ server <- function(input, output, session) {
         group_by(cds_name, sensor_description) |>
         summarise(
           attivazioni_medie = mean(daily_count, na.rm = TRUE),
+          gateway_disconnect_affected = any(
+            gateway_disconnect_affected,
+            na.rm = TRUE
+          ),
           .groups = "drop"
         )
       
@@ -2443,7 +2460,9 @@ server <- function(input, output, session) {
     precedenti <- metriche_periodo(prev_inizio, prev_fine) |>
       rename(
         attivazioni_medie_precedenti = attivazioni_medie,
-        NOK_precedente = NOK
+        NOK_precedente = NOK,
+        gateway_disconnect_affected_precedente =
+          gateway_disconnect_affected
       )
     
     confronto <- correnti |>
@@ -2615,10 +2634,17 @@ server <- function(input, output, session) {
         Data = day,
         Ora = "-",
         Conteggio = round(daily_count),
-        Descrizione = if_else(
-          is.finite(daily_count) & daily_count == 0,
-          "Zero attivazioni",
-          "Anomalia statistica giornaliera"
+        Descrizione = paste0(
+          if_else(
+            is.finite(daily_count) & daily_count == 0,
+            "Zero attivazioni",
+            "Anomalia statistica giornaliera"
+          ),
+          if_else(
+            gateway_disconnect_affected,
+            nota_disconnessione_gateway,
+            ""
+          )
         )
       )
     
@@ -2654,7 +2680,12 @@ server <- function(input, output, session) {
         Descrizione = paste0(
           "Conteggio orario >= 4 x mediana oraria (",
           round(mediana_oraria, 1),
-          ")"
+          ")",
+          if_else(
+            gateway_disconnect_affected,
+            nota_disconnessione_gateway,
+            ""
+          )
         )
       )
     
@@ -2677,12 +2708,34 @@ server <- function(input, output, session) {
           sep = " - "
         ),
         NOK = round(NOK, 3),
-        Descrizione = case_when(
-          NOK < limite_inf ~ paste0("NOK sotto il limite inferiore (", round(limite_inf, 3), ")"),
-          NOK > limite_sup ~ paste0("NOK sopra il limite superiore (", round(limite_sup, 3), ")"),
-          TRUE ~ "NOK fuori range"
+        Descrizione = paste0(
+          case_when(
+            NOK < limite_inf ~ paste0(
+              "NOK sotto il limite inferiore (",
+              round(limite_inf, 3),
+              ")"
+            ),
+            NOK > limite_sup ~ paste0(
+              "NOK sopra il limite superiore (",
+              round(limite_sup, 3),
+              ")"
+            ),
+            TRUE ~ "NOK fuori range"
+          ),
+          if_else(
+            gateway_disconnect_affected,
+            nota_disconnessione_gateway,
+            ""
+          )
         )
       )
+    
+    periodo_affetto_disconnessione <- base_giornaliera |>
+      filter(day >= inizio, day <= fine) |>
+      summarise(
+        flag = any(gateway_disconnect_affected, na.rm = TRUE)
+      ) |>
+      pull(flag)
     
     tab_utilizzo_anomalo <- if (
       identical(utilizzo_stato, "Elevato") ||
@@ -2700,9 +2753,27 @@ server <- function(input, output, session) {
         Descrizione = if (
           identical(utilizzo_stato, "Elevato")
         ) {
-          paste0("Utilizzo sopra P90 (", round(p90_u, 3), ")")
+          paste0(
+            "Utilizzo sopra P90 (",
+            round(p90_u, 3),
+            ")",
+            if (isTRUE(periodo_affetto_disconnessione)) {
+              nota_disconnessione_gateway
+            } else {
+              ""
+            }
+          )
         } else {
-          paste0("Utilizzo sotto P10 (", round(p10_u, 3), ")")
+          paste0(
+            "Utilizzo sotto P10 (",
+            round(p10_u, 3),
+            ")",
+            if (isTRUE(periodo_affetto_disconnessione)) {
+              nota_disconnessione_gateway
+            } else {
+              ""
+            }
+          )
         }
       )
     } else {
@@ -3834,6 +3905,10 @@ server <- function(input, output, session) {
         } else {
           max(daily_uptime, na.rm = TRUE)
         },
+        gateway_disconnect_affected = any(
+          gateway_disconnect_affected,
+          na.rm = TRUE
+        ),
         .groups = "drop"
       ) |>
       mutate(
@@ -4329,9 +4404,16 @@ server <- function(input, output, session) {
         Data = day,
         Ora = "-",
         Attivazioni = round(daily_count),
-        Motivo = case_when(
-          is.finite(daily_count) & daily_count == 0 ~ "Zero attivazioni",
-          TRUE ~ "Anomalia statistica giornaliera"
+        Motivo = paste0(
+          case_when(
+            is.finite(daily_count) & daily_count == 0 ~ "Zero attivazioni",
+            TRUE ~ "Anomalia statistica giornaliera"
+          ),
+          if_else(
+            gateway_disconnect_affected,
+            nota_disconnessione_gateway,
+            ""
+          )
         )
       )
     
@@ -4345,7 +4427,12 @@ server <- function(input, output, session) {
         Motivo = paste0(
           "Attivazioni orarie >= 4 x mediana oraria (",
           round(mediana_oraria, 1),
-          ")"
+          ")",
+          if_else(
+            gateway_disconnect_affected,
+            nota_disconnessione_gateway,
+            ""
+          )
         )
       )
     
@@ -4514,7 +4601,16 @@ server <- function(input, output, session) {
         NOK = round(NOK_giornaliero, 3),
         `Limite inferiore` = round(limite_nok_inf, 3),
         `Limite superiore` = round(limite_nok_sup, 3),
-        Direzione
+        Direzione,
+        Descrizione = paste0(
+          "NOK ",
+          tolower(Direzione),
+          if_else(
+            gateway_disconnect_affected,
+            nota_disconnessione_gateway,
+            ""
+          )
+        )
       )
   })
   
@@ -4902,7 +4998,8 @@ server <- function(input, output, session) {
         hour,
         cds_name,
         sensor_description,
-        attivazioni_orarie
+        attivazioni_orarie,
+        gateway_disconnect_affected
       )
     
     tidyr::crossing(
@@ -4914,7 +5011,11 @@ server <- function(input, output, session) {
         by = c("day", "hour", "cds_name", "sensor_description")
       ) |>
       mutate(
-        attivazioni_orarie = coalesce(attivazioni_orarie, 0)
+        attivazioni_orarie = coalesce(attivazioni_orarie, 0),
+        gateway_disconnect_affected = coalesce(
+          gateway_disconnect_affected,
+          FALSE
+        )
       ) |>
       left_join(
         mediane_attivazioni_orarie |>
@@ -4952,6 +5053,10 @@ server <- function(input, output, session) {
       summarise(
         attivazioni_giornaliere = sum(attivazioni_orarie, na.rm = TRUE),
         ore_macchina = n_distinct(hour),
+        gateway_disconnect_affected = any(
+          gateway_disconnect_affected,
+          na.rm = TRUE
+        ),
         .groups = "drop"
       )
     
@@ -4965,6 +5070,7 @@ server <- function(input, output, session) {
           ore_aperte = 1,
           anomalia_oraria,
           mediana_oraria,
+          gateway_disconnect_affected,
           etichetta_ore_aperte = "Ora macchina"
         )
     } else {
@@ -4976,6 +5082,10 @@ server <- function(input, output, session) {
         summarise(
           attivazioni = mean(attivazioni_giornaliere, na.rm = TRUE),
           ore_aperte = mean(ore_macchina, na.rm = TRUE),
+          gateway_disconnect_affected = any(
+            gateway_disconnect_affected,
+            na.rm = TRUE
+          ),
           .groups = "drop"
         ) |>
         mutate(
