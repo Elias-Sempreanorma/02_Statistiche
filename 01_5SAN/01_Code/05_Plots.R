@@ -1938,20 +1938,12 @@ dashboard_ui <- fluidPage(
 )
 
 
-ui <- if (!IS_WEB_MODE) {
-  dashboard_ui
+ui <- if (IS_WEB_MODE) {
+  fluidPage(
+    uiOutput("web_gate")
+  )
 } else {
-  function(req) {
-    query_string <- req$QUERY_STRING
-    if (is.null(query_string)) query_string <- ""
-
-    access <- valida_accesso_web(parseQueryString(query_string))
-    if (!isTRUE(access$ok)) {
-      return(risposta_errore_web(access$status, access$reason))
-    }
-
-    dashboard_ui
-  }
+  dashboard_ui
 }
 
 server <- function(input, output, session) {
@@ -1973,6 +1965,30 @@ server <- function(input, output, session) {
     }
 
     valida_accesso_web(web_query())
+  })
+  
+  output$web_gate <- renderUI({
+    if (!IS_WEB_MODE) return(NULL)
+
+    access <- web_access()
+
+    if (!isTRUE(access$ok)) {
+      return(
+        div(
+          style = "min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:#F5F6F7;",
+          div(
+            style = "max-width:560px;width:100%;background:#fff;border:1px solid #DDE4EA;border-radius:10px;padding:34px;box-sizing:border-box;box-shadow:0 4px 18px rgba(0,0,0,.06);",
+            h2(
+              if (identical(as.integer(access$status), 503L)) "Servizio non disponibile" else "Accesso non consentito",
+              style = "margin-top:0;color:#234A66;"
+            ),
+            p(access$reason, style = "color:#5F6B76;font-size:16px;margin-bottom:0;")
+          )
+        )
+      )
+    }
+
+    dashboard_ui
   })
   
   # Sorgente unica della macchina per tutta la dashboard.
