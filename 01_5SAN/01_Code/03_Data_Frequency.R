@@ -10,9 +10,10 @@ library(here)
 # - uptime e' cumulativo in secondi e si azzera al reset del gateway.
 # - se uptime_B < uptime_A, il reset e' avvenuto.
 # - restart_ts = timestamp_B - uptime_B.
-# - per ogni sensore del gateway considero il primo count con timestamp
-#   successivo a restart_ts e ne calcolo l'incremento rispetto al count
-#   precedente dello stesso sensore.
+# - per ogni sensore del gateway considero il primo count successivo
+#   al timestamp dell'ultimo SystemInfo prima del reset + 1 ora.
+#   Ne calcolo l'incremento rispetto al count precedente dello stesso sensore.
+#   restart_ts resta usato per la stima del riavvio e dell'uptime.
 # - una disconnessione rilevante viene registrata solo quando almeno un
 #   sensore mostra un primo incremento > 1.
 # - incrementi 0 o 1 non generano da soli un evento di disconnessione.
@@ -173,13 +174,17 @@ reset_results <- lapply(seq_len(nrow(reset_candidates)), function(i) {
 
   if (length(sensor_ids) == 0) return(empty_reset_result())
 
+  # I conteggi possono arrivare prima del riavvio stimato dall'uptime.
+  # Cerco la ripresa oltre l'ora coperta dall'ultimo SystemInfo precedente.
+  count_search_start <- reset_row$previous_timestamp + hours(1)
+
   first_after_by_sensor <- lapply(sensor_ids, function(sid) {
     sensor_data <- gateway_counts |>
       filter(sensor_id == sid) |>
       arrange(timestamp)
 
     after <- sensor_data |>
-      filter(timestamp > reset_row$restart_ts) |>
+      filter(timestamp > count_search_start) |>
       slice_head(n = 1)
 
     if (nrow(after) == 0) return(NULL)
