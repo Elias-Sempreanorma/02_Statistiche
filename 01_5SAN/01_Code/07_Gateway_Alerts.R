@@ -6,23 +6,11 @@ library(here)
 library(blastula)
 
 events_path <- here("02_Output", "gateway_disconnect_events.rds")
-sensor_events_path <- here(
-  "02_Output",
-  "gateway_disconnect_sensor_events.rds"
-)
 
 if (!file.exists(events_path)) {
   message("Nessun file gateway_disconnect_events.rds: salto notifiche gateway.")
 } else {
   gateway_disconnect_events <- readRDS(events_path)
-
-  gateway_disconnect_sensor_events <- if (
-    file.exists(sensor_events_path)
-  ) {
-    readRDS(sensor_events_path)
-  } else {
-    tibble()
-  }
 
   con_stats_alerts <- connetti_postgres(Sys.getenv("PG_DB_STATS"))
 
@@ -91,22 +79,12 @@ if (!file.exists(events_path)) {
     "
   )
 
-  # Dettaglio strutturato dei singoli sensori che hanno mostrato incremento > 1.
+  # La tabella di dettaglio per sensore non e' piu' necessaria:
+  # le evidenze restano aggregate in gateway_disconnections.sensor_evidence,
+  # mentre il dettaglio RDS continua a servire internamente per i flag KPI.
   dbExecute(
     con_stats_alerts,
-    "
-    CREATE TABLE IF NOT EXISTS public.gateway_disconnection_sensor_events (
-      id BIGSERIAL PRIMARY KEY,
-      disconnection_id BIGINT NOT NULL
-        REFERENCES public.gateway_disconnections(id) ON DELETE CASCADE,
-      sensor_id VARCHAR(255) NOT NULL,
-      affected_ts TIMESTAMPTZ NOT NULL,
-      accumulated_increment DOUBLE PRECISION NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      CONSTRAINT gateway_disconnection_sensor_events_unique
-        UNIQUE (disconnection_id, sensor_id, affected_ts)
-    )
-    "
+    "DROP TABLE IF EXISTS public.gateway_disconnection_sensor_events"
   )
 
   max_age_hours <- suppressWarnings(
@@ -126,7 +104,7 @@ if (!file.exists(events_path)) {
       ev <- gateway_disconnect_events[i, ]
       suppress_email <- ev$systeminfo_b_ts < alert_cutoff
 
-      parent <- dbGetQuery(
+      dbExecute(
         con_stats_alerts,
         "
         INSERT INTO public.gateway_disconnections (
@@ -175,7 +153,6 @@ if (!file.exists(events_path)) {
           recovered_start_ts = NULL,
           recovered_end_ts = NULL,
           recovered_minutes = NULL
-        RETURNING id
         ",
         params = list(
           ev$coupon,
@@ -199,46 +176,6 @@ if (!file.exists(events_path)) {
         )
       )
 
-      disconnection_id <- parent$id[1]
-
-      if (
-        nrow(gateway_disconnect_sensor_events) > 0 &&
-        is.finite(disconnection_id)
-      ) {
-        dettagli <- gateway_disconnect_sensor_events |>
-          filter(
-            gateway_id == ev$gateway_id,
-            systeminfo_b_ts == ev$systeminfo_b_ts
-          )
-
-        if (nrow(dettagli) > 0) {
-          for (j in seq_len(nrow(dettagli))) {
-            det <- dettagli[j, ]
-
-            dbExecute(
-              con_stats_alerts,
-              "
-              INSERT INTO public.gateway_disconnection_sensor_events (
-                disconnection_id,
-                sensor_id,
-                affected_ts,
-                accumulated_increment
-              )
-              VALUES ($1, $2, $3, $4)
-              ON CONFLICT (disconnection_id, sensor_id, affected_ts)
-              DO UPDATE SET
-                accumulated_increment = EXCLUDED.accumulated_increment
-              ",
-              params = list(
-                disconnection_id,
-                det$sensor_id,
-                det$affected_ts,
-                det$accumulated_increment
-              )
-            )
-          }
-        }
-      }
     }
   }
 
