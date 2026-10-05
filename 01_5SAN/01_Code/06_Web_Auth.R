@@ -47,6 +47,9 @@ app <- list(
     }
 
     query_string <- req$HTTP_X_ORIGINAL_ARGS
+    if (is.null(query_string) || !nzchar(query_string)) {
+      query_string <- req$QUERY_STRING
+    }
     if (is.null(query_string)) query_string <- ""
 
     query <- shiny::parseQueryString(query_string)
