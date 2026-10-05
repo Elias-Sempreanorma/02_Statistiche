@@ -18,6 +18,8 @@ services:
   shiny_web:
     image: san-dashboard:latest
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
       - "127.0.0.1:3841:3838"
     volumes:
