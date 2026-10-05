@@ -189,6 +189,38 @@ nota_disconnessione_gateway <-
 raw_life_data <- readRDS(here("02_Output", "raw_data.rds")) |>
   mutate(timestamp = with_tz(timestamp, "Europe/Rome"))
 
+alerts_path <- here("02_Output", "alerts.rds")
+alerts_data <- if (file.exists(alerts_path)) {
+  readRDS(alerts_path) |>
+    mutate(
+      period_start = with_tz(period_start, "Europe/Rome"),
+      period_end = with_tz(period_end, "Europe/Rome"),
+      generated_at = with_tz(generated_at, "Europe/Rome")
+    )
+} else {
+  tibble(
+    alert_id = character(),
+    alert_type = character(),
+    alert_scope = character(),
+    period_start = as.POSIXct(character(), tz = "Europe/Rome"),
+    period_end = as.POSIXct(character(), tz = "Europe/Rome"),
+    generated_at = as.POSIXct(character(), tz = "Europe/Rome"),
+    machine_code = character(),
+    machine_serial_number = character(),
+    machine_name = character(),
+    coupon = character(),
+    gateway_id = character(),
+    gateway_name = character(),
+    sensor_id = character(),
+    sensor_code = character(),
+    sensor_description = character(),
+    functional_unit = character(),
+    signal_description = character(),
+    signal_data_text = character(),
+    source = character()
+  )
+}
+
 # La vita temporale del componente non usa piu' il campo lifetime inviato
 # dal dispositivo. Parte dalla prima osservazione assoluta del CdS sulla
 # macchina ed e' quindi legata esclusivamente a coupon + cds_name:
@@ -276,22 +308,9 @@ sensori_lookup <- dati |>
   distinct(coupon, cds_name, sensor_description) |>
   arrange(coupon, cds_name)
 
-# Un evento puo' essere promosso ad allarme solo quando il sensore dispone
-# di almeno 30 osservazioni reali di count nello storico disponibile.
-# Il conteggio viene precalcolato una sola volta all'avvio e NON modifica
-# dati, KPI, NOK o utilizzo: limita soltanto la classificazione come allarme.
-MIN_OSSERVAZIONI_ALLARME <- 30L
-
-sensori_allarmabili <- dati |>
-  filter(is.finite(count)) |>
-  count(
-    coupon,
-    cds_name,
-    sensor_description,
-    name = "n_osservazioni_conteggio"
-  ) |>
-  filter(n_osservazioni_conteggio >= MIN_OSSERVAZIONI_ALLARME) |>
-  select(coupon, cds_name, sensor_description)
+# Stessa regola usata dall'ETL: nessun alert prima di 30 osservazioni
+# reali del contatore. Qui il lookup resta utile ai report storici.
+sensori_allarmabili <- calcola_sensori_allarmabili(dati)
 
 # ---------------------------------------------------------------------------
 # Base oraria precalcolata una sola volta all'avvio di Shiny.
@@ -2580,6 +2599,14 @@ server <- function(input, output, session) {
             "Giornate in cui il NOK giornaliero del sensore è fuori dai limiti media storica ± 3σ."
           ),
           uiOutput("modal_allarmi_nok_panel")
+        )
+,        div(
+          class = "alarm-section",
+          h4("Disconnessioni gateway", class = "titolo-sezione"),
+          p(
+            "Segnalazioni di possibile disconnessione del gateway supportate da conteggi accumulati sui sensori."
+          ),
+          uiOutput("modal_allarmi_gateway_panel")
         )
       )
     }
@@ -4890,245 +4917,100 @@ server <- function(input, output, session) {
   # 1) anomalie sulle attivazioni: giornate escluse dal LOF;
   # 2) anomalie NOK: NOK giornaliero fuori da media storica +/- 3 sigma.
   # ---------------------------------------------------------------------
-  allarmi_attivazioni_modal <- reactive({
-    
+  # ---------------------------------------------------------------------
+  # Gli alert mostrati in dashboard sono gli stessi persistiti nel DB.
+  # In questo modo ID, soglia delle 30 osservazioni e logica di rilevazione
+  # hanno un'unica sorgente e non vengono ricalcolati ad ogni apertura.
+  # ---------------------------------------------------------------------
+  alerts_filtrati_modal <- reactive({
     filtri <- filtri_nok_modal()
-    
-    anomalie_giornaliere <- valori_giornalieri_modal_nok() |>
-      semi_join(
-        sensori_allarmabili |>
-          filter(coupon == filtri$macchina) |>
-          select(-coupon),
-        by = c("cds_name", "sensor_description")
-      ) |>
-      filter(
-        outlier_lof,
-        day >= filtri$date[1],
-        day <= filtri$date[2]
-      ) |>
-      transmute(
-        Sensore = paste(cds_name, sensor_description, sep = " - "),
-        Data = day,
-        Ora = "-",
-        Attivazioni = round(daily_count),
-        Motivo = paste0(
-          case_when(
-            is.finite(daily_count) & daily_count == 0 ~ "Zero attivazioni",
-            TRUE ~ "Anomalia statistica giornaliera"
-          ),
-          if_else(
-            gateway_disconnect_affected,
-            nota_disconnessione_gateway,
-            ""
-          )
-        )
-      )
-    
-    anomalie_orarie <- dati_attivazioni_orarie_modal() |>
-      filter(anomalia_oraria) |>
-      transmute(
-        Sensore = paste(cds_name, sensor_description, sep = " - "),
-        Data = day,
-        Ora = format(hour, "%H:00", tz = "Europe/Rome"),
-        Attivazioni = round(attivazioni_orarie),
-        Motivo = paste0(
-          "Attivazioni orarie >= 4 x mediana oraria (",
-          round(mediana_oraria, 1),
-          ")",
-          if_else(
-            gateway_disconnect_affected,
-            nota_disconnessione_gateway,
-            ""
-          )
-        )
-      )
-    
-    bind_rows(
-      anomalie_giornaliere,
-      anomalie_orarie
-    ) |>
-      distinct() |>
-      arrange(Data, Ora, Sensore)
-  })
-  
-  allarmi_sensori_aperti_modal <- reactive({
-    
-    filtri <- filtri_nok_modal()
-    
-    raw_data_allarmi <- raw_life_data |>
-      semi_join(
-        sensori_allarmabili,
-        by = c("coupon", "cds_name", "sensor_description")
-      ) |>
-      mutate(
-        field = if_else(
-          is.na(field) | trimws(field) == "",
-          "(Non specificato)",
-          field
-        ),
-        timestamp_local = with_tz(
-          timestamp,
-          "Europe/Rome"
-        ),
-        day = as.Date(
-          timestamp_local,
-          tz = "Europe/Rome"
-        )
-      ) |>
+
+    alerts_data |>
       filter(
         coupon == filtri$macchina,
-        cds_name %in% filtri$sensori,
-        day >= filtri$date[1],
-        day <= filtri$date[2]
-      )
-    
-    gruppi_aperti <- c(
-      "company", "field", "project", "coupon",
-      "machine_name", "gateway_name", "cds_name",
-      "cds_description", "cds_brand", "cds_use",
-      "cds_vds", "sensor_description"
-    )
-    
-    raw_data_allarmi |>
-      group_by(
-        across(all_of(gruppi_aperti)),
-        day
-      ) |>
-      arrange(
-        timestamp_local,
-        .by_group = TRUE
-      ) |>
-      mutate(
-        previous_timestamp = lag(timestamp_local),
-        previous_status = lag(status),
-        previous_raw_count = lag(count),
-        sensore_aperto_intervallo = (
-          !is.na(previous_timestamp) &
-          is.finite(status) &
-          is.finite(previous_status) &
-          status == 0 &
-          previous_status == 0 &
-          is.finite(count) &
-          is.finite(previous_raw_count) &
-          count == previous_raw_count
-        ),
-        nuovo_evento_aperto = (
-          sensore_aperto_intervallo &
-          !lag(
-            sensore_aperto_intervallo,
-            default = FALSE
-          )
-        ),
-        open_event_id = cumsum(
-          nuovo_evento_aperto
-        )
-      ) |>
-      filter(sensore_aperto_intervallo) |>
-      group_by(
-        across(all_of(gruppi_aperti)),
-        day,
-        open_event_id
-      ) |>
-      summarise(
-        Inizio = min(
-          previous_timestamp,
-          na.rm = TRUE
-        ),
-        Fine = max(
-          timestamp_local,
-          na.rm = TRUE
-        ),
-        ore_consecutive = as.numeric(
-          difftime(
-            Fine,
-            Inizio,
-            units = "hours"
-          )
-        ),
-        .groups = "drop"
-      ) |>
-      filter(
-        is.finite(ore_consecutive),
-        ore_consecutive > 1
-      ) |>
-      arrange(Inizio, cds_name) |>
-      transmute(
-        Sensore = paste(
-          cds_name,
-          sensor_description,
-          sep = " - "
-        ),
-        Data = day,
-        Inizio,
-        Fine,
-        `Almeno ore consecutive` = round(
-          ore_consecutive,
-          2
-        )
+        as.Date(period_end, tz = "Europe/Rome") >= filtri$date[1],
+        as.Date(period_start, tz = "Europe/Rome") <= filtri$date[2]
       )
   })
-  
-  allarmi_nok_modal <- reactive({
-    
+
+  allarmi_attivazioni_modal <- reactive({
     filtri <- filtri_nok_modal()
-    
-    valori_giornalieri_modal_nok() |>
-      semi_join(
-        sensori_allarmabili |>
-          filter(coupon == filtri$macchina) |>
-          select(-coupon),
-        by = c("cds_name", "sensor_description")
-      ) |>
+
+    alerts_filtrati_modal() |>
       filter(
-        day >= filtri$date[1],
-        day <= filtri$date[2]
+        alert_type %in% c("activation_daily", "activation_hourly"),
+        sensor_code %in% filtri$sensori
       ) |>
-      left_join(
-        nmn_storico_modal_nok(),
-        by = c("cds_name", "sensor_description")
-      ) |>
-      left_join(
-        statistiche_nok_storiche_modal(),
-        by = c("cds_name", "sensor_description")
-      ) |>
-      mutate(
-        NOK_giornaliero = case_when(
-          is.na(daily_value) | is.na(NMN) | NMN == 0 ~ NA_real_,
-          TRUE ~ daily_value / NMN
-        ),
-        Direzione = case_when(
-          NOK_giornaliero < limite_nok_inf ~ "Sotto limite",
-          NOK_giornaliero > limite_nok_sup ~ "Sopra limite",
-          TRUE ~ NA_character_
-        )
-      ) |>
-      filter(
-        is.finite(NOK_giornaliero),
-        is.finite(limite_nok_inf),
-        is.finite(limite_nok_sup),
-        NOK_giornaliero < limite_nok_inf |
-          NOK_giornaliero > limite_nok_sup
-      ) |>
-      arrange(day, cds_name) |>
+      arrange(period_start, sensor_code, alert_id) |>
       transmute(
-        Sensore = paste(cds_name, sensor_description, sep = " - "),
-        Data = day,
-        NOK = round(NOK_giornaliero, 3),
-        `Limite inferiore` = round(limite_nok_inf, 3),
-        `Limite superiore` = round(limite_nok_sup, 3),
-        Direzione,
-        Descrizione = paste0(
-          "NOK ",
-          tolower(Direzione),
-          if_else(
-            gateway_disconnect_affected,
-            nota_disconnessione_gateway,
-            ""
-          )
-        )
+        `ID segnalazione` = alert_id,
+        Sensore = paste(sensor_code, sensor_description, sep = " - "),
+        Data = as.Date(period_start, tz = "Europe/Rome"),
+        Ora = if_else(
+          alert_type == "activation_hourly",
+          format(period_start, "%H:00", tz = "Europe/Rome"),
+          "-"
+        ),
+        Attivazioni = signal_data_text,
+        Motivo = signal_description
       )
   })
-  
+
+  allarmi_sensori_aperti_modal <- reactive({
+    filtri <- filtri_nok_modal()
+
+    alerts_filtrati_modal() |>
+      filter(
+        alert_type == "sensor_open",
+        sensor_code %in% filtri$sensori
+      ) |>
+      arrange(period_start, sensor_code, alert_id) |>
+      transmute(
+        `ID segnalazione` = alert_id,
+        Sensore = paste(sensor_code, sensor_description, sep = " - "),
+        Data = as.Date(period_start, tz = "Europe/Rome"),
+        Inizio = period_start,
+        Fine = period_end,
+        Dati = signal_data_text
+      )
+  })
+
+  allarmi_nok_modal <- reactive({
+    filtri <- filtri_nok_modal()
+
+    alerts_filtrati_modal() |>
+      filter(
+        alert_type == "nok_daily",
+        sensor_code %in% filtri$sensori
+      ) |>
+      arrange(period_start, sensor_code, alert_id) |>
+      transmute(
+        `ID segnalazione` = alert_id,
+        Sensore = paste(sensor_code, sensor_description, sep = " - "),
+        Data = as.Date(period_start, tz = "Europe/Rome"),
+        Descrizione = signal_description,
+        Dati = signal_data_text
+      )
+  })
+
+  allarmi_gateway_modal <- reactive({
+    alerts_filtrati_modal() |>
+      filter(alert_type == "gateway_disconnection") |>
+      arrange(period_start, alert_id) |>
+      transmute(
+        `ID segnalazione` = alert_id,
+        Gateway = if_else(
+          is.na(gateway_name) | gateway_name == "",
+          gateway_id,
+          gateway_name
+        ),
+        Inizio = period_start,
+        Fine = period_end,
+        Descrizione = signal_description,
+        Dati = signal_data_text
+      )
+  })
+
   output$modal_allarmi_attivazioni_panel <- renderUI({
     tabella <- allarmi_attivazioni_modal()
     
@@ -5173,6 +5055,21 @@ server <- function(input, output, session) {
     
     DTOutput("modal_allarmi_nok")
   })
+
+  output$modal_allarmi_gateway_panel <- renderUI({
+    tabella <- allarmi_gateway_modal()
+
+    if (nrow(tabella) == 0) {
+      return(
+        div(
+          class = "alarm-empty",
+          "Nessuna disconnessione gateway rilevata nel periodo selezionato."
+        )
+      )
+    }
+
+    DTOutput("modal_allarmi_gateway")
+  })
   
   output$modal_allarmi_attivazioni <- renderDT({
     allarmi_attivazioni_modal() |>
@@ -5195,6 +5092,17 @@ server <- function(input, output, session) {
   output$modal_allarmi_nok <- renderDT({
     allarmi_nok_modal() |>
       mutate(Data = format(Data, "%d-%m-%Y"))
+  },
+  rownames = FALSE,
+  options = list(pageLength = 15, dom = "tip"))
+
+  
+  output$modal_allarmi_gateway <- renderDT({
+    allarmi_gateway_modal() |>
+      mutate(
+        Inizio = format(Inizio, "%d-%m-%Y %H:%M:%S", tz = "Europe/Rome"),
+        Fine = format(Fine, "%d-%m-%Y %H:%M:%S", tz = "Europe/Rome")
+      )
   },
   rownames = FALSE,
   options = list(pageLength = 15, dom = "tip"))

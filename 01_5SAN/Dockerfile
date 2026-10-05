@@ -29,6 +29,7 @@ RUN install2.r --error --skipinstalled \
     dbscan \
     gridExtra \
     blastula \
+    jsonlite \
     otp 
 
 RUN rm -rf /srv/shiny-server/*

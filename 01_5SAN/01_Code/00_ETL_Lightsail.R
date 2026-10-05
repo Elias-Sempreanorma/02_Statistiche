@@ -11,7 +11,7 @@ scripts <- c(
   "02_Data_Load.R",
   "03_Data_Frequency.R",
   "04_Counter_Analysis.R",
-  "07_Gateway_Alerts.R"
+  "07_Alerts.R"
 )
 
 for (script in scripts) {
