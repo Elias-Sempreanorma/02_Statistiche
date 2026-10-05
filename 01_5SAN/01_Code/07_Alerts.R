@@ -114,11 +114,6 @@ alert_attivazioni_giornaliere <- base_giornaliera |>
       "Attivazioni giornaliere: ",
       round(daily_count),
       if_else(
-        is.finite(lof_score),
-        paste0("; LOF: ", round(lof_score, 3)),
-        ""
-      ),
-      if_else(
         gateway_disconnect_affected,
         "; dato possibilmente alterato da una disconnessione del gateway",
         ""
