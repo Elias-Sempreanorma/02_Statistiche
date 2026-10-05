@@ -22,6 +22,31 @@ if (!APP_MODE %in% c("internal", "web")) {
 }
 IS_WEB_MODE <- identical(APP_MODE, "web")
 
+# Configurazione OTP per la sola modalita' web.
+# La secret non viene versionata: arriva dall'ambiente del container.
+OTP_SECRET <- trimws(Sys.getenv("OTP_SECRET", unset = ""))
+OTP_DIGITS <- suppressWarnings(as.integer(Sys.getenv("OTP_DIGITS", unset = "6")))
+OTP_PERIOD <- suppressWarnings(as.numeric(Sys.getenv("OTP_PERIOD", unset = "30")))
+OTP_ALGORITHM <- tolower(trimws(Sys.getenv("OTP_ALGORITHM", unset = "sha1")))
+OTP_BEHIND <- suppressWarnings(as.integer(Sys.getenv("OTP_BEHIND", unset = "1")))
+
+if (is.na(OTP_DIGITS) || OTP_DIGITS < 6L) OTP_DIGITS <- 6L
+if (is.na(OTP_PERIOD) || OTP_PERIOD <= 0) OTP_PERIOD <- 30
+if (!OTP_ALGORITHM %in% c("sha1", "sha256", "sha512")) OTP_ALGORITHM <- "sha1"
+if (is.na(OTP_BEHIND) || OTP_BEHIND < 0L) OTP_BEHIND <- 1L
+
+OTP_CONFIGURED <- nzchar(OTP_SECRET)
+otp_verifier <- if (IS_WEB_MODE && OTP_CONFIGURED) {
+  otp::TOTP$new(
+    secret = OTP_SECRET,
+    digits = OTP_DIGITS,
+    period = OTP_PERIOD,
+    algorithm = OTP_ALGORITHM
+  )
+} else {
+  NULL
+}
+
 # Le immagini non sono nella cartella www: le espongo a Shiny con un
 # resource path dedicato. Se la cartella non esiste, l'app continua comunque
 # a funzionare e nella Home non viene mostrato alcuno schema.
@@ -333,7 +358,7 @@ mappa_sensori <- bind_rows(
   )
 
 
-ui <- fluidPage(
+dashboard_ui <- fluidPage(
   
   tags$head(
     tags$script(HTML("
@@ -1816,6 +1841,15 @@ ui <- fluidPage(
   )
 )
 
+
+ui <- if (IS_WEB_MODE) {
+  fluidPage(
+    uiOutput("web_gate")
+  )
+} else {
+  dashboard_ui
+}
+
 server <- function(input, output, session) {
   
   # Parametri della querystring, usati soltanto in modalita' web.
@@ -1827,22 +1861,117 @@ server <- function(input, output, session) {
     parseQueryString(search)
   })
   
+  # Verifica accesso WEB:
+  #   ?coupon=ABCDE&otp=123456
+  # Prima viene verificato l'OTP, poi l'esistenza del coupon.
+  web_access <- reactive({
+    if (!IS_WEB_MODE) {
+      return(list(ok = TRUE, coupon = NULL, reason = NULL))
+    }
+    
+    if (!OTP_CONFIGURED || is.null(otp_verifier)) {
+      return(list(
+        ok = FALSE,
+        coupon = NULL,
+        reason = "Servizio temporaneamente non disponibile."
+      ))
+    }
+    
+    query <- web_query()
+    coupon <- query[["coupon"]]
+    otp_code <- query[["otp"]]
+    
+    if (is.null(coupon) || length(coupon) < 1 ||
+        is.null(otp_code) || length(otp_code) < 1) {
+      return(list(
+        ok = FALSE,
+        coupon = NULL,
+        reason = "Richiesta non valida."
+      ))
+    }
+    
+    coupon <- trimws(as.character(coupon[[1]]))
+    otp_code <- trimws(as.character(otp_code[[1]]))
+    
+    if (!nzchar(coupon) || !grepl(paste0("^\\d{", OTP_DIGITS, "}$"), otp_code)) {
+      return(list(
+        ok = FALSE,
+        coupon = NULL,
+        reason = "Richiesta non valida."
+      ))
+    }
+    
+    otp_ok <- tryCatch(
+      !is.null(otp_verifier$verify(otp_code, behind = OTP_BEHIND)),
+      error = function(e) FALSE
+    )
+    
+    if (!isTRUE(otp_ok)) {
+      return(list(
+        ok = FALSE,
+        coupon = NULL,
+        reason = "Codice di accesso non valido o scaduto."
+      ))
+    }
+    
+    if (!coupon %in% macchine_lookup$coupon) {
+      return(list(
+        ok = FALSE,
+        coupon = NULL,
+        reason = "Macchina non disponibile."
+      ))
+    }
+    
+    list(ok = TRUE, coupon = coupon, reason = NULL)
+  })
+  
+  # In modalita' web l'intera dashboard viene inviata al client solo dopo
+  # che OTP e coupon sono stati verificati.
+  if (IS_WEB_MODE) {
+    output$web_gate <- renderUI({
+      access <- web_access()
+      
+      if (!isTRUE(access$ok)) {
+        return(
+          div(
+            style = paste(
+              "min-height:100vh;display:flex;align-items:center;",
+              "justify-content:center;background:#F5F6F7;padding:24px;"
+            ),
+            div(
+              style = paste(
+                "max-width:560px;width:100%;background:#FFFFFF;",
+                "border:1px solid #DDE4EA;border-radius:10px;",
+                "padding:34px;box-shadow:0 4px 18px rgba(0,0,0,.06);"
+              ),
+              h2(
+                "Accesso non consentito",
+                style = "margin-top:0;color:#234A66;font-weight:700;"
+              ),
+              p(
+                access$reason,
+                style = "color:#5F6B76;font-size:16px;margin-bottom:0;"
+              )
+            )
+          )
+        )
+      }
+      
+      dashboard_ui
+    })
+  }
+  
   # Sorgente unica della macchina per tutta la dashboard.
-  # Internal -> selectInput; Web -> ?coupon=...
+  # Internal -> selectInput; Web -> coupon validato dalla querystring.
   macchina_attiva <- reactive({
     if (!IS_WEB_MODE) {
       req(input$macchina)
       return(as.character(input$macchina))
     }
     
-    query <- web_query()
-    coupon <- query[["coupon"]]
-    
-    req(!is.null(coupon), length(coupon) >= 1)
-    coupon <- trimws(as.character(coupon[[1]]))
-    req(nzchar(coupon), coupon %in% macchine_lookup$coupon)
-    
-    coupon
+    access <- web_access()
+    req(isTRUE(access$ok), nzchar(access$coupon))
+    access$coupon
   })
   
   # Download dei DOCX presenti in 00_Data/03_Documenti.
