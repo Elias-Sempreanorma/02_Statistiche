@@ -29,6 +29,19 @@ services:
       TZ: Europe/Rome
       APP_MODE: web
 
+  web_auth:
+    image: san-dashboard:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./02_Output:/srv/shiny-server/02_Output:ro
+    environment:
+      TZ: Europe/Rome
+    command: ["Rscript", "01_Code/06_Web_Auth.R"]
+
   etl:
     image: san-dashboard:latest
     env_file:
