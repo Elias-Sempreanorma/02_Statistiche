@@ -15,11 +15,14 @@ disconnect_sensor_events_path <- here(
 )
 
 fmt_iso_utc <- function(x) {
-  if (length(x) == 0 || is.na(x)) return(NA_character_)
-  format(
+  # Usata anche dentro mutate(): mantiene una stringa per ogni timestamp.
+  if (length(x) == 0) return(character())
+  result <- format(
     with_tz(as.POSIXct(x), "UTC"),
     "%Y-%m-%dT%H:%M:%OS6Z"
   )
+  result[is.na(x)] <- NA_character_
+  result
 }
 
 fmt_mail_ts <- function(x) {
