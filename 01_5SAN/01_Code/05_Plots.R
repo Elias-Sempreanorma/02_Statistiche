@@ -276,6 +276,23 @@ sensori_lookup <- dati |>
   distinct(coupon, cds_name, sensor_description) |>
   arrange(coupon, cds_name)
 
+# Un evento puo' essere promosso ad allarme solo quando il sensore dispone
+# di almeno 30 osservazioni reali di count nello storico disponibile.
+# Il conteggio viene precalcolato una sola volta all'avvio e NON modifica
+# dati, KPI, NOK o utilizzo: limita soltanto la classificazione come allarme.
+MIN_OSSERVAZIONI_ALLARME <- 30L
+
+sensori_allarmabili <- dati |>
+  filter(is.finite(count)) |>
+  count(
+    coupon,
+    cds_name,
+    sensor_description,
+    name = "n_osservazioni_conteggio"
+  ) |>
+  filter(n_osservazioni_conteggio >= MIN_OSSERVAZIONI_ALLARME) |>
+  select(coupon, cds_name, sensor_description)
+
 # ---------------------------------------------------------------------------
 # Base oraria precalcolata una sola volta all'avvio di Shiny.
 # Le reactive dei grafici filtrano questi oggetti gia' aggregati invece di
@@ -327,6 +344,10 @@ finestre_orarie_macchina <- dati |>
   )
 
 mediane_attivazioni_orarie <- dati_attivazioni_orarie_base |>
+  semi_join(
+    sensori_allarmabili,
+    by = c("coupon", "cds_name", "sensor_description")
+  ) |>
   filter(
     is.finite(attivazioni_orarie),
     attivazioni_orarie > 0
@@ -2839,6 +2860,13 @@ server <- function(input, output, session) {
     
     base_giornaliera <- prepara_valori_giornalieri_nok(macchina, sensori)
     
+    sensori_allarmabili_report <- sensori_allarmabili |>
+      filter(
+        coupon == macchina,
+        cds_name %in% sensori
+      ) |>
+      select(cds_name, sensor_description)
+    
     # NMN e limiti storici sono calcolati escludendo il periodo del report.
     storico_pulito <- base_giornaliera |>
       filter(
@@ -3081,6 +3109,10 @@ server <- function(input, output, session) {
     
     # Anomalie attivazioni nel periodo.
     anomalie_giornaliere <- base_giornaliera |>
+      semi_join(
+        sensori_allarmabili_report,
+        by = c("cds_name", "sensor_description")
+      ) |>
       filter(
         outlier_lof,
         day >= inizio,
@@ -3113,6 +3145,10 @@ server <- function(input, output, session) {
       filter(coupon == macchina)
     
     anomalie_orarie <- dati_attivazioni_orarie_base |>
+      semi_join(
+        sensori_allarmabili,
+        by = c("coupon", "cds_name", "sensor_description")
+      ) |>
       filter(
         coupon == macchina,
         cds_name %in% sensori,
@@ -3158,6 +3194,10 @@ server <- function(input, output, session) {
       arrange(Data, Ora, Sensore)
     
     tab_nok_anomalo <- confronto |>
+      semi_join(
+        sensori_allarmabili_report,
+        by = c("cds_name", "sensor_description")
+      ) |>
       filter(nok_fuori_range) |>
       transmute(
         Macchina = nome_macchina,
@@ -4855,6 +4895,12 @@ server <- function(input, output, session) {
     filtri <- filtri_nok_modal()
     
     anomalie_giornaliere <- valori_giornalieri_modal_nok() |>
+      semi_join(
+        sensori_allarmabili |>
+          filter(coupon == filtri$macchina) |>
+          select(-coupon),
+        by = c("cds_name", "sensor_description")
+      ) |>
       filter(
         outlier_lof,
         day >= filtri$date[1],
@@ -4909,9 +4955,11 @@ server <- function(input, output, session) {
     
     filtri <- filtri_nok_modal()
     
-    raw_data_allarmi <- readRDS(
-      here("02_Output", "raw_data.rds")
-    ) |>
+    raw_data_allarmi <- raw_life_data |>
+      semi_join(
+        sensori_allarmabili,
+        by = c("coupon", "cds_name", "sensor_description")
+      ) |>
       mutate(
         field = if_else(
           is.na(field) | trimws(field) == "",
@@ -5025,6 +5073,12 @@ server <- function(input, output, session) {
     filtri <- filtri_nok_modal()
     
     valori_giornalieri_modal_nok() |>
+      semi_join(
+        sensori_allarmabili |>
+          filter(coupon == filtri$macchina) |>
+          select(-coupon),
+        by = c("cds_name", "sensor_description")
+      ) |>
       filter(
         day >= filtri$date[1],
         day <= filtri$date[2]
