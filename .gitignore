@@ -10,3 +10,5 @@
 *.pbix
 *.Rproj
 *.env
+web.Renviron
+5san-web.nginx.backup
