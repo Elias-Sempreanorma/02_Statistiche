@@ -24,6 +24,7 @@ services:
       - "127.0.0.1:3841:3838"
     volumes:
       - ./02_Output:/srv/shiny-server/02_Output:ro
+      - ./web.Renviron:/srv/shiny-server/.Renviron:ro
     environment:
       TZ: Europe/Rome
       APP_MODE: web
