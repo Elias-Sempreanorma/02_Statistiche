@@ -47,6 +47,102 @@ otp_verifier <- if (IS_WEB_MODE && OTP_CONFIGURED) {
   NULL
 }
 
+# Valida coupon + OTP. Viene usata prima di restituire l'HTML e anche
+# lato server, cosi' il coupon non viene mai considerato affidabile senza
+# una verifica valida.
+valida_accesso_web <- function(query) {
+  if (!IS_WEB_MODE) {
+    return(list(ok = TRUE, coupon = NULL, reason = NULL, status = 200L))
+  }
+
+  if (!OTP_CONFIGURED || is.null(otp_verifier)) {
+    return(list(
+      ok = FALSE,
+      coupon = NULL,
+      reason = "Servizio temporaneamente non disponibile.",
+      status = 503L
+    ))
+  }
+
+  coupon <- query[["coupon"]]
+  otp_code <- query[["otp"]]
+
+  if (is.null(coupon) || length(coupon) < 1 ||
+      is.null(otp_code) || length(otp_code) < 1) {
+    return(list(
+      ok = FALSE,
+      coupon = NULL,
+      reason = "Richiesta non valida.",
+      status = 403L
+    ))
+  }
+
+  coupon <- trimws(as.character(coupon[[1]]))
+  otp_code <- trimws(as.character(otp_code[[1]]))
+
+  if (!nzchar(coupon) || !grepl(paste0("^\\d{", OTP_DIGITS, "}$"), otp_code)) {
+    return(list(
+      ok = FALSE,
+      coupon = NULL,
+      reason = "Richiesta non valida.",
+      status = 403L
+    ))
+  }
+
+  otp_ok <- tryCatch(
+    !is.null(otp_verifier$verify(otp_code, behind = OTP_BEHIND)),
+    error = function(e) FALSE
+  )
+
+  if (!isTRUE(otp_ok)) {
+    return(list(
+      ok = FALSE,
+      coupon = NULL,
+      reason = "Codice di accesso non valido o scaduto.",
+      status = 403L
+    ))
+  }
+
+  if (!coupon %in% macchine_lookup$coupon) {
+    return(list(
+      ok = FALSE,
+      coupon = NULL,
+      reason = "Macchina non disponibile.",
+      status = 403L
+    ))
+  }
+
+  list(ok = TRUE, coupon = coupon, reason = NULL, status = 200L)
+}
+
+risposta_errore_web <- function(status, reason) {
+  titolo <- if (identical(as.integer(status), 503L)) {
+    "Servizio non disponibile"
+  } else {
+    "Accesso non consentito"
+  }
+
+  html <- paste0(
+    "<!doctype html><html lang='it'><head><meta charset='utf-8'>",
+    "<meta name='viewport' content='width=device-width,initial-scale=1'>",
+    "<title>", titolo, "</title></head>",
+    "<body style='margin:0;font-family:Arial,Helvetica,sans-serif;background:#F5F6F7;'>",
+    "<div style='min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;'>",
+    "<div style='max-width:560px;width:100%;background:#fff;border:1px solid #DDE4EA;",
+    "border-radius:10px;padding:34px;box-sizing:border-box;box-shadow:0 4px 18px rgba(0,0,0,.06);'>",
+    "<h2 style='margin-top:0;color:#234A66;'>", titolo, "</h2>",
+    "<p style='color:#5F6B76;font-size:16px;margin-bottom:0;'>", reason, "</p>",
+    "</div></div></body></html>"
+  )
+
+  shiny::httpResponse(
+    status = as.integer(status),
+    content_type = "text/html; charset=UTF-8",
+    content = html,
+    headers = list("Cache-Control" = "no-store")
+  )
+}
+
 # Le immagini non sono nella cartella www: le espongo a Shiny con un
 # resource path dedicato. Se la cartella non esiste, l'app continua comunque
 # a funzionare e nella Home non viene mostrato alcuno schema.
@@ -1842,12 +1938,20 @@ dashboard_ui <- fluidPage(
 )
 
 
-ui <- if (IS_WEB_MODE) {
-  fluidPage(
-    uiOutput("web_gate")
-  )
-} else {
+ui <- if (!IS_WEB_MODE) {
   dashboard_ui
+} else {
+  function(req) {
+    query_string <- req$QUERY_STRING
+    if (is.null(query_string)) query_string <- ""
+
+    access <- valida_accesso_web(parseQueryString(query_string))
+    if (!isTRUE(access$ok)) {
+      return(risposta_errore_web(access$status, access$reason))
+    }
+
+    dashboard_ui
+  }
 }
 
 server <- function(input, output, session) {
@@ -1861,105 +1965,15 @@ server <- function(input, output, session) {
     parseQueryString(search)
   })
   
-  # Verifica accesso WEB:
-  #   ?coupon=ABCDE&otp=123456
-  # Prima viene verificato l'OTP, poi l'esistenza del coupon.
+  # Verifica nuovamente l'accesso lato server. La UI ha gia' bloccato
+  # le richieste non autorizzate con HTTP 403/503.
   web_access <- reactive({
     if (!IS_WEB_MODE) {
-      return(list(ok = TRUE, coupon = NULL, reason = NULL))
+      return(list(ok = TRUE, coupon = NULL, reason = NULL, status = 200L))
     }
-    
-    if (!OTP_CONFIGURED || is.null(otp_verifier)) {
-      return(list(
-        ok = FALSE,
-        coupon = NULL,
-        reason = "Servizio temporaneamente non disponibile."
-      ))
-    }
-    
-    query <- web_query()
-    coupon <- query[["coupon"]]
-    otp_code <- query[["otp"]]
-    
-    if (is.null(coupon) || length(coupon) < 1 ||
-        is.null(otp_code) || length(otp_code) < 1) {
-      return(list(
-        ok = FALSE,
-        coupon = NULL,
-        reason = "Richiesta non valida."
-      ))
-    }
-    
-    coupon <- trimws(as.character(coupon[[1]]))
-    otp_code <- trimws(as.character(otp_code[[1]]))
-    
-    if (!nzchar(coupon) || !grepl(paste0("^\\d{", OTP_DIGITS, "}$"), otp_code)) {
-      return(list(
-        ok = FALSE,
-        coupon = NULL,
-        reason = "Richiesta non valida."
-      ))
-    }
-    
-    otp_ok <- tryCatch(
-      !is.null(otp_verifier$verify(otp_code, behind = OTP_BEHIND)),
-      error = function(e) FALSE
-    )
-    
-    if (!isTRUE(otp_ok)) {
-      return(list(
-        ok = FALSE,
-        coupon = NULL,
-        reason = "Codice di accesso non valido o scaduto."
-      ))
-    }
-    
-    if (!coupon %in% macchine_lookup$coupon) {
-      return(list(
-        ok = FALSE,
-        coupon = NULL,
-        reason = "Macchina non disponibile."
-      ))
-    }
-    
-    list(ok = TRUE, coupon = coupon, reason = NULL)
+
+    valida_accesso_web(web_query())
   })
-  
-  # In modalita' web l'intera dashboard viene inviata al client solo dopo
-  # che OTP e coupon sono stati verificati.
-  if (IS_WEB_MODE) {
-    output$web_gate <- renderUI({
-      access <- web_access()
-      
-      if (!isTRUE(access$ok)) {
-        return(
-          div(
-            style = paste(
-              "min-height:100vh;display:flex;align-items:center;",
-              "justify-content:center;background:#F5F6F7;padding:24px;"
-            ),
-            div(
-              style = paste(
-                "max-width:560px;width:100%;background:#FFFFFF;",
-                "border:1px solid #DDE4EA;border-radius:10px;",
-                "padding:34px;box-shadow:0 4px 18px rgba(0,0,0,.06);"
-              ),
-              h2(
-                "Accesso non consentito",
-                style = "margin-top:0;color:#234A66;font-weight:700;"
-              ),
-              p(
-                access$reason,
-                style = "color:#5F6B76;font-size:16px;margin-bottom:0;"
-              )
-            )
-          )
-        )
-      }
-      
-      dashboard_ui
-    })
-  }
   
   # Sorgente unica della macchina per tutta la dashboard.
   # Internal -> selectInput; Web -> coupon validato dalla querystring.
