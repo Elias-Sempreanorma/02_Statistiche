@@ -39,13 +39,14 @@ fmt_num <- function(x, digits = 2) {
 }
 
 json_alert <- function(x) {
-  jsonlite::toJSON(
+  # Una stringa ordinaria evita conflitti della classe json in bind_rows().
+  as.character(jsonlite::toJSON(
     x,
     auto_unbox = TRUE,
     null = "null",
     na = "null",
     digits = NA
-  )
+  ))
 }
 
 inizio_giorno <- function(x) {
