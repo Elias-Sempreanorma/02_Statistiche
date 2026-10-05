@@ -1,3 +1,280 @@
+# Soglia unica usata da ETL e dashboard: un sensore puo' generare alert
+# solo dopo almeno 30 osservazioni finite del contatore, indipendentemente
+# dal valore osservato.
+MIN_OSSERVAZIONI_ALLARME <- 30L
+
+calcola_sensori_allarmabili <- function(dati) {
+  dati |>
+    dplyr::filter(
+      !is.na(coupon),
+      !is.na(gateway_id),
+      !is.na(sensor_id),
+      is.finite(count)
+    ) |>
+    dplyr::count(
+      coupon,
+      gateway_id,
+      sensor_id,
+      cds_name,
+      sensor_description,
+      name = "n_osservazioni_conteggio"
+    ) |>
+    dplyr::filter(
+      n_osservazioni_conteggio >= MIN_OSSERVAZIONI_ALLARME
+    )
+}
+
+# Base giornaliera condivisa tra dashboard ed ETL.
+# Mantiene la stessa logica LOF gia' usata dalla dashboard, ma la rende
+# riutilizzabile senza duplicare calcoli o regole.
+prepara_valori_giornalieri_nok_data <- function(
+  dati,
+  macchina = NULL,
+  sensori = NULL
+) {
+  base <- dati |>
+    dplyr::ungroup()
+
+  if (!is.null(macchina)) {
+    base <- base |>
+      dplyr::filter(coupon == macchina)
+  }
+  if (!is.null(sensori)) {
+    base <- base |>
+      dplyr::filter(cds_name %in% sensori)
+  }
+
+  base |>
+    dplyr::group_by(
+      company,
+      field,
+      project,
+      coupon,
+      machine_name,
+      gateway_id,
+      gateway_name,
+      sensor_id,
+      cds_name,
+      sensor_description,
+      day
+    ) |>
+    dplyr::summarise(
+      daily_count = if (any(is.finite(increment))) {
+        sum(increment[is.finite(increment)], na.rm = TRUE)
+      } else {
+        NA_real_
+      },
+      daily_uptime = if (all(is.na(daily_uptime))) {
+        NA_real_
+      } else {
+        max(daily_uptime, na.rm = TRUE)
+      },
+      gateway_disconnect_affected = any(
+        gateway_disconnect_affected,
+        na.rm = TRUE
+      ),
+      .groups = "drop"
+    ) |>
+    dplyr::mutate(
+      daily_value = dplyr::case_when(
+        is.na(daily_uptime) | daily_uptime <= 0 ~ NA_real_,
+        TRUE ~ daily_count / daily_uptime
+      )
+    ) |>
+    dplyr::group_by(
+      coupon,
+      gateway_id,
+      sensor_id,
+      cds_name,
+      sensor_description
+    ) |>
+    dplyr::group_modify(~ {
+      x <- .x$daily_count
+      validi <- is.finite(x)
+
+      .x$lof_score <- NA_real_
+      .x$outlier_lof <- FALSE
+
+      n_validi <- sum(validi)
+      media_attivazioni_giornaliere <- if (n_validi > 0) {
+        mean(x[validi], na.rm = TRUE)
+      } else {
+        NA_real_
+      }
+
+      zero_anomalo <- (
+        validi &
+        x == 0 &
+        is.finite(media_attivazioni_giornaliere) &
+        media_attivazioni_giornaliere > 0
+      )
+      .x$outlier_lof[zero_anomalo] <- TRUE
+
+      if (
+        n_validi >= 6L &&
+        dplyr::n_distinct(x[validi]) >= 3L
+      ) {
+        k <- min(4L, n_validi - 1L)
+        score <- dbscan::lof(
+          matrix(x[validi], ncol = 1),
+          minPts = k
+        )
+
+        x_validi <- x[validi]
+        mediana_senza_valore <- vapply(
+          seq_along(x_validi),
+          function(i) {
+            altri_valori <- x_validi[-i]
+            if (length(altri_valori) == 0) {
+              NA_real_
+            } else {
+              stats::median(altri_valori, na.rm = TRUE)
+            }
+          },
+          numeric(1)
+        )
+
+        rapporto_anomalo <- (
+          is.finite(mediana_senza_valore) &
+          x_validi >= mediana_senza_valore * 5
+        )
+        differenza_anomala <- (
+          is.finite(mediana_senza_valore) &
+          (x_validi - mediana_senza_valore) >= 49
+        )
+        lof_anomalo <- !is.na(score) & score > 2
+
+        .x$lof_score[validi] <- score
+        .x$outlier_lof[validi] <- (
+          .x$outlier_lof[validi] |
+          lof_anomalo |
+          rapporto_anomalo |
+          differenza_anomala
+        )
+      }
+
+      .x
+    }) |>
+    dplyr::ungroup()
+}
+
+# Eventi di sensore aperto / assenza di contatto elettrico condivisi tra
+# ETL e dashboard. L'eventuale filtro dei sensori maturi avviene prima del
+# calcolo degli intervalli, evitando lavoro inutile.
+calcola_eventi_sensore_aperto <- function(
+  raw_data,
+  sensori_allarmabili = NULL,
+  macchina = NULL,
+  sensori = NULL,
+  data_inizio = NULL,
+  data_fine = NULL
+) {
+  base <- raw_data
+
+  if (!is.null(sensori_allarmabili)) {
+    base <- base |>
+      dplyr::semi_join(
+        sensori_allarmabili |>
+          dplyr::select(coupon, gateway_id, sensor_id),
+        by = c("coupon", "gateway_id", "sensor_id")
+      )
+  }
+  if (!is.null(macchina)) {
+    base <- base |>
+      dplyr::filter(coupon == macchina)
+  }
+  if (!is.null(sensori)) {
+    base <- base |>
+      dplyr::filter(cds_name %in% sensori)
+  }
+
+  base <- base |>
+    dplyr::mutate(
+      field = dplyr::if_else(
+        is.na(field) | trimws(field) == "",
+        "(Non specificato)",
+        field
+      ),
+      timestamp_local = lubridate::with_tz(
+        timestamp,
+        "Europe/Rome"
+      ),
+      day = as.Date(
+        timestamp_local,
+        tz = "Europe/Rome"
+      )
+    )
+
+  if (!is.null(data_inizio)) {
+    base <- base |>
+      dplyr::filter(day >= as.Date(data_inizio))
+  }
+  if (!is.null(data_fine)) {
+    base <- base |>
+      dplyr::filter(day <= as.Date(data_fine))
+  }
+
+  gruppi <- c(
+    "company", "field", "project", "coupon",
+    "machine_name", "machine_serial_number",
+    "gateway_id", "gateway_name", "sensor_id",
+    "cds_name", "cds_description", "cds_brand",
+    "cds_use", "cds_vds", "sensor_description"
+  )
+
+  base |>
+    dplyr::group_by(
+      dplyr::across(dplyr::all_of(gruppi)),
+      day
+    ) |>
+    dplyr::arrange(timestamp_local, .by_group = TRUE) |>
+    dplyr::mutate(
+      previous_timestamp = dplyr::lag(timestamp_local),
+      previous_status = dplyr::lag(status),
+      previous_raw_count = dplyr::lag(count),
+      sensore_aperto_intervallo = (
+        !is.na(previous_timestamp) &
+        is.finite(status) &
+        is.finite(previous_status) &
+        status == 0 &
+        previous_status == 0 &
+        is.finite(count) &
+        is.finite(previous_raw_count) &
+        count == previous_raw_count
+      ),
+      nuovo_evento_aperto = (
+        sensore_aperto_intervallo &
+        !dplyr::lag(
+          sensore_aperto_intervallo,
+          default = FALSE
+        )
+      ),
+      open_event_id = cumsum(nuovo_evento_aperto)
+    ) |>
+    dplyr::filter(sensore_aperto_intervallo) |>
+    dplyr::group_by(
+      dplyr::across(dplyr::all_of(gruppi)),
+      day,
+      open_event_id
+    ) |>
+    dplyr::summarise(
+      event_start = min(previous_timestamp, na.rm = TRUE),
+      event_end = max(timestamp_local, na.rm = TRUE),
+      open_hours = as.numeric(
+        difftime(
+          event_end,
+          event_start,
+          units = "hours"
+        )
+      ),
+      .groups = "drop"
+    ) |>
+    dplyr::filter(
+      is.finite(open_hours),
+      open_hours > 1
+    )
+}
+
 # funzione per connettersi a DB postgres
 
 connetti_postgres <- function(database) {
