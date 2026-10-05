@@ -601,11 +601,10 @@ alerts_all <- bind_rows(
   distinct(event_key, .keep_all = TRUE) |>
   arrange(generated_at, event_key)
 
+# Questo script viene eseguito tramite source(): on.exit() deve stare
+# dentro una funzione, altrimenti puo\' chiudere la connessione nel contesto
+# di valutazione. La chiusura esplicita resta alla fine dello script.
 con_alerts <- connetti_postgres(Sys.getenv("PG_DB_STATS"))
-on.exit(
-  try(dbDisconnect(con_alerts), silent = TRUE),
-  add = TRUE
-)
 
 # ---------------------------------------------------------------------------
 # La tabella alerts e' un indice derivato dai dati: viene rigenerata ad ogni
