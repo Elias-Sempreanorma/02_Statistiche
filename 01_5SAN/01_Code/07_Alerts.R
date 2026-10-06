@@ -107,11 +107,11 @@ alert_attivazioni_giornaliere <- base_giornaliera |>
     functional_unit = paste(cds_name, sensor_description, sep = " - "),
     signal_description = if_else(
       daily_count == 0,
-      "Zero attivazioni in una giornata con attivita' storica del sensore",
-      "Anomalia statistica giornaliera delle attivazioni"
+      "Zero manovre in una giornata con attivita' storica del sensore",
+      "Anomalia statistica giornaliera delle manovre"
     ),
     signal_data_text = paste0(
-      "Attivazioni giornaliere: ",
+      "Manovre giornaliere: ",
       round(daily_count),
       if_else(
         gateway_disconnect_affected,
@@ -193,7 +193,7 @@ alert_attivazioni_orarie <- base_oraria |>
     signal_description =
       "Conteggio orario almeno 4 volte la mediana oraria del sensore",
     signal_data_text = paste0(
-      "Attivazioni nell'ora: ",
+      "Manovre nell'ora: ",
       round(hourly_count),
       "; mediana oraria: ",
       round(hourly_median, 2),
