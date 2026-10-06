@@ -2049,7 +2049,16 @@ server <- function(input, output, session) {
   # Internal -> selectInput; Web -> coupon validato dalla querystring.
   macchina_attiva <- reactive({
     if (!IS_WEB_MODE) {
-      req(input$macchina)
+      req(input$azienda, input$stabilimento, input$macchina)
+      # Durante l'aggiornamento dei selectInput il browser puo' inviare
+      # ancora il coupon precedente: non applicarlo alla nuova azienda.
+      macchina_valida <- macchine_lookup |>
+        filter(
+          company == input$azienda,
+          field == input$stabilimento,
+          coupon == input$macchina
+        )
+      req(nrow(macchina_valida) > 0)
       return(as.character(input$macchina))
     }
     
@@ -2084,44 +2093,60 @@ server <- function(input, output, session) {
   
   # I filtri a cascata esistono solo nella dashboard interna.
   if (!IS_WEB_MODE) {
-    # 1. Quando cambia l'azienda, aggiorno gli stabilimenti disponibili
-    observeEvent(input$azienda, {
-      
+    # Aggiorno insieme stabilimenti e macchine: aziende diverse possono
+    # condividere lo stesso stabilimento (es. "(Non specificato)").
+    observeEvent(list(input$azienda, input$stabilimento), {
       req(input$azienda)
-      
+
       stabilimenti <- stabilimenti_lookup |>
         filter(company == input$azienda) |>
         pull(field)
-      
+
+      stabilimento_corrente <- if (
+        length(input$stabilimento) == 1 &&
+        input$stabilimento %in% stabilimenti
+      ) {
+        input$stabilimento
+      } else {
+        head(stabilimenti, 1)
+      }
+
       updateSelectInput(
         session,
         "stabilimento",
-        choices = stabilimenti
+        choices = stabilimenti,
+        selected = stabilimento_corrente
       )
-    })
-    
-    # 2. Quando cambia lo stabilimento, aggiorno le macchine disponibili
-    observeEvent(input$stabilimento, {
-      
-      req(input$azienda, input$stabilimento)
-      
+
       macchine_filtrate <- macchine_lookup |>
         filter(
           company == input$azienda,
-          field == input$stabilimento
-        )
-      
+          field %in% stabilimento_corrente
+        ) |>
+        distinct(coupon, .keep_all = TRUE)
+
+      macchina_corrente <- if (
+        length(input$macchina) == 1 &&
+        input$macchina %in% macchine_filtrate$coupon
+      ) {
+        input$macchina
+      } else {
+        head(macchine_filtrate$coupon, 1)
+      }
+
+      freezeReactiveValue(input, "macchina")
       updateSelectInput(
         session,
         "macchina",
         choices = setNames(
           macchine_filtrate$coupon,
           paste(macchine_filtrate$project, macchine_filtrate$machine_name, sep = " - ")
-        )
+        ),
+        selected = macchina_corrente
       )
-    })
+    }, priority = 100)
   }
-  
+
   # 3. Quando cambia la macchina, aggiorno i sensori disponibili
   
   # Tabelle dati mostrate direttamente all'interno dei modal.
