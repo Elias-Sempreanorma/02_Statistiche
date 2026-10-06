@@ -1646,15 +1646,12 @@ dashboard_ui <- fluidPage(
       .modal-content,
       .selectize-input,
       .selectize-dropdown {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif;
       }
 
       body {
         color: var(--san-text);
-        background:
-          radial-gradient(ellipse at 5% 0%, rgba(235,189,85,0.15), transparent 48%),
-          radial-gradient(ellipse at 95% 30%, rgba(95,116,140,0.16), transparent 55%),
-          #EDF1F5;
+        background: linear-gradient(145deg, #F4F5F6, #EDF1F4);
       }
 
       /* Fascia alta: il blu resta concentrato qui, come nel sito. */
@@ -1662,7 +1659,7 @@ dashboard_ui <- fluidPage(
         margin: 0 -15px;
         padding: 13px 20px 12px 20px;
         background: linear-gradient(120deg, #234A66, #42647D);
-        border-bottom: 4px solid var(--san-yellow);
+        border-bottom: 2px solid var(--san-yellow);
         color: #FFFFFF;
         font-size: 29px;
         font-weight: 500;
@@ -1670,6 +1667,9 @@ dashboard_ui <- fluidPage(
       }
 
       .pannello-filtri {
+        position: relative;
+        z-index: 30;
+        overflow: visible;
         margin: 0 -7px 8px -7px;
         padding: 10px 14px 1px 14px;
         background: linear-gradient(135deg, rgba(255,255,255,0.88), rgba(242,247,251,0.70));
@@ -1703,39 +1703,33 @@ dashboard_ui <- fluidPage(
         accent-color: var(--san-yellow-dark);
       }
 
-      /* Superfici in vetro: riflessi leggeri e sfondo visibile. */
+      /* Vetro riservato ai controlli: niente superfici blur sovrapposte. */
       .pannello-filtri,
-      .home-corner .card-home,
-      .home-corner .card-home .home-card-label,
-      .modal-content,
-      .modal-filters,
-      .life-card,
-      .modal-data-panel,
-      .report-table-wrap,
-      .report-panel,
-      .documenti-bar {
-        -webkit-backdrop-filter: blur(18px) saturate(125%);
-        backdrop-filter: blur(18px) saturate(125%);
+      .modal-content {
+        -webkit-backdrop-filter: blur(18px) saturate(115%);
+        backdrop-filter: blur(18px) saturate(115%);
       }
       .home-stage {
-        background:
-          radial-gradient(ellipse at 10% 10%, rgba(235,189,85,0.18), transparent 60%),
-          linear-gradient(135deg, #E9F0F5, #F5F1E8);
+        z-index: 0;
+        isolation: isolate;
+        background: linear-gradient(135deg, #EDF1F4, #F4F5F6);
         border: 1px solid rgba(255,255,255,0.85);
         border-radius: 24px;
         box-shadow: 0 12px 32px rgba(35,74,102,0.08);
       }
       .home-corner .card-home {
-        background: linear-gradient(135deg, rgba(255,255,255,0.78), rgba(255,255,255,0.52));
+        background-color: #F4F5F6;
+        background-image: linear-gradient(145deg, rgba(255,255,255,0.72), rgba(255,255,255,0.08));
         border: 0 !important;
         border-radius: 22px;
-        box-shadow: inset 0 0 0 2px var(--san-yellow), inset 0 4px 0 var(--san-yellow);
-        transition: background 0.20s ease, box-shadow 0.20s ease;
+        box-shadow: inset 0 0 0 1px rgba(197,205,211,0.65), inset 0 2px 0 rgba(255,255,255,0.90);
+        transition: background-color 0.22s ease, box-shadow 0.22s ease;
       }
       .home-corner .card-home:hover,
-      .home-corner .card-home:focus {
-        background: linear-gradient(135deg, rgba(211,223,233,0.88), rgba(191,208,222,0.76));
-        box-shadow: inset 0 0 0 1px #8C9EAD, inset 0 2px 8px rgba(35,74,102,0.10);
+      .home-corner .card-home:focus-visible {
+        background-color: var(--san-yellow);
+        background-image: linear-gradient(145deg, rgba(255,255,255,0.38), rgba(255,255,255,0.02));
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.95), inset 0 2px 0 #FFFFFF, 0 8px 24px rgba(35,74,102,0.08);
         outline: none;
       }
       .home-corner .card-home:focus-visible {
@@ -1744,18 +1738,17 @@ dashboard_ui <- fluidPage(
       }
 
       .home-corner .card-home .home-card-label {
-        background: linear-gradient(135deg, rgba(255,255,255,0.94), rgba(255,255,255,0.76));
-        border: 1px solid rgba(255,255,255,0.95);
-        border-left: 4px solid var(--san-yellow);
+        background: transparent;
+        border: 1px solid transparent;
         border-radius: 18px;
-        box-shadow: 0 5px 16px rgba(35,74,102,0.08), inset 0 1px 0 #FFFFFF;
+        box-shadow: none;
+        transition: color 0.22s ease;
       }
       .home-corner .card-home:hover .home-card-label,
-      .home-corner .card-home:focus .home-card-label {
-        background: linear-gradient(135deg, rgba(227,235,242,0.96), rgba(213,225,234,0.90));
-        border-color: #AAB9C5;
-        border-left-color: #8C9EAD;
-        box-shadow: 0 3px 10px rgba(35,74,102,0.08);
+      .home-corner .card-home:focus-visible .home-card-label {
+        background: transparent;
+        border-color: transparent;
+        box-shadow: none;
       }
       .home-corner .card-home h4 {
         color: var(--san-blue);
@@ -1766,10 +1759,10 @@ dashboard_ui <- fluidPage(
       }
 
       .schema-frame img {
-        border: 1.5px solid var(--san-blue-2);
+        border: 1.5px solid rgba(95,116,140,0.50);
         border-radius: 20px;
         background: #FFFFFF;
-        box-shadow: 0 12px 30px rgba(35,74,102,0.16), 0 0 0 5px rgba(255,255,255,0.40);
+        box-shadow: 0 16px 40px rgba(35,74,102,0.12), 0 0 0 4px rgba(255,255,255,0.65);
       }
 
       /* Hotspot: blu in hover, bordo giallo come accento. */
@@ -1811,6 +1804,9 @@ dashboard_ui <- fluidPage(
       }
 
       .modal-filters {
+        position: relative;
+        z-index: 30;
+        overflow: visible;
         background: linear-gradient(135deg, rgba(255,255,255,0.86), rgba(231,239,245,0.72));
         border: 1px solid rgba(255,255,255,0.95);
         border-radius: 18px;
@@ -1906,7 +1902,7 @@ dashboard_ui <- fluidPage(
         background: var(--san-blue);
       }
 
-      /* Piccoli elementi di evidenza: giallo, mai grandi campiture. */
+      /* Il giallo identifica selezioni e interazioni. */
       .report-period-btn:hover,
       .report-period-btn:focus {
         border-color: var(--san-yellow) !important;
@@ -1936,6 +1932,60 @@ dashboard_ui <- fluidPage(
       @media (prefers-reduced-motion: reduce) {
         .home-corner .card-home {
           transition: none;
+        }
+      }
+
+      /* I menu devono restare sopra schema, card e grafici. I modali Bootstrap
+         conservano i propri livelli globali (backdrop 1040, modal 1050). */
+      .pannello-filtri .selectize-dropdown,
+      .modal-filters .selectize-dropdown,
+      .pannello-filtri .dropdown-menu,
+      .modal-filters .dropdown-menu {
+        z-index: 1000;
+      }
+      .datepicker-dropdown {
+        z-index: 1060 !important;
+      }
+      .selectize-dropdown,
+      .bootstrap-select .dropdown-menu,
+      .datepicker-dropdown {
+        background: rgba(255,255,255,0.98);
+        border: 1px solid rgba(197,205,211,0.70);
+        border-radius: 14px;
+        box-shadow: 0 14px 36px rgba(35,74,102,0.18), inset 0 1px 0 #FFFFFF;
+      }
+      .selectize-dropdown .active,
+      .bootstrap-select .dropdown-menu > li > a:hover,
+      .bootstrap-select .dropdown-menu > li > a:focus {
+        background: #F0F2F3;
+        color: var(--san-blue);
+      }
+      .home-corner .card-home:hover p,
+      .home-corner .card-home:focus-visible p {
+        color: var(--san-blue);
+      }
+      .home-corner .card-home .card-icona {
+        color: var(--san-blue);
+      }
+      .modal-nav-bar .btn-group {
+        padding: 4px;
+        background: #F0F2F3;
+        border: 1px solid #DDE1E4;
+        border-radius: 16px;
+      }
+      .modal-nav-bar .btn-group .btn {
+        border-radius: 12px !important;
+        border-color: transparent !important;
+        background: transparent !important;
+        transition: background-color 0.18s ease, box-shadow 0.18s ease;
+      }
+      .modal-nav-bar .btn-group .btn.active {
+        box-shadow: 0 2px 6px rgba(35,74,102,0.12) !important;
+      }
+      @media (max-width: 700px) {
+        .home-corner .card-home .home-card-label {
+          border: 0;
+          border-radius: 0;
         }
       }
     "))
