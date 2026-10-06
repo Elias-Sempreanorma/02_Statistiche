@@ -337,6 +337,66 @@ raw_data <- raw_data |>
     )
   )
 
+# B10dSAN da PFH: calcolo sullo storico completo del singolo sensore.
+# nop e' stimato dagli incrementi positivi nel tempo osservato; non include
+# il conteggio gia' presente alla prima osservazione.
+nop_sensori <- raw_data |>
+  filter(is.finite(count), !is.na(timestamp)) |>
+  group_by(coupon, gateway_id, sensor_id) |>
+  arrange(timestamp, .by_group = TRUE) |>
+  summarise(
+    .nop_b10dsan = {
+      anni_osservati <- lubridate::time_length(
+        lubridate::interval(min(timestamp), max(timestamp)),
+        "years"
+      )
+      if (is.finite(anni_osservati) && anni_osservati > 0) {
+        sum(pmax(diff(count), 0)) / anni_osservati
+      } else {
+        NA_real_
+      }
+    },
+    .groups = "drop"
+  )
+
+parametri_b10dsan <- progetti_componenti_b10d_san |>
+  transmute(
+    coupon,
+    cds_name = cds,
+    .pfh_b10dsan = as.numeric(
+      sub(",", ".", as.character(`B10d/PFH\nProduttore`), fixed = TRUE)
+    ),
+    .base_b10dsan = as.numeric(
+      sub(",", ".", as.character(b10dsan), fixed = TRUE)
+    ),
+    .divisore_b10dsan = case_when(
+      utilizzo == "Normale" ~ 100,
+      utilizzo == "Intensivo" ~ 1000,
+      utilizzo == "Favorevole" ~ 10,
+      TRUE ~ NA_real_
+    )
+  ) |>
+  distinct(coupon, cds_name, .keep_all = TRUE)
+
+raw_data <- raw_data |>
+  left_join(parametri_b10dsan, by = c("coupon", "cds_name")) |>
+  left_join(nop_sensori, by = c("coupon", "gateway_id", "sensor_id")) |>
+  mutate(
+    cds_vds = case_when(
+      is.finite(.pfh_b10dsan) &
+        .pfh_b10dsan > 0 & .pfh_b10dsan < 1 &
+        is.finite(.nop_b10dsan) &
+        !is.na(.divisore_b10dsan) ~
+          (0.1 * .nop_b10dsan) /
+            (.pfh_b10dsan * 8760 * .divisore_b10dsan),
+      TRUE ~ coalesce(.base_b10dsan, cds_vds)
+    )
+  ) |>
+  select(
+    -.pfh_b10dsan, -.base_b10dsan,
+    -.divisore_b10dsan, -.nop_b10dsan
+  )
+
 saveRDS(raw_data, raw_data_path)
 
 # ---------------------------------------------------------------------------
