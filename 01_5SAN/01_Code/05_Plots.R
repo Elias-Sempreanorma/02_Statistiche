@@ -196,7 +196,13 @@ testo_manovre <- function(x) {
     "\\battivazioni\\b" = "manovre",
     "\\bATTIVAZIONI\\b" = "MANOVRE",
     "\\bAttivazione\\b" = "Manovra",
-    "\\battivazione\\b" = "manovra"
+    "\\battivazione\\b" = "manovra",
+    "\\bSensori\\b" = "Componenti",
+    "\\bsensori\\b" = "componenti",
+    "\\bSENSORI\\b" = "COMPONENTI",
+    "\\bSensore\\b" = "Componente",
+    "\\bsensore\\b" = "componente",
+    "\\bSENSORE\\b" = "COMPONENTE"
   ))
 }
 
@@ -1467,7 +1473,7 @@ dashboard_ui <- fluidPage(
       }
 
       /* ------------------------------------------------------------------
-         Vita sensori - card con valore corrente, massimo, utilizzo e residuo
+         Vita componenti - card con valore corrente, massimo, utilizzo e residuo
          ------------------------------------------------------------------ */
       .life-header {
         display: flex;
@@ -2586,7 +2592,7 @@ dashboard_ui <- fluidPage(
         label = div(
           class = "home-card-label",
           h4("Conteggio manovre"),
-          p("Grafico a barre e trend nel tempo per sensore")
+          p("Grafico a barre e trend nel tempo per componente")
         ),
         class = "card-home"
       )
@@ -2599,7 +2605,7 @@ dashboard_ui <- fluidPage(
         label = div(
           class = "home-card-label",
           h4("NOK"),
-          p("KPI e andamento storico del NOK per sensore")
+          p("KPI e andamento storico del NOK per componente")
         ),
         class = "card-home"
       )
@@ -2611,8 +2617,8 @@ dashboard_ui <- fluidPage(
         "home_vita",
         label = div(
           class = "home-card-label",
-          h4("Vita sensori"),
-          p("Stato dei sensori rispetto alle soglie B10dSAN e T10d")
+          h4("Vita componenti"),
+          p("Stato dei componenti rispetto alle soglie B10dSAN e T10d")
         ),
         class = "card-home"
       )
@@ -2915,7 +2921,7 @@ server <- function(input, output, session) {
           choices = c(
             "Conteggio manovre" = "attivazioni",
             "NOK"                   = "nok",
-            "Vita sensori"          = "vita",
+            "Vita componenti"          = "vita",
             "Allarmi e Near Miss"   = "allarmi"
           ),
           selected = vista_iniziale,
@@ -3003,7 +3009,7 @@ server <- function(input, output, session) {
       actionsBox = TRUE,
       liveSearch = TRUE,
       selectedTextFormat = "count > 3",
-      countSelectedText = "{0} sensori selezionati"
+      countSelectedText = "{0} componenti selezionati"
     )
     
     if (vista == "attivazioni") {
@@ -3021,7 +3027,7 @@ server <- function(input, output, session) {
             ),
             column(8,
                    pickerInput(
-                     "modal_sensori", "Sensori:",
+                     "modal_sensori", "Componenti:",
                      choices = scelte_sensori, selected = sensori_selezionati,
                      multiple = TRUE, options = picker_opts
                    )
@@ -3043,7 +3049,7 @@ server <- function(input, output, session) {
           actionButton("modal_btn_dati_attivazioni", "Mostra dati", icon = icon("table"), class = "btn-sm btn-default")
         ),
         uiOutput("modal_panel_dati_attivazioni"),
-        h4("Andamento per sensore", class = "titolo-sezione"),
+        h4("Andamento per componente", class = "titolo-sezione"),
         br(),
         div(
           class = "activation-scroll",
@@ -3061,7 +3067,7 @@ server <- function(input, output, session) {
         div(
           class = "modal-filters",
           pickerInput(
-            "modal_sensori", "Sensori:",
+            "modal_sensori", "Componenti:",
             choices = scelte_sensori, selected = sensori_selezionati,
             multiple = TRUE, options = picker_opts
           )
@@ -3069,7 +3075,7 @@ server <- function(input, output, session) {
         div(
           class = "life-header",
           div(
-            h4("Vita sensori", class = "life-header-title"),
+            h4("Vita componenti", class = "life-header-title"),
             div(
               "Consumo attuale rispetto ai limiti massimi B10dSAN e T10d",
               class = "life-header-subtitle"
@@ -3099,7 +3105,7 @@ server <- function(input, output, session) {
             ),
             column(8,
                    pickerInput(
-                     "modal_sensori", "Sensori:",
+                     "modal_sensori", "Componenti:",
                      choices = scelte_sensori, selected = sensori_selezionati,
                      multiple = TRUE, options = picker_opts
                    )
@@ -3215,7 +3221,7 @@ server <- function(input, output, session) {
             column(
               6,
               pickerInput(
-                "modal_sensori", "Sensori:",
+                "modal_sensori", "Componenti:",
                 choices = scelte_sensori, selected = sensori_selezionati,
                 multiple = TRUE, options = picker_opts
               )
@@ -3263,15 +3269,15 @@ server <- function(input, output, session) {
           class = "alarm-section",
           h4("Manovre anomale", class = "titolo-sezione"),
           p(
-            "Anomalie nei conteggi delle manovre: oltre alle anomalie giornaliere, viene segnalata ogni ora in cui il conteggio del sensore e' almeno 4 volte la sua mediana oraria."
+            "Anomalie nei conteggi delle manovre: oltre alle anomalie giornaliere, viene segnalata ogni ora in cui il conteggio del componente e' almeno 4 volte la sua mediana oraria."
           ),
           uiOutput("modal_allarmi_attivazioni_panel")
         ),
         div(
           class = "alarm-section",
-          h4("Sensori aperti o senza contatto elettrico", class = "titolo-sezione"),
+          h4("Componenti aperti o senza contatto elettrico", class = "titolo-sezione"),
           p(
-            "Eventi in cui il sensore è rimasto aperto per oltre 1 ora consecutiva mentre il gateway continuava a trasmettere."
+            "Eventi in cui il componente è rimasto aperto per oltre 1 ora consecutiva mentre il gateway continuava a trasmettere."
           ),
           uiOutput("modal_allarmi_sensori_aperti_panel")
         ),
@@ -3279,7 +3285,7 @@ server <- function(input, output, session) {
           class = "alarm-section",
           h4("Valori NOK anomali", class = "titolo-sezione"),
           p(
-            "Giornate in cui il NOK giornaliero del sensore è fuori dai limiti media storica ± 3σ."
+            "Giornate in cui il NOK giornaliero del componente è fuori dai limiti media storica ± 3σ."
           ),
           uiOutput("modal_allarmi_nok_panel")
         )
@@ -3287,7 +3293,7 @@ server <- function(input, output, session) {
           class = "alarm-section",
           h4("Disconnessioni gateway", class = "titolo-sezione"),
           p(
-            "Segnalazioni di possibile disconnessione del gateway supportate da conteggi accumulati sui sensori."
+            "Segnalazioni di possibile disconnessione del gateway supportate da conteggi accumulati sui componenti."
           ),
           uiOutput("modal_allarmi_gateway_panel")
         )
@@ -3853,7 +3859,7 @@ server <- function(input, output, session) {
       transmute(
         Macchina = nome_macchina,
         Coupon = macchina,
-        Sensore = paste(cds_name, sensor_description, sep = " - "),
+        Componente = paste(cds_name, sensor_description, sep = " - "),
         Data = day,
         Ora = "-",
         Conteggio = round(daily_count),
@@ -3900,7 +3906,7 @@ server <- function(input, output, session) {
       transmute(
         Macchina = nome_macchina,
         Coupon = macchina,
-        Sensore = paste(cds_name, sensor_description, sep = " - "),
+        Componente = paste(cds_name, sensor_description, sep = " - "),
         Data = day,
         Ora = format(hour, "%H:00", tz = "Europe/Rome"),
         Conteggio = round(attivazioni_orarie),
@@ -3921,7 +3927,7 @@ server <- function(input, output, session) {
       anomalie_orarie
     ) |>
       distinct() |>
-      arrange(Data, Ora, Sensore)
+      arrange(Data, Ora, Componente)
     
     tab_nok_anomalo <- confronto |>
       semi_join(
@@ -3932,7 +3938,7 @@ server <- function(input, output, session) {
       transmute(
         Macchina = nome_macchina,
         Coupon = macchina,
-        Sensore = paste(cds_name, sensor_description, sep = " - "),
+        Componente = paste(cds_name, sensor_description, sep = " - "),
         Periodo = paste(
           format(inizio, "%d/%m/%Y"),
           format(fine, "%d/%m/%Y"),
@@ -4081,7 +4087,7 @@ server <- function(input, output, session) {
     n_att_anomale <- nrow(r$attivazioni_anomale)
     
     sensori_att_anomali <- if (n_att_anomale > 0) {
-      dplyr::n_distinct(r$attivazioni_anomale$Sensore)
+      dplyr::n_distinct(r$attivazioni_anomale$Componente)
     } else {
       0L
     }
@@ -4177,7 +4183,7 @@ server <- function(input, output, session) {
       nok_range,
       "). A livello di dettaglio, ",
       n_nok_fuori,
-      " sensori su ",
+      " componenti su ",
       n_sensori,
       " risultano fuori dai rispettivi limiti storici nel periodo considerato."
     )
@@ -4188,7 +4194,7 @@ server <- function(input, output, session) {
         n_att_anomale,
         " segnalazioni di manovre anomale distribuite su ",
         sensori_att_anomali,
-        " sensori. Le tabelle successive permettono di risalire al sensore, alla data e, quando disponibile, all'ora dell'evento."
+        " componenti. Le tabelle successive permettono di risalire al componente, alla data e, quando disponibile, all'ora dell'evento."
       )
     } else {
       paste0(
@@ -4515,10 +4521,10 @@ server <- function(input, output, session) {
         ),
         div(
           class = "report-kpi-card",
-          div("Sensori NOK fuori range", class = "report-kpi-label"),
+          div("Componenti NOK fuori range", class = "report-kpi-label"),
           div(n_nok, class = "report-kpi-value"),
           div(
-            paste0("Su ", nrow(r$confronto), " sensori analizzati"),
+            paste0("Su ", nrow(r$confronto), " componenti analizzati"),
             class = "report-kpi-note"
           )
         )
@@ -4532,7 +4538,7 @@ server <- function(input, output, session) {
       
       sezione(
         "1",
-        "Sintesi per sensore e macchina",
+        "Sintesi per componente e macchina",
         "Le manovre riportano il valore medio del periodo e, tra parentesi, la variazione rispetto al periodo precedente. Il NOK è evidenziato in base alla permanenza nel proprio range storico.",
         tabella_sintesi
       ),
@@ -4550,11 +4556,11 @@ server <- function(input, output, session) {
       
       sezione(
         "3",
-        "NOK per sensore fuori range",
-        "Dettaglio dei sensori il cui NOK di periodo supera i limiti storici calcolati.",
+        "NOK per componente fuori range",
+        "Dettaglio dei componenti il cui NOK di periodo supera i limiti storici calcolati.",
         tabella_html(
           r$nok_anomalo,
-          "Nessun NOK per sensore fuori range nel periodo."
+          "Nessun NOK per componente fuori range nel periodo."
         )
       ),
       
@@ -4810,9 +4816,9 @@ server <- function(input, output, session) {
       )
       kpi_card(
         0.865,
-        "SENSORI NOK FUORI RANGE",
+        "COMPONENTI NOK FUORI RANGE",
         as.character(nrow(r$nok_anomalo)),
-        paste0("Su ", nrow(r$confronto), " sensori"),
+        paste0("Su ", nrow(r$confronto), " componenti"),
         if (nrow(r$nok_anomalo) > 0) "bad" else "good"
       )
       
@@ -4862,7 +4868,7 @@ server <- function(input, output, session) {
       # Sintesi per sensore: più pagine, 7 sensori alla volta + macchina.
       sensori_summary <- r$confronto |>
         transmute(
-          Sensore = cds_name,
+          Componente = cds_name,
           Manovre = paste0(
             formatC(attivazioni_medie, format = "f", digits = 1, decimal.mark = ","),
             " (",
@@ -4897,7 +4903,7 @@ server <- function(input, output, session) {
         
         if (nrow(chunk) > 0) {
           for (i in seq_len(nrow(chunk))) {
-            tab[[chunk$Sensore[i]]] <- c(
+            tab[[chunk$Componente[i]]] <- c(
               chunk$Manovre[i],
               paste0(chunk$NOK[i], " · ", chunk$Stato[i])
             )
@@ -4921,7 +4927,7 @@ server <- function(input, output, session) {
         }
         
         grid::grid.newpage()
-        header_pagina("Sintesi per sensore e macchina")
+        header_pagina("Sintesi per componente e macchina")
         grid::grid.text(
           paste0(
             "Valori medi del periodo; tra parentesi la variazione rispetto al periodo precedente. ",
@@ -5034,9 +5040,9 @@ server <- function(input, output, session) {
       )
       
       disegna_tabella_paginata(
-        "NOK per sensore fuori range",
+        "NOK per componente fuori range",
         r$nok_anomalo,
-        "Nessun NOK per sensore fuori range nel periodo."
+        "Nessun NOK per componente fuori range nel periodo."
       )
       
       disegna_tabella_paginata(
@@ -5095,7 +5101,7 @@ server <- function(input, output, session) {
       class = "modal-data-panel",
       p(
         "Manovre anomale rilevate nel periodo selezionato. ",
-        "Sono mostrate sia le anomalie giornaliere sia le ore con manovre almeno 4 volte superiori alla mediana oraria del sensore. Le anomalie giornaliere continuano a essere usate per pulire l'NMN storico."
+        "Sono mostrate sia le anomalie giornaliere sia le ore con manovre almeno 4 volte superiori alla mediana oraria del componente. Le anomalie giornaliere continuano a essere usate per pulire l'NMN storico."
       ),
       DTOutput("modal_tabella_outlier_nok")
     )
@@ -5474,7 +5480,7 @@ server <- function(input, output, session) {
             "?v=",
             image_version
           ),
-          alt = paste("Schema sensori del progetto", progetto)
+          alt = paste("Schema componenti del progetto", progetto)
         ),
         hotspot
       )
@@ -5587,7 +5593,7 @@ server <- function(input, output, session) {
     
     kpi |>
       transmute(
-        Sensore = paste(cds_name, sensor_description, sep = " - "),
+        Componente = paste(cds_name, sensor_description, sep = " - "),
         NOK = case_when(
           is.na(NOK) | is.infinite(NOK) ~
             "<span style='color:#718096;font-weight:800;'>N/D</span>",
@@ -5605,7 +5611,7 @@ server <- function(input, output, session) {
             )
         )
       ) |>
-      pivot_wider(names_from = Sensore, values_from = NOK)
+      pivot_wider(names_from = Componente, values_from = NOK)
   },
   striped = TRUE,
   hover = TRUE,
@@ -5646,7 +5652,7 @@ server <- function(input, output, session) {
       arrange(period_start, sensor_code, alert_id) |>
       transmute(
         `ID segnalazione` = alert_id,
-        Sensore = paste(sensor_code, sensor_description, sep = " - "),
+        Componente = paste(sensor_code, sensor_description, sep = " - "),
         Data = as.Date(period_start, tz = "Europe/Rome"),
         Ora = if_else(
           alert_type == "activation_hourly",
@@ -5669,7 +5675,7 @@ server <- function(input, output, session) {
       arrange(period_start, sensor_code, alert_id) |>
       transmute(
         `ID segnalazione` = alert_id,
-        Sensore = paste(sensor_code, sensor_description, sep = " - "),
+        Componente = paste(sensor_code, sensor_description, sep = " - "),
         Data = as.Date(period_start, tz = "Europe/Rome"),
         Inizio = period_start,
         Fine = period_end,
@@ -5688,7 +5694,7 @@ server <- function(input, output, session) {
       arrange(period_start, sensor_code, alert_id) |>
       transmute(
         `ID segnalazione` = alert_id,
-        Sensore = paste(sensor_code, sensor_description, sep = " - "),
+        Componente = paste(sensor_code, sensor_description, sep = " - "),
         Data = as.Date(period_start, tz = "Europe/Rome"),
         Descrizione = signal_description,
         Dati = signal_data_text
@@ -5735,7 +5741,7 @@ server <- function(input, output, session) {
       return(
         div(
           class = "alarm-empty",
-          "Nessun sensore aperto o senza contatto elettrico per oltre 1 ora consecutiva nel periodo selezionato."
+          "Nessun componente aperto o senza contatto elettrico per oltre 1 ora consecutiva nel periodo selezionato."
         )
       )
     }
@@ -6327,7 +6333,7 @@ server <- function(input, output, session) {
         labels = scales::label_number(accuracy = 1),
         expand = expansion(mult = c(0, 0.04))
       ) +
-      scale_fill_manual(values = palette_sensori, name = "Sensore") +
+      scale_fill_manual(values = palette_sensori, name = "Componente") +
       labs(title = NULL, x = NULL, y = "Manovre") +
       tema_san(base_size = 13) +
       theme(
@@ -6419,7 +6425,7 @@ server <- function(input, output, session) {
           ) +
           scale_color_manual(
             values = palette_sensori,
-            name = "Sensore"
+            name = "Componente"
           ) +
           labs(x = NULL, y = "Manovre") +
           tema_san(base_size = 13) +
@@ -6501,7 +6507,7 @@ server <- function(input, output, session) {
         },
         expand = expansion(mult = c(0, 0.04))
       ) +
-      scale_color_manual(values = palette_sensori, name = "Sensore") +
+      scale_color_manual(values = palette_sensori, name = "Componente") +
       labs(x = NULL, y = "Manovre") +
       tema_san(base_size = 13) +
       theme(
@@ -7364,7 +7370,7 @@ server <- function(input, output, session) {
         )
       ),
       div(
-        "Indice dell’intensità di utilizzo dei sensori. Valori alti indicano uno stress della macchina più elevato o una discrepanza nell’utilizzo rispetto allo storico. Valori bassi indicano uno stress della macchina meno elevato rispetto allo storico.",
+        "Indice dell’intensità di utilizzo dei componenti. Valori alti indicano uno stress della macchina più elevato o una discrepanza nell’utilizzo rispetto allo storico. Valori bassi indicano uno stress della macchina meno elevato rispetto allo storico.",
         style = "margin-top:7px;font-size:13px;color:#5F6F7F;"
       ),
       div(
@@ -7616,7 +7622,7 @@ server <- function(input, output, session) {
           "<b>", etichetta_sensore, "</b><br/>",
           "Media NOK: ", round(media_nok, 4), "<br/>",
           "Varianza NOK: ", round(varianza_nok, 4), "<br/>",
-          "Utilizzo sensore: ", round(U_sensore, 4)
+          "Utilizzo componente: ", round(U_sensore, 4)
         )
       )
     
@@ -7929,7 +7935,7 @@ server <- function(input, output, session) {
         },
         expand = expansion(mult = c(0.02, 0.04))
       ) +
-      scale_color_manual(values = palette_sensori, name = "Sensore") +
+      scale_color_manual(values = palette_sensori, name = "Componente") +
       labs(x = NULL, y = "NOK") +
       tema_san(base_size = 13) +
       theme(
@@ -7970,28 +7976,28 @@ server <- function(input, output, session) {
     dati_grafico_modal() |>
       transmute(
         Periodo     = as.character(periodo_label),
-        Sensore     = as.character(etichetta_completa),
+        Componente     = as.character(etichetta_completa),
         Manovre = attivazioni,
         Anomalia = if_else(anomalia_oraria, "SI", "")
       ) |>
-      arrange(Periodo, Sensore)
+      arrange(Periodo, Componente)
   }, rownames = FALSE, options = list(pageLength = 25, dom = "tip"))
   
   output$modal_tabella_dati_trend <- renderDT({
     dati_grafico_modal() |>
       transmute(
-        Sensore     = as.character(etichetta_completa),
+        Componente     = as.character(etichetta_completa),
         Periodo     = as.character(periodo_label),
         Manovre = attivazioni,
         Anomalia = if_else(anomalia_oraria, "SI", "")
       ) |>
-      arrange(Sensore, Periodo)
+      arrange(Componente, Periodo)
   }, rownames = FALSE, options = list(pageLength = 25, dom = "tip"))
   
   output$modal_tabella_dati_tank <- renderDT({
     tank_data_modal() |>
       transmute(
-        Sensore = gsub("\n", " ", as.character(etichetta_sensore)),
+        Componente = gsub("\n", " ", as.character(etichetta_sensore)),
         Tipo    = tipo,
         Valore  = round(valore, 1),
         Massimo = massimo,
@@ -8023,12 +8029,12 @@ server <- function(input, output, session) {
     utilizzo_nok_modal()$per_sensore_confronto |>
       transmute(
         Confronto = as.character(confronto),
-        Sensore = etichetta_sensore,
+        Componente = etichetta_sensore,
         `Media NOK` = round(media_nok, 3),
         `Varianza NOK` = round(varianza_nok, 3),
         `Utilizzo sensore` = round(U_sensore, 3)
       ) |>
-      arrange(Confronto, Sensore)
+      arrange(Confronto, Componente)
   },
   rownames = FALSE,
   options = list(pageLength = 25, dom = "tip"))
