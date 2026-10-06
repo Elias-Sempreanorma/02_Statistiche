@@ -388,13 +388,15 @@ data_start_default <- max(data_min, data_max - 27)
 # quando l'immagine si ridimensiona.
 # ---------------------------------------------------------------------------
 immagini_progetti <- data.frame(
-  project = c("A3020", "A1220", "C14GR", "E11RI", "F0400"),
+  project = c("A3020", "A1220", "C14GR", "E11RI", "F0400", "Banco 1", "Banco 2"),
   file_name = c(
     "Giacomini_G1_A3020.png",
     "Giacomini_G1_A1220.png",
     "Giacomini_G1_C14GR.png",
     "Giacomini_G1_E11RI.png",
-    "Giacomini_G1_F0400.png"
+    "Giacomini_G1_F0400.png",
+    "Siboni_Banco_1.png",
+    "Siboni_Banco_2.png"
   ),
   stringsAsFactors = FALSE
 )
@@ -485,6 +487,18 @@ mappa_sensori <- bind_rows(
       97, 97, 173, 195, 216, 194, 212, 278, 278, 381,
       386, 419, 435, 484, 462
     )
+  ),
+  data.frame(
+    project = "Banco 1", image_width = 1293, image_height = 1217,
+    cds_name = c("FCM1", "FCM2", "MB1"),
+    x = c(884, 982, 673),
+    y = c(94, 94, 405)
+  ),
+  data.frame(
+    project = "Banco 2", image_width = 1293, image_height = 1217,
+    cds_name = c("FCM1", "FCM2", "MB1"),
+    x = c(884, 982, 673),
+    y = c(94, 94, 405)
   )
 ) |>
   mutate(
@@ -4602,6 +4616,15 @@ server <- function(input, output, session) {
     
     if (length(progetto) == 0 || is.na(progetto)) {
       return(NULL)
+    }
+
+    # Per i banchi Siboni accetto anche Banco_1/Banco_2 e Siboni_Banco_1/2.
+    # Uso la stessa chiave per scegliere l'immagine e i relativi hotspot.
+    progetto_banco <- str_to_upper(str_replace_all(progetto, "[^[:alnum:]]", ""))
+    if (progetto_banco %in% c("BANCO1", "SIBONIBANCO1")) {
+      progetto <- "Banco 1"
+    } else if (progetto_banco %in% c("BANCO2", "SIBONIBANCO2")) {
+      progetto <- "Banco 2"
     }
     
     immagine <- immagini_progetti |>
