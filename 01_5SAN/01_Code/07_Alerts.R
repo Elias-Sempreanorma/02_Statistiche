@@ -107,7 +107,7 @@ alert_attivazioni_giornaliere <- base_giornaliera |>
     functional_unit = paste(cds_name, sensor_description, sep = " - "),
     signal_description = if_else(
       daily_count == 0,
-      "Zero manovre in una giornata con attivita' storica del sensore",
+      "Zero manovre in una giornata con attivita' storica del componente",
       "Anomalia statistica giornaliera delle manovre"
     ),
     signal_data_text = paste0(
@@ -191,7 +191,7 @@ alert_attivazioni_orarie <- base_oraria |>
     alert_scope = "sensor",
     functional_unit = paste(cds_name, sensor_description, sep = " - "),
     signal_description =
-      "Conteggio orario almeno 4 volte la mediana oraria del sensore",
+      "Conteggio orario almeno 4 volte la mediana oraria del componente",
     signal_data_text = paste0(
       "Manovre nell'ora: ",
       round(hourly_count),
@@ -219,7 +219,7 @@ alert_attivazioni_orarie <- base_oraria |>
   ungroup()
 
 # ---------------------------------------------------------------------------
-# 3) Sensore aperto / assenza di contatto elettrico per oltre 1 ora.
+# 3) Componente aperto / assenza di contatto elettrico per oltre 1 ora.
 # ---------------------------------------------------------------------------
 eventi_aperti <- calcola_eventi_sensore_aperto(
   raw_data,
@@ -244,7 +244,7 @@ alert_sensori_aperti <- eventi_aperti |>
     alert_scope = "sensor",
     functional_unit = paste(cds_name, sensor_description, sep = " - "),
     signal_description =
-      "Sensore aperto o senza contatto elettrico per oltre 1 ora consecutiva",
+      "Componente aperto o senza contatto elettrico per oltre 1 ora consecutiva",
     signal_data_text = paste0(
       "Durata evento: ",
       round(open_hours, 2),
@@ -540,7 +540,7 @@ if (
         signal_data_text = paste0(
           "Durata intervallo non osservato: ",
           round(ev$gap_minutes, 1),
-          " min; sensori con evidenza: ",
+          " min; componenti con evidenza: ",
           evidenze_text
         ),
         signal_data_json = json_alert(list(
