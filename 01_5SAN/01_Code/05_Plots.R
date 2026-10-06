@@ -625,6 +625,37 @@ dashboard_ui <- fluidPage(
           $(this).trigger('click');
         }
       });
+
+      // Ripristina il focus al controllo di apertura, anche chiudendo con Esc.
+      // Non intercetta gli eventi di Bootstrap o i messaggi reattivi di Shiny.
+      if (!window.sanInteractionsBound) {
+        window.sanInteractionsBound = true;
+        var sanModalOpener = null;
+        $(document).on('show.bs.modal.san', '#shiny-modal', function () {
+          var active = document.activeElement;
+          if (active && active !== document.body && !active.closest('.modal')) {
+            sanModalOpener = active;
+          }
+        });
+        $(document).on('shown.bs.modal.san', '#shiny-modal', function () {
+          var title = this.querySelector('.modal-machine-title, .report-title');
+          if (title) {
+            title.id = 'san-dialog-title';
+            this.setAttribute('aria-labelledby', title.id);
+          } else {
+            this.setAttribute('aria-label', 'Dettaglio macchina');
+          }
+        });
+        $(document).on('hidden.bs.modal.san', '#shiny-modal', function () {
+          window.requestAnimationFrame(function () {
+            if (!document.querySelector('.modal.in, .modal.show') &&
+                sanModalOpener && sanModalOpener.isConnected) {
+              sanModalOpener.focus({preventScroll: true});
+              sanModalOpener = null;
+            }
+          });
+        });
+      }
     ")),
     tags$style(HTML("
       /* Modal grande: quasi a schermo intero */
@@ -2278,6 +2309,186 @@ dashboard_ui <- fluidPage(
       @media (prefers-reduced-motion: reduce) {
         .modal-nav-bar .btn-group .btn { transition: none; }
       }
+
+      /* Dettagli di interazione: tempi brevi, bordi coerenti e focus leggibile. */
+      :root {
+        --san-ease: cubic-bezier(0.22, 1, 0.36, 1);
+        --san-fast: 150ms;
+        --san-motion: 240ms;
+      }
+      .btn, .documento-download, .modal-close-x, .sensor-hotspot,
+      .selectize-input, .form-control, .radio-inline {
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+      }
+      .btn, .documento-download, .modal-close-x, .sensor-hotspot,
+      .selectize-dropdown .option, .datepicker td.day, .datepicker th.prev,
+      .datepicker th.next, .datepicker th.datepicker-switch {
+        cursor: pointer;
+      }
+      input.form-control, .selectize-input input { cursor: text; }
+      button:disabled, .btn.disabled, .btn[disabled],
+      .datepicker td.disabled, .datepicker td.disabled:hover {
+        cursor: not-allowed;
+      }
+      .btn.disabled, .btn[disabled], button:disabled {
+        opacity: 0.48;
+        box-shadow: none !important;
+        transform: none !important;
+      }
+      .btn:not(.card-home), .documento-download, .modal-close-x {
+        transition: background-color var(--san-fast) ease,
+          border-color var(--san-fast) ease,
+          box-shadow var(--san-fast) ease,
+          transform var(--san-fast) var(--san-ease);
+      }
+      @media (hover: hover) and (pointer: fine) {
+        .modal-data-button .btn:hover,
+        .documento-download:hover, .report-download.btn:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 5px 14px rgba(35,74,102,0.10);
+        }
+      }
+      .btn:not(.card-home):not(.dropdown-toggle):active,
+      .documento-download:active, .modal-close-x:active {
+        transform: scale(0.975);
+      }
+      .home-corner .card-home:active {
+        background-color: var(--san-yellow-dark);
+        box-shadow: inset 0 2px 10px rgba(35,74,102,0.12);
+      }
+      .btn:focus-visible, .documento-download:focus-visible,
+      .modal-close-x:focus-visible, .sensor-hotspot:focus-visible {
+        outline: 2px solid var(--san-blue) !important;
+        outline-offset: 3px;
+      }
+      .home-corner .card-home:focus-visible { outline-offset: -6px; }
+      .modal-close-x:focus-visible, .report-back-btn:focus-visible,
+      .report-download:focus-visible { outline-color: #FFFFFF !important; }
+      .modal-content .btn-default, .documento-download {
+        background-image: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(244,245,246,0.12));
+        box-shadow: inset 0 1px 0 #FFFFFF, 0 2px 6px rgba(35,74,102,0.04);
+        line-height: 1.4;
+      }
+      .modal-nav-bar .btn-group .btn {
+        line-height: 1.4;
+        letter-spacing: -0.01em;
+      }
+      .modal-nav-bar .btn-group .btn.active {
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.65), 0 3px 8px rgba(35,74,102,0.10) !important;
+      }
+      .modal-content, .life-card, .report-kpi-card, .report-panel,
+      .modal-data-panel, .documenti-bar {
+        border-color: rgba(197,205,211,0.55);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.95), var(--san-shadow);
+      }
+      .modal-content {
+        box-shadow: inset 0 1px 0 #FFFFFF, 0 24px 70px rgba(35,74,102,0.22);
+      }
+      /* Usa il ciclo nativo Bootstrap anche in chiusura: nessun timer
+         che possa ritardare o bloccare i messaggi Shiny. */
+      #shiny-modal.fade {
+        transition: opacity var(--san-motion) ease;
+      }
+      #shiny-modal.fade .modal-dialog {
+        transform: translateY(12px) scale(0.985);
+        transition: transform var(--san-motion) var(--san-ease);
+      }
+      #shiny-modal.in .modal-dialog, #shiny-modal.show .modal-dialog {
+        transform: translateY(0) scale(1);
+      }
+      .modal-backdrop.fade { transition: opacity var(--san-motion) ease; }
+      @keyframes san-panel-reveal {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      .modal-data-panel, .selectize-dropdown,
+      .bootstrap-select.open > .dropdown-menu, .datepicker-dropdown {
+        animation: san-panel-reveal 160ms ease-out;
+      }
+      .sensor-hotspot { transition: background-color 140ms ease, border-color 140ms ease; }
+      .sensor-hotspot .sensor-tooltip {
+        display: block;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 140ms ease, visibility 140ms ease;
+        padding: 12px 15px;
+        line-height: 1.5;
+        white-space: normal;
+        width: max-content;
+        max-width: min(300px, calc(100vw - 36px));
+        min-width: min(220px, calc(100vw - 36px));
+      }
+      .sensor-hotspot:hover .sensor-tooltip,
+      .sensor-hotspot:focus .sensor-tooltip {
+        opacity: 1;
+        visibility: visible;
+        transition-delay: 90ms;
+      }
+      .sensor-hotspot:focus-visible .sensor-tooltip { transition-delay: 0ms; }
+      .modal-machine-title, .report-title, .life-card-title {
+        overflow-wrap: anywhere;
+        text-wrap: balance;
+      }
+      .home-card-label p, .report-subtitle, .life-header-subtitle {
+        text-wrap: pretty;
+      }
+      .report-kpi-value, .life-value, .report-table td {
+        font-variant-numeric: tabular-nums;
+      }
+      .modal-data-button .btn { min-width: 125px; }
+      .shiny-input-radiogroup label.radio-inline input {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+      }
+      .shiny-input-radiogroup label.radio-inline:hover {
+        border-color: #C5CDD3;
+        color: var(--san-blue);
+      }
+      .shiny-input-radiogroup label.radio-inline:has(input:checked) {
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.65), 0 2px 5px rgba(35,74,102,0.06);
+      }
+      .activation-scroll, .modal-body, .selectize-dropdown-content,
+      .bootstrap-select .dropdown-menu.inner, .dataTables_scrollBody {
+        scrollbar-width: thin;
+        scrollbar-color: #AAB8C3 transparent;
+      }
+      .activation-scroll::-webkit-scrollbar,
+      .modal-body::-webkit-scrollbar { width: 9px; height: 9px; }
+      .activation-scroll::-webkit-scrollbar-thumb,
+      .modal-body::-webkit-scrollbar-thumb {
+        background: #AAB8C3;
+        border: 2px solid #F4F5F6;
+        border-radius: 999px;
+      }
+      .activation-scroll::-webkit-scrollbar-thumb:hover,
+      .modal-body::-webkit-scrollbar-thumb:hover { background: var(--san-blue-2); }
+      .recalculating { cursor: progress; }
+      ::selection { background: rgba(235,189,85,0.35); color: #234A66; }
+      @media (prefers-reduced-motion: reduce) {
+        #shiny-modal.fade, #shiny-modal.fade .modal-dialog, .modal-backdrop.fade,
+        .btn, .documento-download, .modal-close-x, .sensor-hotspot,
+        .sensor-hotspot .sensor-tooltip, .home-corner .card-home,
+        .home-corner .card-home .home-card-label {
+          transition: none !important;
+          transition-delay: 0ms !important;
+        }
+        #shiny-modal.fade .modal-dialog { transform: none; }
+        .modal-data-panel, .selectize-dropdown,
+        .bootstrap-select.open > .dropdown-menu, .datepicker-dropdown {
+          animation: none;
+        }
+        .modal-data-button .btn:hover, .documento-download:hover,
+        .report-download.btn:hover, .btn:active, .modal-close-x:active {
+          transform: none !important;
+        }
+      }
     "))
   ),
   
@@ -2633,6 +2844,7 @@ server <- function(input, output, session) {
       title = NULL,
       size = "xl",
       easyClose = TRUE,
+      fade = TRUE,
       footer = NULL,
       
       div(
@@ -2646,6 +2858,7 @@ server <- function(input, output, session) {
           class = "modal-close-x",
           `data-dismiss` = "modal",
           `aria-label` = "Chiudi",
+          title = "Chiudi (Esc)",
           HTML("&times;")
         )
       ),
@@ -2783,7 +2996,7 @@ server <- function(input, output, session) {
         ),
         div(
           class = "modal-data-button",
-          actionButton("modal_btn_dati_attivazioni", "Dati", icon = icon("table"), class = "btn-sm btn-default")
+          actionButton("modal_btn_dati_attivazioni", "Mostra dati", icon = icon("table"), class = "btn-sm btn-default")
         ),
         uiOutput("modal_panel_dati_attivazioni"),
         h4("Andamento per sensore", class = "titolo-sezione"),
@@ -2794,7 +3007,7 @@ server <- function(input, output, session) {
         ),
         div(
           class = "modal-data-button",
-          actionButton("modal_btn_dati_trend", "Dati", icon = icon("table"), class = "btn-sm btn-default")
+          actionButton("modal_btn_dati_trend", "Mostra dati", icon = icon("table"), class = "btn-sm btn-default")
         ),
         uiOutput("modal_panel_dati_trend")
       )
@@ -2822,7 +3035,7 @@ server <- function(input, output, session) {
         uiOutput("modal_tankCards"),
         div(
           class = "modal-data-button",
-          actionButton("modal_btn_dati_tank", "Dati", icon = icon("table"), class = "btn-sm btn-default")
+          actionButton("modal_btn_dati_tank", "Mostra dati", icon = icon("table"), class = "btn-sm btn-default")
         ),
         uiOutput("modal_panel_dati_tank")
       )
@@ -2914,7 +3127,7 @@ server <- function(input, output, session) {
           class = "modal-data-button",
           actionButton(
             "modal_btn_dati_profilo_nok",
-            "Dati",
+            "Mostra dati",
             icon = icon("table"),
             class = "btn-sm btn-default"
           )
@@ -2933,7 +3146,7 @@ server <- function(input, output, session) {
           class = "modal-data-button",
           actionButton(
             "modal_btn_dati_nok",
-            "Dati",
+            "Mostra dati",
             icon = icon("table"),
             class = "btn-sm btn-default"
           )
@@ -3040,22 +3253,42 @@ server <- function(input, output, session) {
   
   observeEvent(input$modal_btn_dati_attivazioni, {
     mostra_dati_attivazioni(!mostra_dati_attivazioni())
+    updateActionButton(
+      session, "modal_btn_dati_attivazioni",
+      label = if (mostra_dati_attivazioni()) "Nascondi dati" else "Mostra dati"
+    )
   })
   
   observeEvent(input$modal_btn_dati_trend, {
     mostra_dati_trend(!mostra_dati_trend())
+    updateActionButton(
+      session, "modal_btn_dati_trend",
+      label = if (mostra_dati_trend()) "Nascondi dati" else "Mostra dati"
+    )
   })
   
   observeEvent(input$modal_btn_dati_tank, {
     mostra_dati_tank(!mostra_dati_tank())
+    updateActionButton(
+      session, "modal_btn_dati_tank",
+      label = if (mostra_dati_tank()) "Nascondi dati" else "Mostra dati"
+    )
   })
   
   observeEvent(input$modal_btn_dati_nok, {
     mostra_dati_nok(!mostra_dati_nok())
+    updateActionButton(
+      session, "modal_btn_dati_nok",
+      label = if (mostra_dati_nok()) "Nascondi dati" else "Mostra dati"
+    )
   })
   
   observeEvent(input$modal_btn_dati_profilo_nok, {
     mostra_dati_profilo_nok(!mostra_dati_profilo_nok())
+    updateActionButton(
+      session, "modal_btn_dati_profilo_nok",
+      label = if (mostra_dati_profilo_nok()) "Nascondi dati" else "Mostra dati"
+    )
   })
   
   observeEvent(input$modal_btn_storico_utilizzo_nok, {
@@ -3938,6 +4171,7 @@ server <- function(input, output, session) {
       title = NULL,
       size = "xl",
       easyClose = TRUE,
+      fade = TRUE,
       footer = NULL,
       uiOutput("report_modal_content")
     ))
@@ -4151,7 +4385,8 @@ server <- function(input, output, session) {
               label = NULL,
               icon = icon("arrow-left"),
               class = "report-back-btn",
-              title = "Torna agli allarmi"
+              title = "Torna agli allarmi",
+              `aria-label` = "Torna agli allarmi"
             ),
             div(
               h2("Rapporto anomalie e utilizzo", class = "report-title"),
