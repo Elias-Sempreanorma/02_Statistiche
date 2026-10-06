@@ -1646,19 +1646,22 @@ dashboard_ui <- fluidPage(
       .modal-content,
       .selectize-input,
       .selectize-dropdown {
-        font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
       }
 
       body {
         color: var(--san-text);
-        background: #FFFFFF;
+        background:
+          radial-gradient(ellipse at 5% 0%, rgba(235,189,85,0.15), transparent 48%),
+          radial-gradient(ellipse at 95% 30%, rgba(95,116,140,0.16), transparent 55%),
+          #EDF1F5;
       }
 
       /* Fascia alta: il blu resta concentrato qui, come nel sito. */
       .container-fluid > h2:first-of-type {
         margin: 0 -15px;
         padding: 13px 20px 12px 20px;
-        background: var(--san-blue);
+        background: linear-gradient(120deg, #234A66, #42647D);
         border-bottom: 4px solid var(--san-yellow);
         color: #FFFFFF;
         font-size: 29px;
@@ -1669,11 +1672,11 @@ dashboard_ui <- fluidPage(
       .pannello-filtri {
         margin: 0 -7px 8px -7px;
         padding: 10px 14px 1px 14px;
-        background: var(--san-panel-soft);
-        border: 1px solid var(--san-border-soft);
+        background: linear-gradient(135deg, rgba(255,255,255,0.88), rgba(242,247,251,0.70));
+        border: 1px solid rgba(255,255,255,0.90);
         border-top: 0;
-        border-radius: 0 0 7px 7px;
-        box-shadow: none;
+        border-radius: 0 0 20px 20px;
+        box-shadow: 0 8px 24px rgba(35,74,102,0.06), inset 0 1px 0 rgba(255,255,255,0.95);
       }
       .pannello-filtri label,
       .modal-filters label {
@@ -1700,41 +1703,59 @@ dashboard_ui <- fluidPage(
         accent-color: var(--san-yellow-dark);
       }
 
-      /* Home: grigio/bianco al centro, giallo solo come richiamo. */
+      /* Superfici in vetro: riflessi leggeri e sfondo visibile. */
+      .pannello-filtri,
+      .home-corner .card-home,
+      .home-corner .card-home .home-card-label,
+      .modal-content,
+      .modal-filters,
+      .life-card,
+      .modal-data-panel,
+      .report-table-wrap,
+      .report-panel,
+      .documenti-bar {
+        -webkit-backdrop-filter: blur(18px) saturate(125%);
+        backdrop-filter: blur(18px) saturate(125%);
+      }
       .home-stage {
-        background: var(--san-bg);
-        border: 1px solid var(--san-border-soft);
+        background:
+          radial-gradient(ellipse at 10% 10%, rgba(235,189,85,0.18), transparent 60%),
+          linear-gradient(135deg, #E9F0F5, #F5F1E8);
+        border: 1px solid rgba(255,255,255,0.85);
+        border-radius: 24px;
+        box-shadow: 0 12px 32px rgba(35,74,102,0.08);
       }
       .home-corner .card-home {
-        background: #F7F8F8;
+        background: linear-gradient(135deg, rgba(255,255,255,0.78), rgba(255,255,255,0.52));
         border: 0 !important;
-        box-shadow: inset 0 0 0 1px #AEB8C1;
-        transition:
-          background-color 0.16s ease,
-          box-shadow 0.16s ease;
+        border-radius: 22px;
+        box-shadow: inset 0 0 0 2px var(--san-yellow), inset 0 4px 0 var(--san-yellow);
+        transition: background 0.20s ease, box-shadow 0.20s ease;
       }
       .home-corner .card-home:hover,
       .home-corner .card-home:focus {
-        background: #FFFFFF;
-        box-shadow:
-          inset 0 0 0 2px var(--san-yellow),
-          inset 0 4px 0 var(--san-yellow);
+        background: linear-gradient(135deg, rgba(211,223,233,0.88), rgba(191,208,222,0.76));
+        box-shadow: inset 0 0 0 1px #8C9EAD, inset 0 2px 8px rgba(35,74,102,0.10);
         outline: none;
+      }
+      .home-corner .card-home:focus-visible {
+        outline: 3px solid var(--san-blue);
+        outline-offset: -6px;
       }
 
       .home-corner .card-home .home-card-label {
-        background: #FFFFFF;
-        border: 1px solid #D4D9DD;
+        background: linear-gradient(135deg, rgba(255,255,255,0.94), rgba(255,255,255,0.76));
+        border: 1px solid rgba(255,255,255,0.95);
         border-left: 4px solid var(--san-yellow);
-        border-radius: 6px;
-        box-shadow: 0 2px 8px rgba(35,74,102,0.06);
+        border-radius: 18px;
+        box-shadow: 0 5px 16px rgba(35,74,102,0.08), inset 0 1px 0 #FFFFFF;
       }
       .home-corner .card-home:hover .home-card-label,
       .home-corner .card-home:focus .home-card-label {
-        background: #FFFFFF;
-        border-color: #D4D9DD;
-        border-left-color: var(--san-yellow);
-        box-shadow: 0 4px 12px rgba(35,74,102,0.10);
+        background: linear-gradient(135deg, rgba(227,235,242,0.96), rgba(213,225,234,0.90));
+        border-color: #AAB9C5;
+        border-left-color: #8C9EAD;
+        box-shadow: 0 3px 10px rgba(35,74,102,0.08);
       }
       .home-corner .card-home h4 {
         color: var(--san-blue);
@@ -1746,9 +1767,9 @@ dashboard_ui <- fluidPage(
 
       .schema-frame img {
         border: 1.5px solid var(--san-blue-2);
-        border-radius: 6px;
+        border-radius: 20px;
         background: #FFFFFF;
-        box-shadow: 0 4px 14px rgba(35,74,102,0.10);
+        box-shadow: 0 12px 30px rgba(35,74,102,0.16), 0 0 0 5px rgba(255,255,255,0.40);
       }
 
       /* Hotspot: blu in hover, bordo giallo come accento. */
@@ -1767,14 +1788,16 @@ dashboard_ui <- fluidPage(
 
       /* Modali: testata blu, contenuto bianco/grigio, selezione gialla. */
       .modal-content {
-        border: 1px solid #C7CDD2;
-        border-radius: 8px;
-        box-shadow: 0 12px 38px rgba(29,45,58,0.18);
+        background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(242,247,251,0.92));
+        border: 1px solid rgba(255,255,255,0.90);
+        border-radius: 24px;
+        box-shadow: 0 20px 60px rgba(29,45,58,0.22), inset 0 1px 0 #FFFFFF;
       }
       .modal-machine-header {
         margin: -15px -15px 14px -15px;
         padding: 14px 18px;
-        background: var(--san-blue);
+        background: linear-gradient(120deg, #234A66, #42647D);
+        border-radius: 23px 23px 0 0;
         border-bottom: 3px solid var(--san-yellow);
       }
       .modal-machine-title {
@@ -1788,9 +1811,10 @@ dashboard_ui <- fluidPage(
       }
 
       .modal-filters {
-        background: #F1F3F4;
-        border: 1px solid #DDE1E4;
-        border-radius: 6px;
+        background: linear-gradient(135deg, rgba(255,255,255,0.86), rgba(231,239,245,0.72));
+        border: 1px solid rgba(255,255,255,0.95);
+        border-radius: 18px;
+        box-shadow: inset 0 1px 0 #FFFFFF;
       }
       .modal-nav-bar {
         border-bottom-color: #D8DDE1;
@@ -1835,9 +1859,10 @@ dashboard_ui <- fluidPage(
       .report-table-wrap,
       .report-panel,
       .documenti-bar {
-        background: #FFFFFF;
-        border-color: #D5DADF;
-        box-shadow: 0 2px 8px rgba(35,74,102,0.045);
+        background: linear-gradient(135deg, rgba(255,255,255,0.92), rgba(246,249,252,0.78));
+        border-color: rgba(199,211,221,0.70);
+        border-radius: 18px;
+        box-shadow: 0 6px 20px rgba(35,74,102,0.06), inset 0 1px 0 #FFFFFF;
       }
 
       #nok_table th,
@@ -1890,6 +1915,28 @@ dashboard_ui <- fluidPage(
         background: var(--san-yellow) !important;
         border-color: var(--san-yellow-dark) !important;
         color: #202326 !important;
+      }
+
+      .pannello-filtri .form-control,
+      .modal-filters .form-control,
+      .bootstrap-select > .dropdown-toggle,
+      .documento-download,
+      .modal-data-button .btn {
+        border-radius: 12px;
+      }
+      .selectize-input {
+        border-radius: 12px;
+      }
+      .report-summary {
+        border-radius: 16px;
+      }
+      .modal-backdrop.in {
+        opacity: 0.32;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .home-corner .card-home {
+          transition: none;
+        }
       }
     "))
   ),
