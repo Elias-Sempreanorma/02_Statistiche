@@ -304,9 +304,35 @@ macchine_lookup <- dati |>
   distinct(company, field, coupon, project, machine_name) |>
   arrange(company, field, project, machine_name)
 
+# Un solo ordinamento per menu, card e grafici: FCM1, FCM2, ..., FCM10.
+# numeric = TRUE gestisce anche codici con piu' gruppi numerici o suffissi.
+ordina_naturale <- function(df) {
+  df <- mutate(df, cds_name = as.character(cds_name))
+  df[stringr::str_order(df$cds_name, numeric = TRUE), , drop = FALSE]
+}
+
+# Tema condiviso dei grafici; dati, scale e colori delle serie restano invariati.
+tema_san <- function(base_size = 13) {
+  theme_minimal(base_size = base_size, base_family = "Arial") +
+    theme(
+      text = element_text(colour = "#234A66"),
+      panel.grid.minor = element_blank(),
+      panel.grid.major = element_line(colour = "#E8EDF1", linewidth = 0.35),
+      axis.text = element_text(colour = "#66717A"),
+      axis.title = element_text(colour = "#234A66", face = "bold"),
+      plot.background = element_rect(fill = "#FFFFFF", colour = NA),
+      panel.background = element_rect(fill = "#FFFFFF", colour = NA),
+      legend.background = element_rect(fill = "#FFFFFF", colour = NA),
+      legend.key = element_rect(fill = "#FFFFFF", colour = NA),
+      strip.text = element_text(colour = "#234A66", face = "bold"),
+      plot.margin = margin(16, 18, 12, 12)
+    )
+}
+
 sensori_lookup <- dati |>
   distinct(coupon, cds_name, sensor_description) |>
-  arrange(coupon, cds_name)
+  ordina_naturale() |>
+  arrange(coupon)
 
 # Stessa regola usata dall'ETL: nessun alert prima di 30 osservazioni
 # reali del contatore. Qui il lookup resta utile ai report storici.
@@ -1988,6 +2014,270 @@ dashboard_ui <- fluidPage(
           border-radius: 0;
         }
       }
+
+      /* Sistema visivo condiviso: controlli in vetro, contenuti su pannelli
+         leggibili. Nessun blur sui grafici e nessun clipping sui filtri. */
+      :root {
+        --san-radius-lg: 24px;
+        --san-radius-md: 16px;
+        --san-shadow: 0 8px 28px rgba(35,74,102,0.07);
+        --san-glass: linear-gradient(135deg, rgba(255,255,255,0.94), rgba(244,247,250,0.82));
+      }
+      body { -webkit-font-smoothing: antialiased; }
+      .report-modal { font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; }
+      .container-fluid > h2:first-of-type {
+        background: linear-gradient(115deg, #234A66 10%, #3B5D77 72%, #5F748C);
+        padding-top: 17px;
+        padding-bottom: 17px;
+        font-weight: 700;
+        letter-spacing: -0.035em;
+        box-shadow: 0 8px 28px rgba(35,74,102,0.12);
+      }
+      .pannello-filtri {
+        padding-top: 14px;
+        padding-bottom: 5px;
+        background: var(--san-glass);
+      }
+      .pannello-filtri label, .modal-filters label {
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.015em;
+      }
+      .form-control, .selectize-input,
+      .bootstrap-select > .dropdown-toggle {
+        border: 1px solid #DDE1E4;
+        border-radius: 12px;
+        background: #FFFFFF;
+        color: var(--san-blue);
+        box-shadow: 0 2px 5px rgba(35,74,102,0.025);
+      }
+      .selectize-input.focus, .form-control:focus,
+      .bootstrap-select.open > .dropdown-toggle {
+        border-color: var(--san-blue-2);
+        box-shadow: 0 0 0 3px rgba(95,116,140,0.12);
+      }
+      .input-daterange .input-group-addon {
+        background: transparent;
+        border: 0;
+        color: var(--san-muted);
+      }
+      .input-daterange input:first-child { border-radius: 12px 0 0 12px; }
+      .input-daterange input:last-child { border-radius: 0 12px 12px 0; }
+      .selectize-dropdown, .bootstrap-select .dropdown-menu, .datepicker-dropdown {
+        padding: 6px;
+        border-radius: 18px;
+        box-shadow: 0 18px 44px rgba(35,74,102,0.18);
+      }
+      .selectize-dropdown .option,
+      .bootstrap-select .dropdown-menu > li > a {
+        padding: 9px 12px;
+        border-radius: 9px;
+      }
+      .bootstrap-select .dropdown-menu > li.selected > a {
+        background: rgba(235,189,85,0.20);
+        color: var(--san-blue);
+      }
+      .datepicker table tr td, .datepicker table tr th {
+        border-radius: 9px;
+        width: 32px;
+        height: 32px;
+      }
+      .datepicker table tr td.active,
+      .datepicker table tr td.active:hover,
+      .datepicker table tr td.selected,
+      .datepicker table tr td.selected:hover {
+        background: var(--san-yellow) !important;
+        color: var(--san-blue) !important;
+        text-shadow: none;
+      }
+      .datepicker table tr td.range {
+        background: rgba(235,189,85,0.18);
+      }
+      .home-stage { border-radius: 28px; }
+      .home-corner .card-home {
+        border-radius: 26px;
+        background-color: #F0F2F3;
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.95), inset 0 -1px 0 rgba(197,205,211,0.6);
+      }
+      .home-corner .card-home:hover,
+      .home-corner .card-home:focus-visible { background-color: var(--san-yellow); }
+      .home-corner .card-home .home-card-label {
+        padding: 18px;
+        width: clamp(180px, 14vw, 240px);
+      }
+      .home-corner .card-home h4 {
+        font-size: 20px;
+        letter-spacing: -0.025em;
+        margin-bottom: 8px;
+      }
+      .home-corner .card-home p { font-size: 13px; line-height: 1.45; }
+      .home-corner .card-home .card-icona {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 38px;
+        height: 38px;
+        margin-bottom: 10px;
+        border: 1px solid rgba(255,255,255,0.95);
+        border-radius: 13px;
+        background: rgba(255,255,255,0.70);
+        box-shadow: 0 3px 8px rgba(35,74,102,0.05);
+        font-size: 18px;
+      }
+      .modal-content { border-radius: 28px; background: #F4F5F6; }
+      .modal-machine-header {
+        border-radius: 27px 27px 0 0;
+        padding: 19px 22px;
+        margin-bottom: 20px;
+      }
+      .modal-machine-title { font-size: 20px; letter-spacing: -0.02em; }
+      .modal-close-x {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        font-size: 26px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.12);
+        opacity: 1;
+      }
+      .modal-close-x:hover { background: rgba(255,255,255,0.24); }
+      .modal-nav-bar { border: 0; padding-bottom: 0; }
+      .modal-nav-bar .btn-group {
+        background: var(--san-glass);
+        border-color: rgba(255,255,255,0.95);
+        box-shadow: var(--san-shadow);
+        border-radius: 20px;
+        padding: 5px;
+      }
+      .modal-nav-bar .btn-group .btn {
+        padding: 11px 20px;
+        border-radius: 15px !important;
+      }
+      .modal-filters {
+        padding: 18px 20px 8px;
+        border-radius: 22px;
+        background: var(--san-glass);
+        box-shadow: var(--san-shadow), inset 0 1px 0 #FFFFFF;
+      }
+      .shiny-input-radiogroup .shiny-options-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+      .shiny-input-radiogroup label.radio-inline {
+        position: relative;
+        margin: 0;
+        padding: 7px 12px;
+        border: 1px solid #DDE1E4;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.85);
+        color: var(--san-muted);
+        cursor: pointer;
+      }
+      .shiny-input-radiogroup label.radio-inline:has(input:checked) {
+        background: var(--san-yellow);
+        border-color: var(--san-yellow);
+        color: var(--san-blue);
+      }
+      .shiny-input-radiogroup label.radio-inline input {
+        position: static;
+        margin: 0 5px 0 0;
+        vertical-align: middle;
+      }
+      .shiny-input-radiogroup label.radio-inline:focus-within {
+        outline: 2px solid var(--san-blue);
+        outline-offset: 2px;
+      }
+      .titolo-sezione, .life-header-title {
+        font-size: 23px;
+        font-weight: 700;
+        letter-spacing: -0.035em;
+        margin-top: 22px;
+        margin-bottom: 15px;
+      }
+      .activation-scroll, .girafe.html-widget {
+        border: 1px solid #E6EBEF;
+        border-radius: 22px;
+        background: #FFFFFF;
+        box-shadow: var(--san-shadow);
+      }
+      .activation-scroll .girafe.html-widget {
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+      }
+      .life-card, .report-kpi-card, .report-panel, .modal-data-panel,
+      .report-table-wrap, .documenti-bar {
+        border-radius: 22px;
+        border-color: rgba(197,205,211,0.55);
+        background: #FFFFFF;
+        box-shadow: var(--san-shadow);
+      }
+      .life-card { padding: 20px; }
+      .life-card-title { font-size: 16px; letter-spacing: -0.02em; }
+      .life-card-header { border-bottom-color: #EDF0F2; padding-bottom: 15px; }
+      .life-value { font-variant-numeric: tabular-nums; font-size: 13px; }
+      .life-progress { height: 10px; background: #EDF0F2; }
+      .life-status { padding: 6px 11px; }
+      .report-kpi-card { padding: 20px; }
+      .report-kpi-value { font-size: 30px; letter-spacing: -0.035em; }
+      .report-kpi-label { letter-spacing: 0.04em; }
+      .report-summary { border-radius: 22px; background: #FFFFFF; box-shadow: var(--san-shadow); }
+      .report-hero { border-radius: 27px 27px 22px 22px; box-shadow: var(--san-shadow); }
+      .report-download.btn { border-radius: 999px !important; }
+      .modal-content .btn-default, .documento-download, .report-period-btn {
+        border-radius: 999px;
+        border: 1px solid #DDE1E4;
+        background: #FFFFFF;
+        color: var(--san-blue);
+        padding: 8px 15px;
+        box-shadow: 0 3px 8px rgba(35,74,102,0.04);
+        font-weight: 600;
+      }
+      .modal-content .btn-default:hover, .documento-download:hover {
+        background: #F0F2F3;
+        border-color: #C5CDD3;
+      }
+      .modal-content table { font-variant-numeric: tabular-nums; }
+      #nok_table th, #modal_nok_table th, .report-table th,
+      .modal-content table.dataTable thead th {
+        background: #F0F2F3;
+        color: var(--san-blue);
+        border-bottom: 1px solid #DDE1E4;
+        padding: 12px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      #nok_table td, #modal_nok_table td, .report-table td,
+      .modal-content table.dataTable tbody td {
+        padding: 12px;
+        border-bottom: 1px solid #EDF0F2;
+      }
+      .report-table tbody tr:nth-child(even),
+      .modal-content table.dataTable.stripe tbody tr.odd { background: #FAFBFC; }
+      .modal-content table.dataTable tbody tr:hover { background: #F0F2F3; }
+      .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+        background: var(--san-yellow) !important;
+        border: 0 !important;
+        border-radius: 10px;
+        color: var(--san-blue) !important;
+      }
+      .alarm-empty { border-radius: 18px; background: #FFFFFF; padding: 18px; }
+      .sensor-tooltip { border-radius: 14px; box-shadow: 0 12px 32px rgba(35,74,102,0.20); }
+      @media (max-width: 1050px) {
+        .home-corner .card-home .home-card-label { width: 150px; padding: 12px; }
+        .home-corner .card-home h4 { font-size: 17px; }
+      }
+      @media (max-width: 700px) {
+        .home-corner .card-home .home-card-label { width: 100%; padding: 8px; }
+        .modal-nav-bar .btn-group .btn { padding: 9px 10px; font-size: 12px; }
+        .modal-filters { padding: 14px 12px 4px; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .modal-nav-bar .btn-group .btn { transition: none; }
+      }
     "))
   ),
   
@@ -2017,7 +2307,7 @@ dashboard_ui <- fluidPage(
           max = data_max,
           format = "dd-mm-yyyy",
           separator = " a ",
-          language = "it"
+          language = "it", weekstart = 1
         )
       )
     )
@@ -2469,7 +2759,7 @@ server <- function(input, output, session) {
                      "modal_date", "Periodo:",
                      start = date_selezionate[1], end = date_selezionate[2],
                      min = data_min, max = data_max,
-                     format = "dd-mm-yyyy", separator = " a ", language = "it"
+                     format = "dd-mm-yyyy", separator = " a ", language = "it", weekstart = 1
                    )
             ),
             column(8,
@@ -2547,7 +2837,7 @@ server <- function(input, output, session) {
                      "modal_date", "Periodo:",
                      start = date_selezionate[1], end = date_selezionate[2],
                      min = data_min, max = data_max,
-                     format = "dd-mm-yyyy", separator = " a ", language = "it"
+                     format = "dd-mm-yyyy", separator = " a ", language = "it", weekstart = 1
                    )
             ),
             column(8,
@@ -2662,7 +2952,7 @@ server <- function(input, output, session) {
                 "modal_date", "Periodo:",
                 start = date_selezionate[1], end = date_selezionate[2],
                 min = data_min, max = data_max,
-                format = "dd-mm-yyyy", separator = " a ", language = "it"
+                format = "dd-mm-yyyy", separator = " a ", language = "it", weekstart = 1
               )
             ),
             column(
@@ -4685,18 +4975,6 @@ server <- function(input, output, session) {
       summarise(NMN = mean(daily_value, na.rm = TRUE), .groups = "drop")
   })
   
-  # Ordinamento naturale condiviso: prefisso alfabetico + numero,
-  # cosi' FCM2 viene prima di FCM10
-  ordina_naturale <- function(df) {
-    df |>
-      mutate(
-        cds_name = as.character(cds_name),
-        .prefisso = str_extract(cds_name, "^[^0-9]+"),
-        .numero = as.numeric(str_extract(cds_name, "[0-9]+$"))
-      ) |>
-      arrange(.prefisso, .numero) |>
-      select(-.prefisso, -.numero)
-  }
   
   kpi_nok <- reactive({
     
@@ -5772,7 +6050,7 @@ server <- function(input, output, session) {
       ) +
       scale_fill_manual(values = palette_sensori, name = "Sensore") +
       labs(title = NULL, x = NULL, y = "Attivazioni") +
-      theme_minimal(base_size = 13) +
+      tema_san(base_size = 13) +
       theme(
         panel.grid.major.x = element_blank(),
         panel.spacing.x = grid::unit(10, "pt"),
@@ -5865,7 +6143,7 @@ server <- function(input, output, session) {
             name = "Sensore"
           ) +
           labs(x = NULL, y = "Attivazioni") +
-          theme_minimal(base_size = 13) +
+          tema_san(base_size = 13) +
           theme(
             panel.grid.minor = element_blank(),
             panel.grid.major.x = element_line(
@@ -5946,7 +6224,7 @@ server <- function(input, output, session) {
       ) +
       scale_color_manual(values = palette_sensori, name = "Sensore") +
       labs(x = NULL, y = "Attivazioni") +
-      theme_minimal(base_size = 13) +
+      tema_san(base_size = 13) +
       theme(
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_line(
@@ -6983,7 +7261,7 @@ server <- function(input, output, session) {
         x = NULL,
         y = "Utilizzo macchina"
       ) +
-      theme_minimal(base_size = 12) +
+      tema_san(base_size = 12) +
       theme(
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_line(
@@ -7089,7 +7367,7 @@ server <- function(input, output, session) {
         x = NULL,
         y = "NOK medio"
       ) +
-      theme_minimal(base_size = 13) +
+      tema_san(base_size = 13) +
       theme(
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_blank(),
@@ -7245,7 +7523,7 @@ server <- function(input, output, session) {
         x = NULL,
         y = "NOK"
       ) +
-      theme_minimal(base_size = 13) +
+      tema_san(base_size = 13) +
       theme(
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_line(
@@ -7362,7 +7640,7 @@ server <- function(input, output, session) {
       ) +
       scale_color_manual(values = palette_sensori, name = "Sensore") +
       labs(x = NULL, y = "NOK") +
-      theme_minimal(base_size = 13) +
+      tema_san(base_size = 13) +
       theme(
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_line(color = "#B8C4CC", linewidth = 0.5),
