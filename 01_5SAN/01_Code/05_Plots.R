@@ -189,13 +189,25 @@ nota_disconnessione_gateway <-
 raw_life_data <- readRDS(here("02_Output", "raw_data.rds")) |>
   mutate(timestamp = with_tz(timestamp, "Europe/Rome"))
 
+# Uniforma anche i testi degli alert gia' salvati, senza attendere il prossimo ETL.
+testo_manovre <- function(x) {
+  stringr::str_replace_all(x, c(
+    "\\bAttivazioni\\b" = "Manovre",
+    "\\battivazioni\\b" = "manovre",
+    "\\bATTIVAZIONI\\b" = "MANOVRE",
+    "\\bAttivazione\\b" = "Manovra",
+    "\\battivazione\\b" = "manovra"
+  ))
+}
+
 alerts_path <- here("02_Output", "alerts.rds")
 alerts_data <- if (file.exists(alerts_path)) {
   readRDS(alerts_path) |>
     mutate(
       period_start = with_tz(period_start, "Europe/Rome"),
       period_end = with_tz(period_end, "Europe/Rome"),
-      generated_at = with_tz(generated_at, "Europe/Rome")
+      generated_at = with_tz(generated_at, "Europe/Rome"),
+      across(any_of(c("signal_description", "signal_data_text")), testo_manovre)
     )
 } else {
   tibble(
@@ -309,6 +321,39 @@ macchine_lookup <- dati |>
 ordina_naturale <- function(df) {
   df <- mutate(df, cds_name = as.character(cds_name))
   df[stringr::str_order(df$cds_name, numeric = TRUE), , drop = FALSE]
+}
+
+# Finestra visualizzata nei confronti NOK/Utilizzo: almeno due mesi prima
+# della selezione, o pari durata se la selezione e' piu' lunga.
+# Non modifica le finestre usate per soglie e report.
+periodo_precedente_grafici <- function(date_selezionate, date_disponibili) {
+  inizio <- as.Date(date_selezionate[1])
+  fine <- as.Date(date_selezionate[2])
+  durata <- as.integer(fine - inizio) + 1L
+  da <- min(
+    inizio - durata,
+    lubridate::`%m-%`(inizio, lubridate::period(2, units = "month"))
+  )
+  a <- inizio - 1L
+  precedenti <- as.Date(date_disponibili)
+  precedenti <- precedenti[!is.na(precedenti) & precedenti <= a]
+  if (length(precedenti) > 0L) {
+    da <- max(da, min(precedenti))
+  }
+  list(
+    inizio = da,
+    fine = a,
+    etichette = c(
+      "Periodo precedente" = paste0(
+        "Storico precedente\n", format(da, "%d/%m/%Y"),
+        " - ", format(a, "%d/%m/%Y")
+      ),
+      "Periodo selezionato" = paste0(
+        "Periodo selezionato\n", format(inizio, "%d/%m/%Y"),
+        " - ", format(fine, "%d/%m/%Y")
+      )
+    )
+  )
 }
 
 # Tema condiviso dei grafici; dati, scale e colori delle serie restano invariati.
@@ -1761,10 +1806,9 @@ dashboard_ui <- fluidPage(
       }
 
       /* Vetro riservato ai controlli: niente superfici blur sovrapposte. */
-      .pannello-filtri,
-      .modal-content {
-        -webkit-backdrop-filter: blur(18px) saturate(115%);
-        backdrop-filter: blur(18px) saturate(115%);
+      .pannello-filtri {
+        -webkit-backdrop-filter: blur(12px) saturate(115%);
+        backdrop-filter: blur(12px) saturate(115%);
       }
       .home-stage {
         z-index: 0;
@@ -2314,7 +2358,7 @@ dashboard_ui <- fluidPage(
       :root {
         --san-ease: cubic-bezier(0.22, 1, 0.36, 1);
         --san-fast: 150ms;
-        --san-motion: 240ms;
+        --san-motion: 180ms;
       }
       .btn, .documento-download, .modal-close-x, .sensor-hotspot,
       .selectize-input, .form-control, .radio-inline {
@@ -2541,7 +2585,7 @@ dashboard_ui <- fluidPage(
         "home_attivazioni",
         label = div(
           class = "home-card-label",
-          h4("Conteggio attivazioni"),
+          h4("Conteggio manovre"),
           p("Grafico a barre e trend nel tempo per sensore")
         ),
         class = "card-home"
@@ -2869,7 +2913,7 @@ server <- function(input, output, session) {
           "vista_selezionata",
           label = NULL,
           choices = c(
-            "Conteggio attivazioni" = "attivazioni",
+            "Conteggio manovre" = "attivazioni",
             "NOK"                   = "nok",
             "Vita sensori"          = "vita",
             "Allarmi e Near Miss"   = "allarmi"
@@ -2989,7 +3033,7 @@ server <- function(input, output, session) {
             selected = isolate(granularita_attivazioni_corrente()), inline = TRUE
           )
         ),
-        h4("Conteggio attivazioni", class = "titolo-sezione"),
+        h4("Conteggio manovre", class = "titolo-sezione"),
         div(
           class = "activation-scroll",
           uiOutput("modal_activationPlot_container")
@@ -3077,7 +3121,7 @@ server <- function(input, output, session) {
           ),
           actionButton(
             "modal_btn_outlier_nok",
-            "Attivazioni anomale",
+            "Manovre anomale",
             class = "btn-sm btn-default"
           )
         ),
@@ -3217,9 +3261,9 @@ server <- function(input, output, session) {
         ),
         div(
           class = "alarm-section",
-          h4("Attivazioni anomale", class = "titolo-sezione"),
+          h4("Manovre anomale", class = "titolo-sezione"),
           p(
-            "Anomalie nei conteggi delle attivazioni: oltre alle anomalie giornaliere, viene segnalata ogni ora in cui il conteggio del sensore e' almeno 4 volte la sua mediana oraria."
+            "Anomalie nei conteggi delle manovre: oltre alle anomalie giornaliere, viene segnalata ogni ora in cui il conteggio del sensore e' almeno 4 volte la sua mediana oraria."
           ),
           uiOutput("modal_allarmi_attivazioni_panel")
         ),
@@ -3816,7 +3860,7 @@ server <- function(input, output, session) {
         Descrizione = paste0(
           if_else(
             is.finite(daily_count) & daily_count == 0,
-            "Zero attivazioni",
+            "Zero manovre",
             "Anomalia statistica giornaliera"
           ),
           if_else(
@@ -4142,13 +4186,13 @@ server <- function(input, output, session) {
       paste0(
         "Sono inoltre presenti ",
         n_att_anomale,
-        " segnalazioni di attivazioni anomale distribuite su ",
+        " segnalazioni di manovre anomale distribuite su ",
         sensori_att_anomali,
         " sensori. Le tabelle successive permettono di risalire al sensore, alla data e, quando disponibile, all'ora dell'evento."
       )
     } else {
       paste0(
-        "Nel periodo non risultano anomalie di attivazione rilevanti. Il quadro operativo non evidenzia quindi eventi di conteggio meritevoli di segnalazione nel periodo considerato."
+        "Nel periodo non risultano anomalie di manovra rilevanti. Il quadro operativo non evidenzia quindi eventi di conteggio meritevoli di segnalazione nel periodo considerato."
       )
     }
     
@@ -4297,7 +4341,7 @@ server <- function(input, output, session) {
         ),
         tags$tbody(
           tags$tr(
-            tags$td(tags$strong("Attivazioni medie")),
+            tags$td(tags$strong("Manovre medie")),
             lapply(colonne, function(x) tags$td(x$att))
           ),
           tags$tr(
@@ -4465,7 +4509,7 @@ server <- function(input, output, session) {
         ),
         div(
           class = "report-kpi-card",
-          div("Anomalie attivazioni", class = "report-kpi-label"),
+          div("Anomalie manovre", class = "report-kpi-label"),
           div(n_att, class = "report-kpi-value"),
           div("Eventi rilevanti nel periodo", class = "report-kpi-note")
         ),
@@ -4489,18 +4533,18 @@ server <- function(input, output, session) {
       sezione(
         "1",
         "Sintesi per sensore e macchina",
-        "Le attivazioni riportano il valore medio del periodo e, tra parentesi, la variazione rispetto al periodo precedente. Il NOK è evidenziato in base alla permanenza nel proprio range storico.",
+        "Le manovre riportano il valore medio del periodo e, tra parentesi, la variazione rispetto al periodo precedente. Il NOK è evidenziato in base alla permanenza nel proprio range storico.",
         tabella_sintesi
       ),
       
       sezione(
         "2",
-        "Attivazioni anomale rilevanti",
-        "Dettaglio degli eventi di attivazione anomali rilevati nel periodo.",
+        "Manovre anomale rilevanti",
+        "Dettaglio degli eventi di manovra anomali rilevati nel periodo.",
         tabella_html(
           r$attivazioni_anomale |>
             mutate(Data = format(Data, "%d/%m/%Y")),
-          "Nessuna attivazione anomala rilevante nel periodo."
+          "Nessuna manovra anomala rilevante nel periodo."
         )
       ),
       
@@ -4759,7 +4803,7 @@ server <- function(input, output, session) {
       )
       kpi_card(
         0.625,
-        "ANOMALIE ATTIVAZIONI",
+        "ANOMALIE MANOVRE",
         as.character(nrow(r$attivazioni_anomale)),
         "Eventi rilevanti",
         if (nrow(r$attivazioni_anomale) > 0) "bad" else "good"
@@ -4819,7 +4863,7 @@ server <- function(input, output, session) {
       sensori_summary <- r$confronto |>
         transmute(
           Sensore = cds_name,
-          Attivazioni = paste0(
+          Manovre = paste0(
             formatC(attivazioni_medie, format = "f", digits = 1, decimal.mark = ","),
             " (",
             vapply(
@@ -4848,13 +4892,13 @@ server <- function(input, output, session) {
         idx <- idx_chunks[[chunk_i]]
         chunk <- sensori_summary[idx, , drop = FALSE]
         
-        metriche <- c("Attivazioni medie", "NOK")
+        metriche <- c("Manovre medie", "NOK")
         tab <- data.frame(Metrica = metriche, check.names = FALSE)
         
         if (nrow(chunk) > 0) {
           for (i in seq_len(nrow(chunk))) {
             tab[[chunk$Sensore[i]]] <- c(
-              chunk$Attivazioni[i],
+              chunk$Manovre[i],
               paste0(chunk$NOK[i], " · ", chunk$Stato[i])
             )
           }
@@ -4984,9 +5028,9 @@ server <- function(input, output, session) {
         mutate(Data = format(Data, "%d/%m/%Y"))
       
       disegna_tabella_paginata(
-        "Attivazioni anomale rilevanti",
+        "Manovre anomale rilevanti",
         att_pdf,
-        "Nessuna attivazione anomala rilevante nel periodo."
+        "Nessuna manovra anomala rilevante nel periodo."
       )
       
       disegna_tabella_paginata(
@@ -5050,8 +5094,8 @@ server <- function(input, output, session) {
     div(
       class = "modal-data-panel",
       p(
-        "Attivazioni anomale rilevate nel periodo selezionato. ",
-        "Sono mostrate sia le anomalie giornaliere sia le ore con attivazioni almeno 4 volte superiori alla mediana oraria del sensore. Le anomalie giornaliere continuano a essere usate per pulire l'NMN storico."
+        "Manovre anomale rilevate nel periodo selezionato. ",
+        "Sono mostrate sia le anomalie giornaliere sia le ore con manovre almeno 4 volte superiori alla mediana oraria del sensore. Le anomalie giornaliere continuano a essere usate per pulire l'NMN storico."
       ),
       DTOutput("modal_tabella_outlier_nok")
     )
@@ -5396,7 +5440,7 @@ server <- function(input, output, session) {
         `data-sensor` = punto$cds_name,
         `aria-label` = paste0(
           descrizione,
-          "; attivazioni giornaliere medie: ", attivazioni_medie,
+          "; manovre giornaliere medie: ", attivazioni_medie,
           "; ", etichetta_ore_aperte, ": ", ore_aperte,
           "; NOK: ", nok_periodo
         ),
@@ -5408,7 +5452,7 @@ server <- function(input, output, session) {
         tags$span(
           class = "sensor-tooltip",
           tags$span(descrizione, class = "sensor-tooltip-title"),
-          tags$div("Attivazioni giornaliere medie: ", tags$strong(attivazioni_medie)),
+          tags$div("Manovre giornaliere medie: ", tags$strong(attivazioni_medie)),
           tags$div(etichetta_ore_aperte, ": ", tags$strong(paste0(ore_aperte, " h"))),
           tags$div("NOK: ", tags$strong(nok_periodo))
         )
@@ -5609,7 +5653,7 @@ server <- function(input, output, session) {
           format(period_start, "%H:00", tz = "Europe/Rome"),
           "-"
         ),
-        Attivazioni = signal_data_text,
+        Manovre = signal_data_text,
         Motivo = signal_description
       )
   })
@@ -5676,7 +5720,7 @@ server <- function(input, output, session) {
       return(
         div(
           class = "alarm-empty",
-          "Nessuna anomalia nelle attivazioni nel periodo selezionato."
+          "Nessuna anomalia nelle manovre nel periodo selezionato."
         )
       )
     }
@@ -5913,7 +5957,7 @@ server <- function(input, output, session) {
       unita <- if (
         identical(riga$tipo, "B10dSAN")
       ) {
-        " attivazioni"
+        " manovre"
       } else {
         " anni"
       }
@@ -6253,8 +6297,8 @@ server <- function(input, output, session) {
             "Periodo: ", periodo_label, "<br/>",
             if_else(
               filtri_attivazioni_modal()$granularita == "Ora",
-              "Attivazioni nell'ora: ",
-              "Attivazioni medie giornaliere: "
+              "Manovre nell'ora: ",
+              "Manovre medie giornaliere: "
             ),
             scales::label_number(
               accuracy = 0.1,
@@ -6284,7 +6328,7 @@ server <- function(input, output, session) {
         expand = expansion(mult = c(0, 0.04))
       ) +
       scale_fill_manual(values = palette_sensori, name = "Sensore") +
-      labs(title = NULL, x = NULL, y = "Attivazioni") +
+      labs(title = NULL, x = NULL, y = "Manovre") +
       tema_san(base_size = 13) +
       theme(
         panel.grid.major.x = element_blank(),
@@ -6318,7 +6362,7 @@ server <- function(input, output, session) {
     tooltip_punti <- paste0(
       "<b>", grafico$etichetta_completa, "</b><br/>",
       "Periodo: ", grafico$periodo_label, "<br/>",
-      "Attivazioni: ",
+      "Manovre: ",
       scales::label_number(
         accuracy = 1,
         big.mark = "."
@@ -6377,7 +6421,7 @@ server <- function(input, output, session) {
             values = palette_sensori,
             name = "Sensore"
           ) +
-          labs(x = NULL, y = "Attivazioni") +
+          labs(x = NULL, y = "Manovre") +
           tema_san(base_size = 13) +
           theme(
             panel.grid.minor = element_blank(),
@@ -6458,7 +6502,7 @@ server <- function(input, output, session) {
         expand = expansion(mult = c(0, 0.04))
       ) +
       scale_color_manual(values = palette_sensori, name = "Sensore") +
-      labs(x = NULL, y = "Attivazioni") +
+      labs(x = NULL, y = "Manovre") +
       tema_san(base_size = 13) +
       theme(
         panel.grid.minor = element_blank(),
@@ -6675,8 +6719,11 @@ server <- function(input, output, session) {
       filtri$date[2] - filtri$date[1]
     ) + 1L
     
-    periodo_precedente_fine <- filtri$date[1] - 1L
-    periodo_precedente_inizio <- filtri$date[1] - durata_giorni
+    finestra_confronto <- periodo_precedente_grafici(
+      filtri$date, valori_giornalieri_modal_nok()$day
+    )
+    periodo_precedente_fine <- finestra_confronto$fine
+    periodo_precedente_inizio <- finestra_confronto$inizio
     
     base <- valori_giornalieri_modal_nok() |>
 
@@ -6751,7 +6798,8 @@ server <- function(input, output, session) {
     
     list(
       sensori = per_sensore,
-      media_macchina = media_macchina
+      media_macchina = media_macchina,
+      etichette_confronto = finestra_confronto$etichette
     )
   }) |>
     bindCache(
@@ -6818,8 +6866,11 @@ server <- function(input, output, session) {
       filtri$date[2] - filtri$date[1]
     ) + 1L
     
-    periodo_precedente_fine <- filtri$date[1] - 1L
-    periodo_precedente_inizio <- filtri$date[1] - durata_giorni
+    finestra_confronto <- periodo_precedente_grafici(
+      filtri$date, valori_giornalieri_modal_nok()$day
+    )
+    periodo_precedente_fine <- finestra_confronto$fine
+    periodo_precedente_inizio <- finestra_confronto$inizio
     
     per_sensore_confronto <- base_completa |>
       mutate(
@@ -7158,6 +7209,9 @@ server <- function(input, output, session) {
     list(
       per_sensore = per_sensore,
       per_sensore_confronto = per_sensore_confronto,
+      etichette_confronto = finestra_confronto$etichette,
+      confronto_inizio = finestra_confronto$inizio,
+      confronto_fine = finestra_confronto$fine,
       U_macchina = U_macchina,
       P10_utilizzo = P10_utilizzo,
       P90_utilizzo = P90_utilizzo,
@@ -7588,6 +7642,7 @@ server <- function(input, output, session) {
       ) +
       facet_grid(
         cols = vars(confronto),
+        labeller = labeller(confronto = utilizzo$etichette_confronto),
         scales = "free_x",
         space = "free_x"
       ) +
@@ -7728,6 +7783,7 @@ server <- function(input, output, session) {
       ) +
       facet_grid(
         cols = vars(confronto),
+        labeller = labeller(confronto = andamento$etichette_confronto),
         scales = "free_x",
         space = "free_x"
       ) +
@@ -7915,7 +7971,7 @@ server <- function(input, output, session) {
       transmute(
         Periodo     = as.character(periodo_label),
         Sensore     = as.character(etichetta_completa),
-        Attivazioni = attivazioni,
+        Manovre = attivazioni,
         Anomalia = if_else(anomalia_oraria, "SI", "")
       ) |>
       arrange(Periodo, Sensore)
@@ -7926,7 +7982,7 @@ server <- function(input, output, session) {
       transmute(
         Sensore     = as.character(etichetta_completa),
         Periodo     = as.character(periodo_label),
-        Attivazioni = attivazioni,
+        Manovre = attivazioni,
         Anomalia = if_else(anomalia_oraria, "SI", "")
       ) |>
       arrange(Sensore, Periodo)
@@ -7955,7 +8011,7 @@ server <- function(input, output, session) {
     validate(
       need(
         nrow(esclusi) > 0,
-        "Nessuna attivazione anomala nel periodo selezionato."
+        "Nessuna manovra anomala nel periodo selezionato."
       )
     )
     
