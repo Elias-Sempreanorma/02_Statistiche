@@ -239,15 +239,11 @@ alerts_data <- if (file.exists(alerts_path)) {
   )
 }
 
-# Vita temporale per coupon + CdS, sull'intero storico:
-# uso l'ultimo lifetime valido del dispositivo (secondi); se assente,
-# uso il tempo trascorso dalla prima osservazione assoluta del componente.
-# I cambi di sensor_id/codice non azzerano la data iniziale del fallback.
-life_reference_ts <- Sys.time()
-seconds_per_year <- 365.25 * 24 * 60 * 60
-
-if (!"lifetime" %in% names(raw_life_data)) {
-  raw_life_data$lifetime <- NA_real_
+# L'eta' mostrata nella barra T10d e' quella calcolata dall'ETL,
+# identica al denominatore del nop usato per il B10dSAN da PFH.
+# Dataset precedenti richiedono un'esecuzione dell'ETL: fino ad allora N/D.
+if (!"cds_elapsed_years" %in% names(raw_life_data)) {
+  raw_life_data$cds_elapsed_years <- NA_real_
 }
 
 life_data <- raw_life_data |>
@@ -263,22 +259,13 @@ life_data <- raw_life_data |>
     cds_t10d = last(cds_t10d[!is.na(cds_t10d)], default = NA_real_),
     count = if (all(is.na(count))) NA_real_ else max(count, na.rm = TRUE),
     offset = if (all(is.na(offset))) NA_real_ else max(offset, na.rm = TRUE),
-    lifetime_seconds = last(
-      lifetime[is.finite(lifetime) & lifetime >= 0],
+    lifetime = last(
+      cds_elapsed_years[is.finite(cds_elapsed_years) & cds_elapsed_years >= 0],
       default = NA_real_
     ),
-    first_seen = min(timestamp, na.rm = TRUE),
     .groups = "drop"
   ) |>
-  mutate(
-    count = count + offset,
-    lifetime = coalesce(
-      lifetime_seconds,
-      pmax(0, as.numeric(
-        difftime(life_reference_ts, first_seen, units = "secs")
-      ))
-    ) / seconds_per_year
-  ) |>
+  mutate(count = count + offset) |>
   select(coupon, cds_name, cds_vds, cds_t10d, count, lifetime)
 
 # Anagrafica sensori (coupon + cds_name -> descrizione), usata per
