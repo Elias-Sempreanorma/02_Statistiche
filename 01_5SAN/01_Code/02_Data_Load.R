@@ -243,7 +243,7 @@ new_data <- measurements |>
   )
 
 # ---------------------------------------------------------------------------
-# Unisco ai progetti/componenti per cds
+# Unisco ai componenti tramite coupon + cds
 # ---------------------------------------------------------------------------
 new_raw_data <- progetti_componenti_b10d_san |>
   inner_join(new_data, by = c("cds" = "sensor_name", "coupon")) |>
@@ -256,9 +256,9 @@ new_raw_data <- progetti_componenti_b10d_san |>
 # Escludo i componenti di sicurezza non attivi
 new_raw_data <- new_raw_data |>
   filter(
-    !(project == "C14GR" & cds_name %in% c("MB4", "MB6")),
-    !(project == "A3020" & cds_name == "FCM5"),
-    !(project == "E11RI" & cds_name == "FCM8")
+    !(coupon == "LIN-SEMP-4354-8784-4143-4591-177" & cds_name %in% c("MB4", "MB6")),
+    !(coupon == "LIN-SEMP-3625-7560-4998-4816-219" & cds_name == "FCM5"),
+    !(coupon == "LIN-SEMP-3106-8575-8743-0135-225" & cds_name == "FCM8")
   ) |>
   mutate(field = if_else(is.na(field) | trimws(field) == "", "(Non specificato)", field))
 
