@@ -337,21 +337,52 @@ raw_data <- raw_data |>
     )
   )
 
-# B10dSAN da PFH: calcolo sullo storico completo del singolo sensore.
-# nop e' stimato dagli incrementi positivi nel tempo osservato; non include
-# il conteggio gia' presente alla prima osservazione.
+# Calcolo una sola eta' del componente per coupon + CdS, in anni.
+# Il medesimo valore viene salvato per la barra T10d e usato nel nop.
+# Se presente uso l'ultimo lifetime valido (secondi, incluso zero);
+# altrimenti il tempo dalla prima osservazione fino a questo ETL.
+life_reference_ts <- Sys.time()
+seconds_per_year <- 365.25 * 24 * 60 * 60
+if (!"lifetime" %in% names(raw_data)) {
+  raw_data$lifetime <- NA_real_
+}
+
+vita_componenti <- raw_data |>
+  filter(!is.na(coupon), !is.na(cds_name), !is.na(timestamp)) |>
+  arrange(timestamp) |>
+  group_by(coupon, cds_name) |>
+  summarise(
+    lifetime_seconds = last(
+      lifetime[is.finite(lifetime) & lifetime >= 0],
+      default = NA_real_
+    ),
+    first_seen = min(timestamp),
+    .groups = "drop"
+  ) |>
+  mutate(
+    cds_elapsed_years = coalesce(
+      lifetime_seconds,
+      pmax(0, as.numeric(difftime(life_reference_ts, first_seen, units = "secs")))
+    ) / seconds_per_year
+  ) |>
+  select(coupon, cds_name, cds_elapsed_years)
+
+# Sostituisco l'eta' salvata dall'ETL precedente, senza colonne duplicate.
+raw_data <- raw_data |>
+  select(-any_of("cds_elapsed_years")) |>
+  left_join(vita_componenti, by = c("coupon", "cds_name"))
+
+# B10dSAN da PFH: numeratore invariato (incrementi positivi del count).
+# Il denominatore e' la stessa eta' mostrata nella barra T10d.
 nop_sensori <- raw_data |>
   filter(is.finite(count), !is.na(timestamp)) |>
   group_by(coupon, gateway_id, sensor_id) |>
   arrange(timestamp, .by_group = TRUE) |>
   summarise(
     .nop_b10dsan = {
-      anni_osservati <- lubridate::time_length(
-        lubridate::interval(min(timestamp), max(timestamp)),
-        "years"
-      )
-      if (is.finite(anni_osservati) && anni_osservati > 0) {
-        sum(pmax(diff(count), 0)) / anni_osservati
+      anni_vita <- last(cds_elapsed_years, default = NA_real_)
+      if (is.finite(anni_vita) && anni_vita > 0) {
+        sum(pmax(diff(count), 0)) / anni_vita
       } else {
         NA_real_
       }
@@ -389,6 +420,7 @@ raw_data <- raw_data |>
         !is.na(.divisore_b10dsan) ~
           (0.1 * .nop_b10dsan) /
             (.pfh_b10dsan * 8760 * .divisore_b10dsan),
+      is.finite(.pfh_b10dsan) & .pfh_b10dsan > 0 & .pfh_b10dsan < 1 ~ NA_real_,
       TRUE ~ coalesce(.base_b10dsan, cds_vds)
     )
   ) |>
