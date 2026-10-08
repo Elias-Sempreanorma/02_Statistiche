@@ -465,7 +465,8 @@ data_start_default <- max(data_min, data_max - 27)
 # quando l'immagine si ridimensiona.
 # ---------------------------------------------------------------------------
 immagini_progetti <- data.frame(
-  project = c("A3020", "A1220", "C14GR", "E11RI", "F0400", "Banco 1", "Banco 2"),
+  project = c("A3020", "A1220", "C14GR", "E11RI", "F0400", "Banco 1", "Banco 2",
+              "Pelatrice 3", "Trafila 2"),
   file_name = c(
     "Giacomini_G1_A3020.png",
     "Giacomini_G1_A1220.png",
@@ -473,7 +474,9 @@ immagini_progetti <- data.frame(
     "Giacomini_G1_E11RI.png",
     "Giacomini_G1_F0400.png",
     "Siboni_Banco_1.png",
-    "Siboni_Banco_2.png"
+    "Siboni_Banco_2.png",
+    "Zorzetto_Pelatrice_3.png",
+    "Zorzetto_Trafila_2.png"
   ),
   stringsAsFactors = FALSE
 )
@@ -576,6 +579,18 @@ mappa_sensori <- bind_rows(
     cds_name = c("FCM1", "FCM2", "MB1"),
     x = c(884, 982, 673),
     y = c(94, 94, 405)
+  ),
+  data.frame(
+    project = "Pelatrice 3", image_width = 877, image_height = 596,
+    cds_name = c("FCM1", "FCM2", "FCM3", "MB1", "MB2"),
+    x = c(294, 390, 365, 275, 715),
+    y = c(175, 458, 555, 330, 202)
+  ),
+  data.frame(
+    project = "Trafila 2", image_width = 1375, image_height = 376,
+    cds_name = c("FTC1", "FTC5", "FTC6", "FCM1", "FCM2", "FCM3", "FCM4", "SC1", "SC3"),
+    x = c(150, 1014, 1014, 192, 341, 384, 496, 285, 1344),
+    y = c(83, 229, 161, 304, 179, 183, 178, 112, 166)
   )
 ) |>
   mutate(
@@ -5301,6 +5316,13 @@ server <- function(input, output, session) {
     
     if (length(progetto) == 0 || is.na(progetto)) {
       return(NULL)
+    }
+
+    # I coupon identificano in modo univoco i due schemi Zorzetto.
+    if (identical(filtri$macchina, "LIN-SEMP-1711-6111-9357-7313-217")) {
+      progetto <- "Pelatrice 3"
+    } else if (identical(filtri$macchina, "LIN-SEMP-6943-2521-9960-7175-136")) {
+      progetto <- "Trafila 2"
     }
 
     # Per i banchi Siboni accetto anche Banco_1/Banco_2 e Siboni_Banco_1/2.
