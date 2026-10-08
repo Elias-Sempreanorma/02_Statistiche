@@ -7089,25 +7089,61 @@ server <- function(input, output, session) {
       TRUE ~ "Normale"
     )
     
-    # Utilizzo macchina per settimana o mese, in base alla scelta utente.
+    # Dividi settimane e mesi ai confini della selezione prima di aggregare:
+    # ogni giorno contribuisce solo al proprio tratto (precedente, selezionato
+    # o successivo). Il tratto precedente resta disponibile per le soglie.
     granularita_utilizzo <- granularita_utilizzo_corrente()
     
     storico_utilizzo_grafico <- base_completa |>
       mutate(
-        inizio_finestra = as.Date(
+        inizio_calendario = as.Date(
           if (identical(granularita_utilizzo, "Mese")) {
             lubridate::floor_date(day, "month")
           } else {
-            lubridate::floor_date(
-              day,
-              "week",
-              week_start = 1
-            )
+            lubridate::floor_date(day, "week", week_start = 1)
           }
+        ),
+        fine_calendario = if (identical(granularita_utilizzo, "Mese")) {
+          as.Date(
+            lubridate::ceiling_date(inizio_calendario, "month") -
+              lubridate::days(1)
+          )
+        } else {
+          inizio_calendario + 6L
+        },
+        tratto = case_when(
+          day < filtri$date[1] ~ "Precedente",
+          day > filtri$date[2] ~ "Successivo",
+          TRUE ~ "Selezionato"
+        ),
+        inizio_finestra = pmax(
+          inizio_calendario,
+          prima_data_storica,
+          case_when(
+            tratto == "Selezionato" ~ filtri$date[1],
+            tratto == "Successivo" ~ filtri$date[2] + 1L,
+            TRUE ~ inizio_calendario
+          )
+        ),
+        fine_finestra = pmin(
+          fine_calendario,
+          ultima_data_storica,
+          case_when(
+            tratto == "Precedente" ~ filtri$date[1] - 1L,
+            tratto == "Selezionato" ~ filtri$date[2],
+            TRUE ~ fine_calendario
+          )
+        ),
+        tipo = if_else(
+          tratto == "Selezionato",
+          "Periodo selezionato",
+          "Riferimento"
         )
       ) |>
       group_by(
         inizio_finestra,
+        fine_finestra,
+        tipo,
         cds_name,
         sensor_description
       ) |>
@@ -7124,34 +7160,16 @@ server <- function(input, output, session) {
         U_sensore = sqrt(media_nok^2 + varianza_nok)
       ) |>
       filter(is.finite(U_sensore)) |>
-      group_by(inizio_finestra) |>
+      group_by(inizio_finestra, fine_finestra, tipo) |>
       summarise(
         U_macchina = mean(U_sensore, na.rm = TRUE),
         .groups = "drop"
-      ) |>
-      mutate(
-        fine_finestra = if (identical(granularita_utilizzo, "Mese")) {
-          as.Date(
-            lubridate::ceiling_date(
-              inizio_finestra,
-              "month"
-            ) - lubridate::days(1)
-          )
-        } else {
-          inizio_finestra + 6L
-        },
-        tipo = if_else(
-          fine_finestra >= filtri$date[1] &
-            inizio_finestra <= filtri$date[2],
-          "Periodo selezionato",
-          "Riferimento"
-        )
       ) |>
       filter(is.finite(U_macchina)) |>
       arrange(inizio_finestra)
     
     # P10/P90 coerenti con la granularita' scelta.
-    # Si usano normalmente solo i periodi completi precedenti alla selezione.
+    # Si usano i tratti precedenti alla selezione, anche di settimane/mesi spezzati.
     # Se la selezione copre oltre il 50% dello storico o ci sono meno di due
     # periodi precedenti, si usa tutto lo storico disponibile.
     periodi_precedenti <- storico_utilizzo_grafico |>
@@ -7297,19 +7315,13 @@ server <- function(input, output, session) {
         "#F4F8FB"
       )
       
-      etichetta_periodo <- if (
-        identical(granularita, "Mese")
-      ) {
-        paste0(
-          "Mese ",
-          format(riga$inizio_finestra, "%m-%Y")
-        )
-      } else {
-        paste0(
-          "Sett. ",
-          format(riga$inizio_finestra, "%d-%m")
-        )
-      }
+      # Mostra le date effettive anche quando la settimana o il mese e' spezzato.
+      etichetta_periodo <- paste0(
+        if (identical(granularita, "Mese")) "Mese " else "Sett. ",
+        format(riga$inizio_finestra, "%d-%m"),
+        " / ",
+        format(riga$fine_finestra, "%d-%m")
+      )
       
       div(
         style = paste0(
@@ -7424,13 +7436,11 @@ server <- function(input, output, session) {
           stato == "Basso" ~ "Basso",
           TRUE ~ "N/D"
         ),
-        etichetta_periodo = if (
-          identical(granularita, "Mese")
-        ) {
-          format(inizio_finestra, "%m-%Y")
-        } else {
-          format(inizio_finestra, "%d-%m-%Y")
-        },
+        etichetta_periodo = paste0(
+          format(inizio_finestra, "%d-%m-%Y"),
+          " / ",
+          format(fine_finestra, "%d-%m-%Y")
+        ),
         tooltip_utilizzo = paste0(
           "<b>",
           ifelse(
@@ -7448,7 +7458,7 @@ server <- function(input, output, session) {
           "</b><br/>",
           if (
             identical(granularita, "Mese")
-          ) "Periodo: " else "Settimana dal: ",
+          ) "Periodo: " else "Settimana: ",
           etichetta_periodo,
           "<br/>",
           "Utilizzo macchina: ",
