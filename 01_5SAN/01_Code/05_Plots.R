@@ -464,9 +464,18 @@ data_start_default <- max(data_min, data_max - 27)
 # originale e poi convertite in percentuale, cosi' restano corrette anche
 # quando l'immagine si ridimensiona.
 # ---------------------------------------------------------------------------
-immagini_progetti <- data.frame(
-  project = c("A3020", "A1220", "C14GR", "E11RI", "F0400", "Banco 1", "Banco 2",
-              "Pelatrice 3", "Trafila 2"),
+immagini_macchine <- data.frame(
+  coupon = c(
+    "LIN-SEMP-3625-7560-4998-4816-219",
+    "LIN-SEMP-0943-0891-7413-6940-252",
+    "LIN-SEMP-4354-8784-4143-4591-177",
+    "LIN-SEMP-3106-8575-8743-0135-225",
+    "LIN-SEMP-8335-4662-1347-7995-125",
+    "MAC-SEMP-7908-7476-8539-6940-087",
+    "MAC-SEMP-9512-3712-9471-1352-029",
+    "LIN-SEMP-1711-6111-9357-7313-217",
+    "LIN-SEMP-6943-2521-9960-7175-136"
+  ),
   file_name = c(
     "Giacomini_G1_A3020.png",
     "Giacomini_G1_A1220.png",
@@ -483,7 +492,7 @@ immagini_progetti <- data.frame(
 
 mappa_sensori <- bind_rows(
   data.frame(
-    project = "A3020", image_width = 964, image_height = 345,
+    coupon = "LIN-SEMP-3625-7560-4998-4816-219", image_width = 964, image_height = 345,
     cds_name = c(
       "EML", "REG", "PE2", "BIM2", "FCM5", "FCM6", "FCM4",
       "FCM3", "FCM2", "FCM1", "FCM7", "FCM8", "FCM13", "PE1",
@@ -499,7 +508,7 @@ mappa_sensori <- bind_rows(
     )
   ),
   data.frame(
-    project = "A1220", image_width = 898, image_height = 325,
+    coupon = "LIN-SEMP-0943-0891-7413-6940-252", image_width = 898, image_height = 325,
     cds_name = c(
       "EML", "REG", "FCM5", "FCM4", "FCM3", "FCM2", "FCM1",
       "FCM7", "FCM8", "FCM12", "FCM11", "FCM10", "FCM9",
@@ -517,7 +526,7 @@ mappa_sensori <- bind_rows(
     )
   ),
   data.frame(
-    project = "C14GR", image_width = 774, image_height = 642,
+    coupon = "LIN-SEMP-4354-8784-4143-4591-177", image_width = 774, image_height = 642,
     cds_name = c(
       "EML", "REG", "MB4", "MB3", "SM3", "MB2", "SM2", "SC1",
       "SM1", "FCM1", "MB1", "PE1", "RE1", "MB5", "MB6", "SM4"
@@ -532,7 +541,7 @@ mappa_sensori <- bind_rows(
     )
   ),
   data.frame(
-    project = "E11RI", image_width = 790, image_height = 508,
+    coupon = "LIN-SEMP-3106-8575-8743-0135-225", image_width = 790, image_height = 508,
     cds_name = c(
       "MF1", "MF2", "FCM6", "FCM5", "RA2", "FCM7", "RA6",
       "FCM4", "UPe2", "MBe2", "RA5", "FCM3", "FCM2", "FCM1",
@@ -554,7 +563,7 @@ mappa_sensori <- bind_rows(
     )
   ),
   data.frame(
-    project = "F0400", image_width = 932, image_height = 678,
+    coupon = "LIN-SEMP-8335-4662-1347-7995-125", image_width = 932, image_height = 678,
     cds_name = c(
       "EML", "REG", "MB6", "MB5", "MB4", "MB3", "MB2", "SM3",
       "SM2", "R3", "PE1", "FCM1", "FTC1", "MB1", "SM1"
@@ -569,25 +578,25 @@ mappa_sensori <- bind_rows(
     )
   ),
   data.frame(
-    project = "Banco 1", image_width = 1293, image_height = 1217,
+    coupon = "MAC-SEMP-7908-7476-8539-6940-087", image_width = 1293, image_height = 1217,
     cds_name = c("FCM1", "FCM2", "MB1"),
     x = c(884, 982, 673),
     y = c(94, 94, 405)
   ),
   data.frame(
-    project = "Banco 2", image_width = 1293, image_height = 1217,
+    coupon = "MAC-SEMP-9512-3712-9471-1352-029", image_width = 1293, image_height = 1217,
     cds_name = c("FCM1", "FCM2", "MB1"),
     x = c(884, 982, 673),
     y = c(94, 94, 405)
   ),
   data.frame(
-    project = "Pelatrice 3", image_width = 877, image_height = 596,
+    coupon = "LIN-SEMP-1711-6111-9357-7313-217", image_width = 877, image_height = 596,
     cds_name = c("FCM1", "FCM2", "FCM3", "MB1", "MB2"),
     x = c(294, 390, 365, 275, 715),
     y = c(175, 458, 555, 330, 202)
   ),
   data.frame(
-    project = "Trafila 2", image_width = 1375, image_height = 376,
+    coupon = "LIN-SEMP-6943-2521-9960-7175-136", image_width = 1375, image_height = 376,
     cds_name = c("FTC1", "FTC5", "FTC6", "FCM1", "FCM2", "FCM3", "FCM4", "SC1", "SC3"),
     x = c(150, 1014, 1014, 192, 341, 384, 496, 285, 1344),
     y = c(83, 229, 161, 304, 179, 183, 178, 112, 166)
@@ -5308,36 +5317,13 @@ server <- function(input, output, session) {
     
     filtri <- filtri_principali()
     
-    progetto <- macchine_lookup |>
-      filter(coupon == filtri$macchina) |>
-      distinct(project) |>
-      slice_head(n = 1) |>
-      pull(project)
-    
-    if (length(progetto) == 0 || is.na(progetto)) {
-      return(NULL)
-    }
+    coupon_macchina <- filtri$macchina
+    req(length(coupon_macchina) == 1L, !is.na(coupon_macchina), nzchar(coupon_macchina))
 
-    # I coupon identificano in modo univoco i due schemi Zorzetto.
-    if (identical(filtri$macchina, "LIN-SEMP-1711-6111-9357-7313-217")) {
-      progetto <- "Pelatrice 3"
-    } else if (identical(filtri$macchina, "LIN-SEMP-6943-2521-9960-7175-136")) {
-      progetto <- "Trafila 2"
-    }
-
-    # Per i banchi Siboni accetto anche Banco_1/Banco_2 e Siboni_Banco_1/2.
-    # Uso la stessa chiave per scegliere l'immagine e i relativi hotspot.
-    progetto_banco <- str_to_upper(str_replace_all(progetto, "[^[:alnum:]]", ""))
-    if (progetto_banco %in% c("BANCO1", "SIBONIBANCO1")) {
-      progetto <- "Banco 1"
-    } else if (progetto_banco %in% c("BANCO2", "SIBONIBANCO2")) {
-      progetto <- "Banco 2"
-    }
-    
-    immagine <- immagini_progetti |>
-      filter(project == progetto) |>
+    immagine <- immagini_macchine |>
+      filter(coupon == coupon_macchina) |>
       slice_head(n = 1)
-    
+
     if (
       nrow(immagine) == 0 ||
       !dir.exists(cds_images_dir) ||
@@ -5354,7 +5340,7 @@ server <- function(input, output, session) {
         cds_name %in% sensori_selezionati
       ) |>
       mutate(cds_key = str_to_upper(str_squish(cds_name))) |>
-      group_by(cds_key) |>
+      group_by(coupon, cds_key) |>
       summarise(
         cds_name = first(cds_name),
         sensor_description = paste(
@@ -5420,9 +5406,9 @@ server <- function(input, output, session) {
     }
     
     punti <- mappa_sensori |>
-      filter(project == progetto) |>
-      select(project, cds_key, x_pct, y_pct) |>
-      inner_join(sensori_macchina, by = "cds_key") |>
+      filter(coupon == coupon_macchina) |>
+      select(coupon, cds_key, x_pct, y_pct) |>
+      inner_join(sensori_macchina, by = c("coupon", "cds_key")) |>
       left_join(metriche, by = "cds_key")
     
     formatta_numero <- function(x, decimali) {
@@ -5502,7 +5488,7 @@ server <- function(input, output, session) {
             "?v=",
             image_version
           ),
-          alt = paste("Schema componenti del progetto", progetto)
+          alt = paste("Schema componenti della macchina", coupon_macchina)
         ),
         hotspot
       )
