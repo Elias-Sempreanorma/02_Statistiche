@@ -239,11 +239,16 @@ alerts_data <- if (file.exists(alerts_path)) {
   )
 }
 
-# La vita temporale del componente non usa piu' il campo lifetime inviato
-# dal dispositivo. Parte dalla prima osservazione assoluta del CdS sulla
-# macchina ed e' quindi legata esclusivamente a coupon + cds_name:
-# eventuali cambi di sensor_id/codice non azzerano il conteggio.
+# Vita temporale per coupon + CdS, sull'intero storico:
+# uso l'ultimo lifetime valido del dispositivo (secondi); se assente,
+# uso il tempo trascorso dalla prima osservazione assoluta del componente.
+# I cambi di sensor_id/codice non azzerano la data iniziale del fallback.
 life_reference_ts <- Sys.time()
+seconds_per_year <- 365.25 * 24 * 60 * 60
+
+if (!"lifetime" %in% names(raw_life_data)) {
+  raw_life_data$lifetime <- NA_real_
+}
 
 life_data <- raw_life_data |>
   filter(
@@ -258,14 +263,21 @@ life_data <- raw_life_data |>
     cds_t10d = last(cds_t10d[!is.na(cds_t10d)], default = NA_real_),
     count = if (all(is.na(count))) NA_real_ else max(count, na.rm = TRUE),
     offset = if (all(is.na(offset))) NA_real_ else max(offset, na.rm = TRUE),
+    lifetime_seconds = last(
+      lifetime[is.finite(lifetime) & lifetime >= 0],
+      default = NA_real_
+    ),
     first_seen = min(timestamp, na.rm = TRUE),
     .groups = "drop"
   ) |>
   mutate(
     count = count + offset,
-    lifetime = as.numeric(
-      difftime(life_reference_ts, first_seen, units = "secs")
-    ) / 60 / 60 / 24 / 360
+    lifetime = coalesce(
+      lifetime_seconds,
+      pmax(0, as.numeric(
+        difftime(life_reference_ts, first_seen, units = "secs")
+      ))
+    ) / seconds_per_year
   ) |>
   select(coupon, cds_name, cds_vds, cds_t10d, count, lifetime)
 
