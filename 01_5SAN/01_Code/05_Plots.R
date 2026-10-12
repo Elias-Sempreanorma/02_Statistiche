@@ -473,7 +473,8 @@ immagini_macchine <- data.frame(
     "MAC-SEMP-7908-7476-8539-6940-087",
     "MAC-SEMP-9512-3712-9471-1352-029",
     "LIN-SEMP-1711-6111-9357-7313-217",
-    "LIN-SEMP-6943-2521-9960-7175-136"
+    "LIN-SEMP-6943-2521-9960-7175-136",
+    "LIN-SEMP-3357-9670-4875-9907-093"
   ),
   file_name = c(
     "Giacomini_G1_A3020.png",
@@ -484,7 +485,8 @@ immagini_macchine <- data.frame(
     "Siboni_Banco_1.png",
     "Siboni_Banco_2.png",
     "Zorzetto_Pelatrice_3.png",
-    "Zorzetto_Trafila_2.png"
+    "Zorzetto_Trafila_2.png",
+    "Giacomini_G3_ST21.png"
   ),
   stringsAsFactors = FALSE
 )
@@ -599,6 +601,16 @@ mappa_sensori <- bind_rows(
     cds_name = c("FTC1", "FTC5", "FTC6", "FCM1", "FCM2", "FCM3", "FCM4", "SC1", "SC3"),
     x = c(150, 1014, 1014, 192, 341, 384, 496, 285, 1344),
     y = c(83, 229, 161, 304, 179, 183, 178, 112, 166)
+  ),
+  # ST21: FCM2, MB4 e PCA non sono etichettati nel disegno disponibile.
+  # CHIAVE e RESET hanno hotspot distinti sul selettore e sul pulsante blu.
+  data.frame(
+    coupon = "LIN-SEMP-3357-9670-4875-9907-093", image_width = 913, image_height = 558,
+    cds_name = c(
+      "EML", "FCM1", "FCM10", "FCM12", "FCM3", "FCM4", "MB2", "MB6", "PE1", "PE2", "RA2 (CHIAVE)", "RA2 (RESET)", "RA3 (CHIAVE)", "RA3 (RESET)", "RA4 (CHIAVE)", "RA4 (RESET)", "RA5 (CHIAVE)", "RA5 (RESET)", "REG", "SC1"
+    ),
+    x = c(443, 153, 791, 479, 279, 279, 762, 481, 570, 853, 789, 789, 733, 733, 459, 459, 450, 450, 443, 516),
+    y = c(527, 339, 396, 249, 368, 315, 117, 182, 186, 391, 114, 97, 448, 433, 409, 392, 178, 163, 498, 343)
   )
 ) |>
   mutate(
@@ -5457,10 +5469,22 @@ server <- function(input, output, session) {
           "; ", etichetta_ore_aperte, ": ", ore_aperte,
           "; NOK: ", nok_periodo
         ),
-        style = sprintf(
-          "left: %.4f%%; top: %.4f%%;",
-          punto$x_pct,
-          punto$y_pct
+        style = paste0(
+          sprintf(
+            "left: %.4f%%; top: %.4f%%;",
+            punto$x_pct,
+            punto$y_pct
+          ),
+          # Su ST21 CHIAVE e RESET sono vicini: dimensioni proporzionali
+          # al disegno mantengono separate le due aree anche al resize.
+          if (
+            identical(coupon_macchina, "LIN-SEMP-3357-9670-4875-9907-093") &&
+            grepl("^RA[2-5] \\((CHIAVE|RESET)\\)$", punto$cds_name)
+          ) {
+            sprintf("width: %.4f%%; height: %.4f%%;", 100 * 14 / 913, 100 * 12 / 558)
+          } else {
+            ""
+          }
         ),
         tags$span(
           class = "sensor-tooltip",
