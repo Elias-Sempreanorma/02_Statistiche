@@ -120,6 +120,26 @@ output_dir <- arg_value(
             format(Sys.time(), "%Y%m%d_%H%M%S"))
 )
 dati <- readRDS(input_path)
+compatibility_notes <- character()
+gateway_identity_verified <- "gateway_id" %in% names(dati)
+if (!gateway_identity_verified) {
+  if (!all(c("coupon", "gateway_name") %in% names(dati)) ||
+      any(is.na(dati$gateway_name) | !nzchar(trimws(dati$gateway_name)))) {
+    stop("Manca gateway_id e non e' disponibile un gateway_name valido.")
+  }
+  # Chiave SOLO diagnostica, distinta da un vero ID del gateway.
+  dati$gateway_id <- paste0("diagnostic-name:", dati$gateway_name)
+  compatibility_notes <- c(compatibility_notes,
+    "gateway_id assente: raggruppamento diagnostico per coupon + gateway_name; identita' fisica non verificata.")
+}
+if (!"gateway_disconnect_affected" %in% names(dati)) {
+  dati$gateway_disconnect_affected <- NA
+  compatibility_notes <- c(compatibility_notes,
+    "Flag disconnessione assente: impossibile escludere gli accumuli da disconnessione; risultati provvisori.")
+}
+if (length(compatibility_notes)) {
+  warning(paste(compatibility_notes, collapse = "\n"), call. = FALSE)
+}
 required <- c(
   "company", "field", "project", "coupon", "machine_name",
   "gateway_id", "gateway_name", "sensor_id", "cds_name",
@@ -131,9 +151,19 @@ if (length(missing)) stop("Colonne mancanti: ", paste(missing, collapse = ", "))
 base <- prepara_valori_giornalieri_nok_data(dati)
 keys <- c("coupon", "gateway_id", "sensor_id", "cds_name", "sensor_description")
 maturity <- calcola_sensori_allarmabili(dati)
+disconnect_quality <- dati |>
+  group_by(across(all_of(c(keys, "day")))) |>
+  summarise(
+    disconnessioni_verificabili = all(!is.na(gateway_disconnect_affected)),
+    .groups = "drop"
+  )
 base <- base |>
   left_join(maturity |> select(all_of(keys), n_giorni_conteggio), by = keys) |>
-  mutate(allarmabile = !is.na(n_giorni_conteggio))
+  left_join(disconnect_quality, by = c(keys, "day")) |>
+  mutate(
+    allarmabile = !is.na(n_giorni_conteggio),
+    identita_gateway_verificata = gateway_identity_verified
+  )
 valid <- base |>
   filter(
     is.finite(daily_count), daily_count >= 0,
@@ -211,7 +241,8 @@ for (g in groups) {
       theta <- if (model == "Poisson") NULL else fit$theta
       tails <- probabilita_code(test$daily_count, mu, theta)
       detail <- bind_cols(
-        test |> select(all_of(keys), day, daily_count, daily_uptime, allarmabile),
+        test |> select(all_of(keys), day, daily_count, daily_uptime, allarmabile,
+                         disconnessioni_verificabili, identita_gateway_verificata),
         tibble(modello = model, manovre_attese = mu, alpha = alpha), tails
       ) |>
         mutate(
@@ -256,7 +287,8 @@ for (g in groups) {
       as.integer(reduced != baseline[survivors])
   }
   per_day <- g |>
-    select(all_of(keys), day, daily_count, daily_uptime, daily_value, allarmabile) |>
+    select(all_of(keys), day, daily_count, daily_uptime, daily_value, allarmabile,
+           disconnessioni_verificabili, identita_gateway_verificata) |>
     mutate(
       lof_k3 = lof_by_k[, 1], lof_k4 = lof_by_k[, 2], lof_k5 = lof_by_k[, 3],
       regole_k3 = all_by_k[, 1], regole_k4 = all_by_k[, 2],
@@ -296,6 +328,8 @@ write_table(stability_rows, "stabilita_giornate.csv")
 writeLines(c(
   paste("Input:", normalizePath(input_path)),
   paste("Seed:", seed, "| alpha complessivo per punto:", alpha),
+  compatibility_notes,
+  "Consultare disconnessioni_verificabili e identita_gateway_verificata nei CSV.",
   "Training cronologico: almeno 30 giorni; verifica successiva: almeno 10.",
   "I modelli usano manovre giornaliere con ore attive come esposizione.",
   "Giornate con disconnessione, ore non valide o conteggi non interi escluse dai modelli.",
