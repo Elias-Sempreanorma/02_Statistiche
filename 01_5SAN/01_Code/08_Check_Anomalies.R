@@ -14,16 +14,35 @@ suppressPackageStartupMessages({
   library(lubridate)
 })
 
-args <- commandArgs(trailingOnly = TRUE)
+args <- if (interactive()) character() else commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag, default) {
   i <- match(flag, args)
   if (is.na(i)) return(default)
   if (i == length(args)) stop("Manca il valore per ", flag)
   args[[i + 1L]]
 }
+# Source() espone il percorso in ofile; Run/console usa la cartella del progetto.
+source_files <- vapply(sys.frames(), function(frame) {
+  if (is.null(frame$ofile)) NA_character_ else as.character(frame$ofile)[[1]]
+}, character(1))
+source_files <- source_files[!is.na(source_files)]
 script_arg <- grep("^--file=", commandArgs(), value = TRUE)
-if (length(script_arg) != 1L) stop("Eseguire questo file con Rscript.")
-script_path <- normalizePath(sub("^--file=", "", script_arg))
+if (length(source_files) > 0L) {
+  script_path <- normalizePath(tail(source_files, 1L))
+} else if (!interactive() && length(script_arg) == 1L) {
+  script_path <- normalizePath(sub("^--file=", "", script_arg))
+} else {
+  candidates <- c(
+    file.path(getwd(), "01_Code", "08_Check_Anomalies.R"),
+    file.path(getwd(), "01_5SAN", "01_Code", "08_Check_Anomalies.R"),
+    file.path(getwd(), "08_Check_Anomalies.R")
+  )
+  candidates <- candidates[file.exists(candidates)]
+  if (!length(candidates)) {
+    stop("Aprire il progetto 01_5SAN o eseguire source() sul percorso del file.")
+  }
+  script_path <- normalizePath(candidates[[1]])
+}
 project_dir <- dirname(dirname(script_path))
 source(file.path(project_dir, "01_Code", "01_Functions.R"))
 
