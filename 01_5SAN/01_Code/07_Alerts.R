@@ -83,7 +83,12 @@ raw_allarmabile <- raw_data |>
 # ---------------------------------------------------------------------------
 # 1) Anomalie giornaliere delle attivazioni.
 # ---------------------------------------------------------------------------
-base_giornaliera <- prepara_valori_giornalieri_nok_data(dati_allarmabili)
+base_giornaliera <- prepara_valori_giornalieri_nok_data(dati_allarmabili) |>
+  group_by(coupon, gateway_id, sensor_id, cds_name, sensor_description) |>
+  mutate(
+    media_manovre_storica = mean(daily_count[is.finite(daily_count)])
+  ) |>
+  ungroup()
 
 alert_attivazioni_giornaliere <- base_giornaliera |>
   filter(
@@ -105,10 +110,12 @@ alert_attivazioni_giornaliere <- base_giornaliera |>
     type_code = "ACTD",
     alert_scope = "sensor",
     functional_unit = paste(cds_name, sensor_description, sep = " - "),
-    signal_description = if_else(
-      daily_count == 0,
-      "Zero manovre in una giornata con attivita' storica del componente",
-      "Anomalia statistica giornaliera delle manovre"
+    signal_description = case_when(
+      daily_count > media_manovre_storica ~
+        "Manovre giornaliere anomale: superiori alla media storica",
+      daily_count < media_manovre_storica ~
+        "Manovre giornaliere anomale: inferiori alla media storica",
+      TRUE ~ "Manovre giornaliere anomale rispetto alla media storica"
     ),
     signal_data_text = paste0(
       "Manovre giornaliere: ",
@@ -197,9 +204,6 @@ alert_attivazioni_orarie <- base_oraria |>
       round(hourly_count),
       "; mediana oraria: ",
       round(hourly_median, 2),
-      "; rapporto: ",
-      round(hourly_count / hourly_median, 2),
-      "x",
       if_else(
         gateway_disconnect_affected,
         "; dato possibilmente alterato da una disconnessione del gateway",
