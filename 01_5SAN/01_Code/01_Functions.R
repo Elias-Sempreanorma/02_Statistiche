@@ -1,27 +1,78 @@
-# Soglia unica usata da ETL e dashboard: un sensore puo' generare alert
-# solo dopo almeno 30 osservazioni finite del contatore, indipendentemente
-# dal valore osservato.
-MIN_OSSERVAZIONI_ALLARME <- 30L
+# Almeno 30 giornate distinte con un conteggio valido per componente.
+MIN_GIORNI_ALLARME <- 30L
 
 calcola_sensori_allarmabili <- function(dati) {
   dati |>
     dplyr::filter(
-      !is.na(coupon),
-      !is.na(gateway_id),
-      !is.na(sensor_id),
-      is.finite(count)
+      !is.na(coupon), !is.na(gateway_id), !is.na(sensor_id),
+      is.finite(count), !is.na(timestamp)
+    ) |>
+    dplyr::mutate(
+      .giorno_allarme = as.Date(timestamp, tz = "Europe/Rome")
+    ) |>
+    dplyr::distinct(
+      coupon, gateway_id, sensor_id, cds_name, sensor_description,
+      .giorno_allarme
     ) |>
     dplyr::count(
-      coupon,
-      gateway_id,
-      sensor_id,
-      cds_name,
-      sensor_description,
-      name = "n_osservazioni_conteggio"
+      coupon, gateway_id, sensor_id, cds_name, sensor_description,
+      name = "n_giorni_conteggio"
     ) |>
-    dplyr::filter(
-      n_osservazioni_conteggio >= MIN_OSSERVAZIONI_ALLARME
+    dplyr::filter(n_giorni_conteggio >= MIN_GIORNI_ALLARME)
+}
+
+# Regole giornaliere condivise: LOF e rapporto sulla frequenza di manovre.
+# La soglia assoluta resta 49 manovre oltre l'atteso per le ore del giorno.
+classifica_anomalie_giornaliere <- function(df, k = 4L) {
+  x <- df$daily_value
+  validi <- (
+    is.finite(x) & is.finite(df$daily_count) &
+    df$daily_count >= 0 & is.finite(df$daily_uptime) &
+    df$daily_uptime > 0
+  )
+  df$lof_score <- NA_real_
+  df$outlier_lof <- FALSE
+  mediana_conteggi <- if (any(validi)) {
+    stats::median(df$daily_count[validi])
+  } else NA_real_
+  df$mediana_manovre_giornaliera <- mediana_conteggi
+
+  # Zero e' una segnalazione operativa solo quando il componente
+  # ha mediana >= 1 nelle giornate con ore di attivita' valide.
+  zero_anomalo <- validi & df$daily_count == 0 &
+    is.finite(mediana_conteggi) & mediana_conteggi >= 1
+  df$outlier_lof[zero_anomalo] <- TRUE
+
+  n_validi <- sum(validi)
+  if (n_validi >= 6L && dplyr::n_distinct(x[validi]) >= 3L) {
+    score <- dbscan::lof(
+      matrix(x[validi], ncol = 1),
+      minPts = min(as.integer(k), n_validi - 1L)
     )
+    x_validi <- x[validi]
+    mediana_senza_valore <- vapply(
+      seq_along(x_validi),
+      function(i) stats::median(x_validi[-i]),
+      numeric(1)
+    )
+    rapporto_anomalo <- (
+      is.finite(mediana_senza_valore) &
+      mediana_senza_valore > 0 &
+      x_validi >= mediana_senza_valore * 5
+    )
+    atteso <- mediana_senza_valore * df$daily_uptime[validi]
+    differenza_anomala <- (
+      is.finite(atteso) &
+      df$daily_count[validi] - atteso >= 49
+    )
+    lof_anomalo <- !is.na(score) & score > 2
+    df$lof_score[validi] <- score
+    df$outlier_lof[validi] <- (
+      df$outlier_lof[validi] | lof_anomalo |
+      rapporto_anomalo | differenza_anomala
+    )
+  }
+  df
 }
 
 # Base giornaliera condivisa tra dashboard ed ETL.
@@ -88,73 +139,7 @@ prepara_valori_giornalieri_nok_data <- function(
       cds_name,
       sensor_description
     ) |>
-    dplyr::group_modify(~ {
-      x <- .x$daily_count
-      validi <- is.finite(x)
-
-      .x$lof_score <- NA_real_
-      .x$outlier_lof <- FALSE
-
-      n_validi <- sum(validi)
-      media_attivazioni_giornaliere <- if (n_validi > 0) {
-        mean(x[validi], na.rm = TRUE)
-      } else {
-        NA_real_
-      }
-
-      zero_anomalo <- (
-        validi &
-        x == 0 &
-        is.finite(media_attivazioni_giornaliere) &
-        media_attivazioni_giornaliere > 0
-      )
-      .x$outlier_lof[zero_anomalo] <- TRUE
-
-      if (
-        n_validi >= 6L &&
-        dplyr::n_distinct(x[validi]) >= 3L
-      ) {
-        k <- min(4L, n_validi - 1L)
-        score <- dbscan::lof(
-          matrix(x[validi], ncol = 1),
-          minPts = k
-        )
-
-        x_validi <- x[validi]
-        mediana_senza_valore <- vapply(
-          seq_along(x_validi),
-          function(i) {
-            altri_valori <- x_validi[-i]
-            if (length(altri_valori) == 0) {
-              NA_real_
-            } else {
-              stats::median(altri_valori, na.rm = TRUE)
-            }
-          },
-          numeric(1)
-        )
-
-        rapporto_anomalo <- (
-          is.finite(mediana_senza_valore) &
-          x_validi >= mediana_senza_valore * 5
-        )
-        differenza_anomala <- (
-          is.finite(mediana_senza_valore) &
-          (x_validi - mediana_senza_valore) >= 49
-        )
-        lof_anomalo <- !is.na(score) & score > 2
-
-        .x$lof_score[validi] <- score
-        .x$outlier_lof[validi] <- (
-          .x$outlier_lof[validi] |
-          lof_anomalo |
-          rapporto_anomalo |
-          differenza_anomala
-        )
-      }
-
-      .x
-    }) |>
+    dplyr::group_modify(~ classifica_anomalie_giornaliere(.x)) |>
     dplyr::ungroup()
 }
 

@@ -86,7 +86,7 @@ raw_allarmabile <- raw_data |>
 base_giornaliera <- prepara_valori_giornalieri_nok_data(dati_allarmabili) |>
   group_by(coupon, gateway_id, sensor_id, cds_name, sensor_description) |>
   mutate(
-    media_manovre_storica = mean(daily_count[is.finite(daily_count)])
+    media_manovre_storica = mean(daily_value[is.finite(daily_value)])
   ) |>
   ungroup()
 
@@ -111,15 +111,17 @@ alert_attivazioni_giornaliere <- base_giornaliera |>
     alert_scope = "sensor",
     functional_unit = paste(cds_name, sensor_description, sep = " - "),
     signal_description = case_when(
-      daily_count > media_manovre_storica ~
+      daily_value > media_manovre_storica ~
         "Manovre giornaliere anomale: superiori alla media storica",
-      daily_count < media_manovre_storica ~
+      daily_value < media_manovre_storica ~
         "Manovre giornaliere anomale: inferiori alla media storica",
       TRUE ~ "Manovre giornaliere anomale rispetto alla media storica"
     ),
     signal_data_text = paste0(
       "Manovre giornaliere: ",
       round(daily_count),
+      "; ore attive: ", round(daily_uptime, 2),
+      "; manovre/ora: ", round(daily_value, 2),
       if_else(
         gateway_disconnect_affected,
         "; dato possibilmente alterato da una disconnessione del gateway",
@@ -131,6 +133,9 @@ alert_attivazioni_giornaliere <- base_giornaliera |>
   mutate(
     signal_data_json = json_alert(list(
       daily_count = daily_count,
+      daily_uptime = daily_uptime,
+      maneuvers_per_hour = daily_value,
+      historical_mean_per_hour = media_manovre_storica,
       lof_score = lof_score,
       gateway_disconnect_affected = gateway_disconnect_affected
     ))
@@ -421,12 +426,12 @@ if (
         select(
           coupon, gateway_id, sensor_id,
           cds_name, sensor_description,
-          n_osservazioni_conteggio
+          n_giorni_conteggio
         ),
       by = c("coupon", "gateway_id", "sensor_id")
     ) |>
     mutate(
-      qualifies = !is.na(n_osservazioni_conteggio)
+      qualifies = !is.na(n_giorni_conteggio)
     )
 
   righe_gateway <- lapply(

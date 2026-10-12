@@ -384,8 +384,8 @@ sensori_lookup <- dati |>
   ordina_naturale() |>
   arrange(coupon)
 
-# Stessa regola usata dall'ETL: nessun alert prima di 30 osservazioni
-# reali del contatore. Qui il lookup resta utile ai report storici.
+# Stessa regola usata dall'ETL: nessun alert prima di 30 giorni distinti
+# con conteggi validi. Qui il lookup resta utile ai report storici.
 sensori_allarmabili <- calcola_sensori_allarmabili(dati)
 
 # ---------------------------------------------------------------------------
@@ -3882,7 +3882,7 @@ server <- function(input, output, session) {
     anomalie_giornaliere <- base_giornaliera |>
       group_by(cds_name, sensor_description) |>
       mutate(
-        media_manovre_storica = mean(daily_count[is.finite(daily_count)])
+        media_manovre_storica = mean(daily_value[is.finite(daily_value)])
       ) |>
       ungroup() |>
       semi_join(
@@ -3904,9 +3904,9 @@ server <- function(input, output, session) {
         Conteggio = round(daily_count),
         Descrizione = paste0(
           case_when(
-            daily_count > media_manovre_storica ~
+            daily_value > media_manovre_storica ~
               "Manovre giornaliere anomale: superiori alla media storica",
-            daily_count < media_manovre_storica ~
+            daily_value < media_manovre_storica ~
               "Manovre giornaliere anomale: inferiori alla media storica",
             TRUE ~ "Manovre giornaliere anomale rispetto alla media storica"
           ),
@@ -5158,123 +5158,12 @@ server <- function(input, output, session) {
   # invece di ricalcolato.
   # ---------------------------------------------------------------------
   # Unica funzione per preparare i dati giornalieri usati dal NOK.
-  # Il LOF viene calcolato sul CONTEGGIO GIORNALIERO delle attivazioni
-  # (non sul NOK), separatamente per ciascun sensore.
+  # Il LOF viene calcolato sulle manovre per ora attiva della giornata,
+  # con la stessa funzione condivisa usata dall'ETL.
   prepara_valori_giornalieri_nok <- function(macchina, sensori) {
-    
-    dati |>
-      ungroup() |>
-      filter(
-        coupon == macchina,
-        cds_name %in% sensori
-      ) |>
-      group_by(cds_name, sensor_description, day) |>
-      summarise(
-        daily_count = if (
-          any(is.finite(increment))
-        ) {
-          sum(
-            increment[is.finite(increment)],
-            na.rm = TRUE
-          )
-        } else {
-          NA_real_
-        },
-        daily_uptime = if (all(is.na(daily_uptime))) {
-          NA_real_
-        } else {
-          max(daily_uptime, na.rm = TRUE)
-        },
-        gateway_disconnect_affected = any(
-          gateway_disconnect_affected,
-          na.rm = TRUE
-        ),
-        .groups = "drop"
-      ) |>
-      mutate(
-        daily_value = case_when(
-          is.na(daily_uptime) | daily_uptime <= 0 ~ NA_real_,
-          TRUE ~ daily_count / daily_uptime
-        )
-      ) |>
-      group_by(cds_name, sensor_description) |>
-      group_modify(~ {
-        x <- .x$daily_count
-        validi <- is.finite(x)
-        
-        .x$lof_score <- NA_real_
-        .x$outlier_lof <- FALSE
-        
-        n_validi <- sum(validi)
-        media_attivazioni_giornaliere <- if (n_validi > 0) {
-          mean(x[validi], na.rm = TRUE)
-        } else {
-          NA_real_
-        }
-        
-        # Se il sensore ha normalmente attivita' (> 0 in media),
-        # una giornata valida con 0 attivazioni viene considerata anomala.
-        zero_anomalo <- (
-          validi &
-          x == 0 &
-          is.finite(media_attivazioni_giornaliere) &
-          media_attivazioni_giornaliere > 0
-        )
-        .x$outlier_lof[zero_anomalo] <- TRUE
-        
-        # Il LOF viene calcolato sui conteggi giornalieri finiti.
-        if (n_validi >= 6L && dplyr::n_distinct(x[validi]) >= 3L) {
-          k <- min(4L, n_validi - 1L)
-          score <- dbscan::lof(
-            matrix(x[validi], ncol = 1),
-            minPts = k
-          )
-          
-          x_validi <- x[validi]
-          
-          # Per valutare il divario di ciascun candidato uso una mediana
-          # leave-one-out: il valore che sto testando non contribuisce alla
-          # propria mediana di riferimento.
-          mediana_senza_valore <- vapply(
-            seq_along(x_validi),
-            function(i) {
-              altri_valori <- x_validi[-i]
-              if (length(altri_valori) == 0) {
-                NA_real_
-              } else {
-                stats::median(altri_valori, na.rm = TRUE)
-              }
-            },
-            numeric(1)
-          )
-          
-          rapporto_anomalo <- (
-            is.finite(mediana_senza_valore) &
-            x_validi >= mediana_senza_valore * 5
-          )
-          
-          differenza_anomala <- (
-            is.finite(mediana_senza_valore) &
-            (x_validi - mediana_senza_valore) >= 49
-          )
-          
-          lof_anomalo <- (
-            !is.na(score) &
-            score > 2
-          )
-          
-          .x$lof_score[validi] <- score
-          .x$outlier_lof[validi] <- (
-            .x$outlier_lof[validi] |
-            lof_anomalo |
-            rapporto_anomalo |
-            differenza_anomala
-          )
-        }
-        
-        .x
-      }) |>
-      ungroup()
+    prepara_valori_giornalieri_nok_data(
+      dati, macchina = macchina, sensori = sensori
+    )
   }
   
   valori_giornalieri <- reactive({
@@ -5689,7 +5578,7 @@ server <- function(input, output, session) {
   # ---------------------------------------------------------------------
   # ---------------------------------------------------------------------
   # Gli alert mostrati in dashboard sono gli stessi persistiti nel DB.
-  # In questo modo ID, soglia delle 30 osservazioni e logica di rilevazione
+  # In questo modo ID, soglia dei 30 giorni e logica di rilevazione
   # hanno un'unica sorgente e non vengono ricalcolati ad ogni apertura.
   # ---------------------------------------------------------------------
   alerts_filtrati_modal <- reactive({
