@@ -5421,6 +5421,31 @@ server <- function(input, output, session) {
       select(coupon, cds_key, x_pct, y_pct) |>
       inner_join(sensori_macchina, by = c("coupon", "cds_key")) |>
       left_join(metriche, by = "cds_key")
+
+    # ST21: i soli RA dell'anagrafica fornita devono restare individuabili
+    # sul disegno anche se non sono ancora presenti nei dati elaborati.
+    # I componenti presenti ma deselezionati restano esclusi.
+    if (identical(coupon_macchina, "LIN-SEMP-3357-9670-4875-9907-093")) {
+      ra_senza_dati <- mappa_sensori |>
+        filter(
+          coupon == coupon_macchina,
+          grepl("^RA[2-5] \\((CHIAVE|RESET)\\)$", cds_name)
+        ) |>
+        anti_join(
+          sensori_lookup |>
+            filter(coupon == coupon_macchina) |>
+            mutate(cds_key = str_to_upper(str_squish(cds_name))),
+          by = c("coupon", "cds_key")
+        ) |>
+        transmute(
+          coupon, cds_key, x_pct, y_pct, cds_name,
+          sensor_description = NA_character_,
+          N_medio = NA_real_,
+          ore_aperte_medie = NA_real_,
+          NOK = NA_real_
+        )
+      punti <- bind_rows(punti, ra_senza_dati)
+    }
     
     formatta_numero <- function(x, decimali) {
       if (length(x) == 0 || is.na(x) || is.nan(x) || is.infinite(x)) {
