@@ -602,15 +602,15 @@ mappa_sensori <- bind_rows(
     x = c(150, 1014, 1014, 192, 341, 384, 496, 285, 1344),
     y = c(83, 229, 161, 304, 179, 183, 178, 112, 166)
   ),
-  # ST21: FCM2, MB4 e PCA non sono etichettati nel disegno disponibile.
+  # ST21: PCA escluso dalla mappa come richiesto.
   # CHIAVE e RESET hanno hotspot distinti sul selettore e sul pulsante blu.
   data.frame(
     coupon = "LIN-SEMP-3357-9670-4875-9907-093", image_width = 913, image_height = 558,
     cds_name = c(
-      "EML", "FCM1", "FCM10", "FCM12", "FCM3", "FCM4", "MB2", "MB6", "PE1", "PE2", "RA2 (CHIAVE)", "RA2 (RESET)", "RA3 (CHIAVE)", "RA3 (RESET)", "RA4 (CHIAVE)", "RA4 (RESET)", "RA5 (CHIAVE)", "RA5 (RESET)", "REG", "SC1"
+      "EML", "FCM1", "FCM10", "FCM12", "FCM3", "FCM4", "MB2", "MB6", "PE1", "PE2", "RA2 (CHIAVE)", "RA2 (RESET)", "RA3 (CHIAVE)", "RA3 (RESET)", "RA4 (CHIAVE)", "RA4 (RESET)", "RA5 (CHIAVE)", "RA5 (RESET)", "REG", "SC1", "FCM2", "MB4"
     ),
-    x = c(443, 153, 791, 479, 279, 279, 762, 481, 570, 853, 789, 789, 733, 733, 459, 459, 450, 450, 443, 516),
-    y = c(527, 339, 396, 249, 368, 315, 117, 182, 186, 391, 114, 97, 448, 433, 409, 392, 178, 163, 498, 343)
+    x = c(443, 153, 791, 479, 279, 279, 762, 481, 570, 853, 789, 789, 733, 733, 459, 459, 450, 450, 443, 516, 231, 521),
+    y = c(527, 339, 396, 249, 368, 315, 117, 182, 186, 391, 114, 97, 448, 433, 409, 392, 178, 163, 498, 343, 302, 444)
   )
 ) |>
   mutate(
