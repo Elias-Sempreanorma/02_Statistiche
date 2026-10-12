@@ -3880,6 +3880,11 @@ server <- function(input, output, session) {
     
     # Anomalie attivazioni nel periodo.
     anomalie_giornaliere <- base_giornaliera |>
+      group_by(cds_name, sensor_description) |>
+      mutate(
+        media_manovre_storica = mean(daily_count[is.finite(daily_count)])
+      ) |>
+      ungroup() |>
       semi_join(
         sensori_allarmabili_report,
         by = c("cds_name", "sensor_description")
@@ -3888,8 +3893,7 @@ server <- function(input, output, session) {
         outlier_lof,
         day >= inizio,
         day <= fine,
-        is.finite(daily_count),
-        daily_count > 6
+        is.finite(daily_count)
       ) |>
       transmute(
         Macchina = nome_macchina,
@@ -3899,10 +3903,12 @@ server <- function(input, output, session) {
         Ora = "-",
         Conteggio = round(daily_count),
         Descrizione = paste0(
-          if_else(
-            is.finite(daily_count) & daily_count == 0,
-            "Zero manovre",
-            "Anomalia statistica giornaliera"
+          case_when(
+            daily_count > media_manovre_storica ~
+              "Manovre giornaliere anomale: superiori alla media storica",
+            daily_count < media_manovre_storica ~
+              "Manovre giornaliere anomale: inferiori alla media storica",
+            TRUE ~ "Manovre giornaliere anomale rispetto alla media storica"
           ),
           if_else(
             gateway_disconnect_affected,
