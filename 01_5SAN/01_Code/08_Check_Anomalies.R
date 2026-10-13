@@ -325,6 +325,91 @@ write_table(model_rows, "modelli_probabilistici.csv")
 write_table(prob_rows, "limiti_probabilistici.csv")
 write_table(stability_summary, "stabilita_riepilogo.csv")
 write_table(stability_rows, "stabilita_giornate.csv")
+# Grafici a punti: la variabile del LOF e' daily_count / daily_uptime.
+# Una pagina per componente, con andamento nel tempo e distribuzione dei punti.
+disegna_manovre_ora <- function(g) {
+  g <- g |>
+    filter(is.finite(daily_value), is.finite(daily_uptime),
+           daily_uptime > 0, daily_count >= 0) |>
+    arrange(day)
+  if (!nrow(g)) return(invisible(NULL))
+  old_par <- par(no.readonly = TRUE)
+  on.exit(par(old_par), add = TRUE)
+  par(mfrow = c(2, 1), mar = c(4.5, 4.5, 3, 1), oma = c(0, 0, 4, 0))
+  lof_anomalo <- !is.na(g$lof_score) & g$lof_score > 2
+  colors <- ifelse(is.na(g$lof_score), "#999999",
+                   ifelse(lof_anomalo, "#D64545", "#246B96"))
+  titolo <- paste(
+    g$cds_name[[1]], "-", g$sensor_description[[1]],
+    "|", g$coupon[[1]], "| gateway:", g$gateway_name[[1]]
+  )
+  # Nessun arrotondamento: punti e limiti usano le frequenze originali.
+  plot(as.Date(g$day), g$daily_value, pch = 19, col = colors,
+       xlab = "Giorno", ylab = "Manovre / ora attiva",
+       main = "Frequenza giornaliera nel tempo")
+  grid(col = "#DDDDDD")
+  points(as.Date(g$day), g$daily_value, pch = 19, col = colors)
+  legend("topright",
+         legend = c("LOF <= 2", "LOF > 2", "LOF non calcolabile"),
+         col = c("#246B96", "#D64545", "#999999"),
+         pch = 19, bty = "n", cex = 0.8)
+
+  # Valori esattamente uguali sono impilati: ogni punto e' una giornata.
+  # La coordinata X non viene alterata con jitter.
+  stacked <- g |>
+    mutate(.plot_color = colors) |>
+    group_by(daily_value) |>
+    mutate(.occurrence = row_number()) |>
+    ungroup()
+  plot(stacked$daily_value, stacked$.occurrence,
+       pch = 19, col = stacked$.plot_color,
+       xlab = "Manovre / ora attiva (valore esatto)",
+       ylab = "Occorrenze dello stesso valore",
+       main = "Distribuzione: ogni punto rappresenta una giornata",
+       ylim = c(0, max(stacked$.occurrence) + 1), yaxt = "n")
+  axis(2, at = pretty(c(0, max(stacked$.occurrence)))[
+    pretty(c(0, max(stacked$.occurrence))) ==
+      floor(pretty(c(0, max(stacked$.occurrence))))
+  ], las = 1)
+  grid(col = "#DDDDDD")
+  points(stacked$daily_value, stacked$.occurrence,
+         pch = 19, col = stacked$.plot_color)
+  mtext(paste(strwrap(titolo, width = 110), collapse = "\n"),
+        outer = TRUE, cex = 0.8, line = 1)
+  invisible(g)
+}
+
+# Dopo Source(), richiamabile anche nel pannello Plots di RStudio:
+# grafico_manovre_ora("COUPON", "FCM4")
+grafico_manovre_ora <- function(coupon_scelto, componente_scelto,
+                              gateway_scelto = NULL) {
+  g <- base |>
+    filter(coupon == coupon_scelto, cds_name == componente_scelto)
+  if (!is.null(gateway_scelto)) {
+    g <- g |> filter(gateway_id == gateway_scelto |
+                       gateway_name == gateway_scelto)
+  }
+  if (!nrow(g)) stop("Componente non trovato per il coupon indicato.")
+  pages <- group_split(group_by(g, across(all_of(keys))), .keep = TRUE)
+  for (page in pages) disegna_manovre_ora(page)
+  invisible(NULL)
+}
+
+plot_groups <- base |>
+  filter(is.finite(daily_value), is.finite(daily_uptime),
+         daily_uptime > 0, daily_count >= 0) |>
+  group_by(across(all_of(keys))) |>
+  group_split(.keep = TRUE)
+if (length(plot_groups)) {
+  plot_pdf <- file.path(output_dir, "manovre_ora_punti.pdf")
+  pdf_device <- if (capabilities("cairo")) grDevices::cairo_pdf else grDevices::pdf
+  pdf_device(plot_pdf, width = 11.7, height = 8.3, onefile = TRUE)
+  tryCatch({
+    for (g in plot_groups) disegna_manovre_ora(g)
+  }, finally = dev.off())
+  cat("Grafici a punti:", normalizePath(plot_pdf), "\n")
+}
+
 writeLines(c(
   paste("Input:", normalizePath(input_path)),
   paste("Seed:", seed, "| alpha complessivo per punto:", alpha),
@@ -336,6 +421,9 @@ writeLines(c(
   "Limiti plug-in: non incorporano l'incertezza dei parametri stimati.",
   "Un tasso di segnalazione non e' un tasso di falsi allarmi senza etichette.",
   "LOF: confronto k=3,4,5; rimozione di fino a 30 giornate, con seed fisso.",
+  "Grafici: manovre_ora_punti.pdf, una pagina per componente; tempo e distribuzione.",
+  "I punti usano daily_count / daily_uptime senza arrotondamento; rosso significa LOF >2.",
+  "In RStudio: grafico_manovre_ora(coupon_scelto, componente_scelto).",
   "Nessuna modifica ai modelli di produzione o ai dati letti."
 ), file.path(output_dir, "LEGGIMI.txt"))
 cat("Diagnostica completata:", normalizePath(output_dir), "\n")
