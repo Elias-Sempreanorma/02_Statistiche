@@ -325,89 +325,92 @@ write_table(model_rows, "modelli_probabilistici.csv")
 write_table(prob_rows, "limiti_probabilistici.csv")
 write_table(stability_summary, "stabilita_riepilogo.csv")
 write_table(stability_rows, "stabilita_giornate.csv")
-# Grafici a punti: la variabile del LOF e' daily_count / daily_uptime.
-# Una pagina per componente, con andamento nel tempo e distribuzione dei punti.
-disegna_manovre_ora <- function(g) {
+# Distribuzione delle manovre/ora: solo componenti scelti nella funzione.
+# LOF e colori restano quelli del singolo componente, senza unire gli storici.
+disegna_manovre_ora <- function(g, xlim = NULL) {
   g <- g |>
     filter(is.finite(daily_value), is.finite(daily_uptime),
            daily_uptime > 0, daily_count >= 0) |>
     arrange(day)
   if (!nrow(g)) return(invisible(NULL))
-  old_par <- par(no.readonly = TRUE)
-  on.exit(par(old_par), add = TRUE)
-  par(mfrow = c(2, 1), mar = c(4.5, 4.5, 3, 1), oma = c(0, 0, 4, 0))
   lof_anomalo <- !is.na(g$lof_score) & g$lof_score > 2
   colors <- ifelse(is.na(g$lof_score), "#999999",
                    ifelse(lof_anomalo, "#D64545", "#246B96"))
-  titolo <- paste(
-    g$cds_name[[1]], "-", g$sensor_description[[1]],
-    "|", g$coupon[[1]], "| gateway:", g$gateway_name[[1]]
-  )
-  # Nessun arrotondamento: punti e limiti usano le frequenze originali.
-  plot(as.Date(g$day), g$daily_value, pch = 19, col = colors,
-       xlab = "Giorno", ylab = "Manovre / ora attiva",
-       main = "Frequenza giornaliera nel tempo")
-  grid(col = "#DDDDDD")
-  points(as.Date(g$day), g$daily_value, pch = 19, col = colors)
-  legend("topright",
-         legend = c("LOF <= 2", "LOF > 2", "LOF non calcolabile"),
-         col = c("#246B96", "#D64545", "#999999"),
-         pch = 19, bty = "n", cex = 0.8)
-
-  # Valori esattamente uguali sono impilati: ogni punto e' una giornata.
-  # La coordinata X non viene alterata con jitter.
   stacked <- g |>
     mutate(.plot_color = colors) |>
     group_by(daily_value) |>
     mutate(.occurrence = row_number()) |>
     ungroup()
+  titolo <- paste(g$cds_name[[1]], "-", g$sensor_description[[1]],
+                  "|", g$gateway_name[[1]])
   plot(stacked$daily_value, stacked$.occurrence,
-       pch = 19, col = stacked$.plot_color,
+       pch = 19, col = stacked$.plot_color, xlim = xlim,
        xlab = "Manovre / ora attiva (valore esatto)",
        ylab = "Occorrenze dello stesso valore",
-       main = "Distribuzione: ogni punto rappresenta una giornata",
-       ylim = c(0, max(stacked$.occurrence) + 1), yaxt = "n")
-  axis(2, at = pretty(c(0, max(stacked$.occurrence)))[
-    pretty(c(0, max(stacked$.occurrence))) ==
-      floor(pretty(c(0, max(stacked$.occurrence))))
-  ], las = 1)
+       main = paste(strwrap(titolo, width = 55), collapse = "\n"),
+       ylim = c(0, max(stacked$.occurrence) + 1), yaxt = "n", cex.main = 0.9)
+  ticks <- pretty(c(0, max(stacked$.occurrence)))
+  axis(2, at = ticks[ticks == floor(ticks)], las = 1)
   grid(col = "#DDDDDD")
   points(stacked$daily_value, stacked$.occurrence,
          pch = 19, col = stacked$.plot_color)
-  mtext(paste(strwrap(titolo, width = 110), collapse = "\n"),
-        outer = TRUE, cex = 0.8, line = 1)
   invisible(g)
 }
 
-# Dopo Source(), richiamabile anche nel pannello Plots di RStudio:
-# grafico_manovre_ora("COUPON", "FCM4")
-grafico_manovre_ora <- function(coupon_scelto, componente_scelto,
-                              gateway_scelto = NULL) {
+# Dopo Source(): grafico_manovre_ora("COUPON", c("FCM1", "FCM4", "FCM7"))
+# salva_pdf=TRUE salva SOLO la selezione, nella cartella dei risultati.
+grafico_manovre_ora <- function(coupon_scelto, componenti_scelti,
+                              gateway_scelto = NULL, salva_pdf = FALSE) {
+  componenti_scelti <- unique(as.character(componenti_scelti))
+  if (!length(componenti_scelti) || anyNA(componenti_scelti)) {
+    stop("Indicare almeno un codice componente valido.")
+  }
   g <- base |>
-    filter(coupon == coupon_scelto, cds_name == componente_scelto)
+    filter(coupon == coupon_scelto, cds_name %in% componenti_scelti)
   if (!is.null(gateway_scelto)) {
     g <- g |> filter(gateway_id == gateway_scelto |
                        gateway_name == gateway_scelto)
   }
-  if (!nrow(g)) stop("Componente non trovato per il coupon indicato.")
-  pages <- group_split(group_by(g, across(all_of(keys))), .keep = TRUE)
-  for (page in pages) disegna_manovre_ora(page)
-  invisible(NULL)
-}
-
-plot_groups <- base |>
-  filter(is.finite(daily_value), is.finite(daily_uptime),
-         daily_uptime > 0, daily_count >= 0) |>
-  group_by(across(all_of(keys))) |>
-  group_split(.keep = TRUE)
-if (length(plot_groups)) {
-  plot_pdf <- file.path(output_dir, "manovre_ora_punti.pdf")
-  pdf_device <- if (capabilities("cairo")) grDevices::cairo_pdf else grDevices::pdf
-  pdf_device(plot_pdf, width = 11.7, height = 8.3, onefile = TRUE)
-  tryCatch({
-    for (g in plot_groups) disegna_manovre_ora(g)
-  }, finally = dev.off())
-  cat("Grafici a punti:", normalizePath(plot_pdf), "\n")
+  missing_components <- setdiff(componenti_scelti, unique(g$cds_name))
+  if (length(missing_components)) {
+    stop("Componenti non trovati: ", paste(missing_components, collapse = ", "))
+  }
+  g <- g |>
+    filter(is.finite(daily_value), is.finite(daily_uptime),
+           daily_uptime > 0, daily_count >= 0)
+  missing_valid <- setdiff(componenti_scelti, unique(g$cds_name))
+  if (length(missing_valid)) {
+    stop("Nessuna frequenza oraria valida per: ", paste(missing_valid, collapse = ", "))
+  }
+  panels <- group_split(group_by(g, across(all_of(keys))), .keep = TRUE)
+  panels <- panels[order(vapply(panels, function(x) {
+    match(x$cds_name[[1]], componenti_scelti)
+  }, integer(1)))]
+  ncol_plot <- if (length(panels) == 1L) 1L else 2L
+  nrow_plot <- ceiling(length(panels) / ncol_plot)
+  common_xlim <- range(g$daily_value)
+  if (diff(common_xlim) == 0) {
+    margin <- max(abs(common_xlim[[1]]) * 0.05, 0.01)
+    common_xlim <- common_xlim + c(-margin, margin)
+  }
+  if (isTRUE(salva_pdf)) {
+    selected_pdf <- file.path(output_dir, "manovre_ora_selezionate.pdf")
+    pdf_device <- if (capabilities("cairo")) grDevices::cairo_pdf else grDevices::pdf
+    pdf_device(selected_pdf, width = 11.7,
+               height = max(4.5, 3.5 * nrow_plot), onefile = TRUE)
+    on.exit(dev.off(), add = TRUE)
+  }
+  old_par <- par(no.readonly = TRUE)
+  on.exit(par(old_par), add = TRUE, after = FALSE)
+  par(mfrow = c(nrow_plot, ncol_plot),
+      mar = c(4.5, 4.5, 4, 1), oma = c(0, 0, 3, 0))
+  for (panel in panels) disegna_manovre_ora(panel, xlim = common_xlim)
+  mtext(paste("Distribuzione delle manovre/ora |", coupon_scelto),
+        outer = TRUE, line = 1, cex = 0.9)
+  if (isTRUE(salva_pdf)) {
+    cat("Grafico selezionato:", normalizePath(selected_pdf), "\n")
+  }
+  invisible(g)
 }
 
 writeLines(c(
@@ -421,9 +424,10 @@ writeLines(c(
   "Limiti plug-in: non incorporano l'incertezza dei parametri stimati.",
   "Un tasso di segnalazione non e' un tasso di falsi allarmi senza etichette.",
   "LOF: confronto k=3,4,5; rimozione di fino a 30 giornate, con seed fisso.",
-  "Grafici: manovre_ora_punti.pdf, una pagina per componente; tempo e distribuzione.",
+  "Grafico su richiesta: solo distribuzione a punti dei componenti selezionati.",
   "I punti usano daily_count / daily_uptime senza arrotondamento; rosso significa LOF >2.",
-  "In RStudio: grafico_manovre_ora(coupon_scelto, componente_scelto).",
+  "In RStudio: grafico_manovre_ora(coupon_scelto, c(codice1, codice2)).",
+  "Con salva_pdf=TRUE salva manovre_ora_selezionate.pdf; nessun PDF automatico.",
   "Nessuna modifica ai modelli di produzione o ai dati letti."
 ), file.path(output_dir, "LEGGIMI.txt"))
 cat("Diagnostica completata:", normalizePath(output_dir), "\n")
