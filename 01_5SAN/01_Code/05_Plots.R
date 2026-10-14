@@ -116,7 +116,11 @@ valida_accesso_web <- function(query) {
 }
 
 risposta_errore_web <- function(status, reason) {
-  titolo <- "Dashboard non disponibile"
+  titolo <- if (identical(as.integer(status), 503L)) {
+    "Servizio non disponibile"
+  } else {
+    "Accesso non consentito"
+  }
 
   html <- paste0(
     "<!doctype html><html lang='it'><head><meta charset='utf-8'>",
@@ -127,7 +131,7 @@ risposta_errore_web <- function(status, reason) {
     "<div style='max-width:560px;width:100%;background:#fff;border:1px solid #DDE4EA;",
     "border-radius:10px;padding:34px;box-sizing:border-box;box-shadow:0 4px 18px rgba(0,0,0,.06);'>",
     "<h2 style='margin-top:0;color:#234A66;'>", titolo, "</h2>",
-    "<p style='color:#5F6B76;font-size:16px;margin-bottom:0;'>La dashboard non è disponibile al momento. Riprova tra qualche minuto.</p>",
+    "<p style='color:#5F6B76;font-size:16px;margin-bottom:0;'>", reason, "</p>",
     "</div></div></body></html>"
   )
 
@@ -2712,13 +2716,10 @@ server <- function(input, output, session) {
           div(
             style = "max-width:560px;width:100%;background:#fff;border:1px solid #DDE4EA;border-radius:10px;padding:34px;box-sizing:border-box;box-shadow:0 4px 18px rgba(0,0,0,.06);",
             h2(
-              "Dashboard non disponibile",
+              if (identical(as.integer(access$status), 503L)) "Servizio non disponibile" else "Accesso non consentito",
               style = "margin-top:0;color:#234A66;"
             ),
-            p(
-              "La dashboard non è disponibile al momento. Riprova tra qualche minuto.",
-              style = "color:#5F6B76;font-size:16px;margin-bottom:0;"
-            )
+            p(access$reason, style = "color:#5F6B76;font-size:16px;margin-bottom:0;")
           )
         )
       )
