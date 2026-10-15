@@ -757,7 +757,7 @@ dashboard_ui <- fluidPage(
         align-items: center;
         justify-content: space-between;
         gap: 20px;
-        min-height: 115px;
+        min-height: 93px;
       }
       .san-dashboard-title-img {
         display: block;
@@ -774,7 +774,7 @@ dashboard_ui <- fluidPage(
         object-fit: contain;
       }
       @media (max-width: 700px) {
-        .san-dashboard-header { padding: 10px 16px; min-height: 86px; }
+        .san-dashboard-header { padding: 10px 16px; min-height: 70px; }
         .san-dashboard-title-img { height: 66px; max-width: 70%; }
         .san-dashboard-logo { height: 48px; }
       }
