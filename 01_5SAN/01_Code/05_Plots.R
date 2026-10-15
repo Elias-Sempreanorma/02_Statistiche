@@ -759,7 +759,7 @@ dashboard_ui <- fluidPage(
       }
       .san-dashboard-title {
         color: #D4D9DD;
-        font-family: "Century Gothic", "Montserrat", "Avenir Next", Arial, sans-serif;
+        font-family: 'Century Gothic', 'Montserrat', 'Avenir Next', Arial, sans-serif;
         font-size: clamp(22px, 2.5vw, 34px);
         font-weight: 500;
         letter-spacing: -0.025em;
