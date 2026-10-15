@@ -2613,8 +2613,8 @@ dashboard_ui <- fluidPage(
   
   div(
     class = "san-dashboard-header",
-    tags$img(class = "san-dashboard-title-img", src = "san-header/dashboard_5san_title.svg", alt = "Dashboard 5SAN"),
-    tags$img(class = "san-dashboard-logo", src = "san-header/5san_header_emblem.svg", alt = "Logo 5SAN")
+    tags$img(class = "san-dashboard-title-img", src = "san-header/dashboard_5san_title.png", alt = "Dashboard 5SAN"),
+    tags$img(class = "san-dashboard-logo", src = "san-header/5san_header_emblem.png", alt = "Logo 5SAN")
   ),
   
   # Filtri in orizzontale, a piena larghezza, sempre visibili.
