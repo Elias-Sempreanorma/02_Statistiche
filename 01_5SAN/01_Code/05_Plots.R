@@ -757,13 +757,13 @@ dashboard_ui <- fluidPage(
         align-items: center;
         justify-content: space-between;
         gap: 20px;
-        min-height: 93px;
+        min-height: 115px;
       }
       .san-dashboard-title-img {
         display: block;
         width: auto;
-        height: 70px;
-        max-width: min(76%, 900px);
+        height: 105px;
+        max-width: min(76%, 1200px);
         object-fit: contain;
         object-position: left center;
       }
@@ -774,8 +774,8 @@ dashboard_ui <- fluidPage(
         object-fit: contain;
       }
       @media (max-width: 700px) {
-        .san-dashboard-header { padding: 10px 16px; min-height: 70px; }
-        .san-dashboard-title-img { height: 44px; max-width: 70%; }
+        .san-dashboard-header { padding: 10px 16px; min-height: 86px; }
+        .san-dashboard-title-img { height: 66px; max-width: 70%; }
         .san-dashboard-logo { height: 48px; }
       }
       /* Modal grande: quasi a schermo intero */
