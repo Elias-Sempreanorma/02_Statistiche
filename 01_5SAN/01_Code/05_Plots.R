@@ -652,8 +652,9 @@ dashboard_ui <- fluidPage(
           var stageWidth = stage.clientWidth;
           var stageHeight = stage.clientHeight;
 
-          var maxWidth = Math.min(stageWidth * 0.84, 1500);
-          var maxHeight = stageHeight * 0.86;
+          var isLargeSiboni = frame.classList.contains('schema-frame--siboni-large');
+          var maxWidth = Math.min(stageWidth * (isLargeSiboni ? 0.96 : 0.84), 1500);
+          var maxHeight = stageHeight * (isLargeSiboni ? 0.98 : 0.86);
           var targetWidth = Math.min(maxWidth, maxHeight * rapporto);
 
           frame.style.width = Math.max(560, targetWidth) + 'px';
@@ -5423,7 +5424,11 @@ server <- function(input, output, session) {
     div(
       class = "schema-home",
       div(
-        class = "schema-frame",
+        class = if (immagine$file_name %in% c("Siboni_Banco_1.png", "Siboni_Banco_2.png")) {
+          "schema-frame schema-frame--siboni-large"
+        } else {
+          "schema-frame"
+        },
         tags$img(
           src = paste0(
             "cds-images/",
