@@ -762,8 +762,8 @@ dashboard_ui <- fluidPage(
       .san-dashboard-title-img {
         display: block;
         width: auto;
-        height: 46px;
-        max-width: min(76%, 670px);
+        height: 70px;
+        max-width: min(76%, 900px);
         object-fit: contain;
         object-position: left center;
       }
@@ -775,7 +775,7 @@ dashboard_ui <- fluidPage(
       }
       @media (max-width: 700px) {
         .san-dashboard-header { padding: 10px 16px; min-height: 70px; }
-        .san-dashboard-title-img { height: 30px; max-width: 70%; }
+        .san-dashboard-title-img { height: 44px; max-width: 70%; }
         .san-dashboard-logo { height: 48px; }
       }
       /* Modal grande: quasi a schermo intero */
