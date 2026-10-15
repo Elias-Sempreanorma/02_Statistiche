@@ -6189,16 +6189,21 @@ server <- function(input, output, session) {
     
     if (identical(filtri$granularita, "Ora")) {
       risultato <- orari |>
+        left_join(
+          giornalieri |>
+            select(day, cds_name, sensor_description, ore_macchina),
+          by = c("day", "cds_name", "sensor_description")
+        ) |>
         transmute(
           periodo = hour,
           cds_name,
           sensor_description,
           attivazioni = attivazioni_orarie,
-          ore_aperte = 1,
+          ore_aperte = ore_macchina,
           anomalia_oraria,
           mediana_oraria,
           gateway_disconnect_affected,
-          etichetta_ore_aperte = "Ora macchina"
+          etichetta_ore_aperte = "Ore macchina del giorno"
         )
     } else {
       risultato <- giornalieri |>
@@ -6305,7 +6310,10 @@ server <- function(input, output, session) {
             scales::label_number(
               accuracy = 0.1,
               big.mark = "."
-            )(attivazioni)
+            )(attivazioni),
+            "<br/>", etichetta_ore_aperte, ": ",
+            scales::label_number(accuracy = 0.1, decimal.mark = ",")(ore_aperte),
+            " h"
           ),
           data_id = paste(etichetta_completa, periodo_label, sep = "__")
         ),
@@ -6368,7 +6376,10 @@ server <- function(input, output, session) {
       scales::label_number(
         accuracy = 1,
         big.mark = "."
-      )(grafico$attivazioni)
+      )(grafico$attivazioni),
+      "<br/>", grafico$etichetta_ore_aperte, ": ",
+      scales::label_number(accuracy = 0.1, decimal.mark = ",")(grafico$ore_aperte),
+      " h"
     )
     
     if (identical(granularita, "Ora")) {
