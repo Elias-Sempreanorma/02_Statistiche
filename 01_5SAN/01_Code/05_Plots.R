@@ -745,6 +745,35 @@ dashboard_ui <- fluidPage(
       }
     ")),
     tags$style(HTML("
+      /* Titolo dashboard: header blu originale, scritta e simbolo grigio chiaro. */
+      .san-dashboard-header {
+        margin: 0 -15px;
+        padding: 12px 22px;
+        background: linear-gradient(115deg, #234A66 10%, #3B5D77 72%, #5F748C);
+        border-bottom: 2px solid var(--san-yellow);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        min-height: 93px;
+      }
+      .san-dashboard-title {
+        color: #D4D9DD;
+        font-family: "Century Gothic", "Montserrat", "Avenir Next", Arial, sans-serif;
+        font-size: clamp(22px, 2.5vw, 34px);
+        font-weight: 500;
+        letter-spacing: -0.025em;
+      }
+      .san-dashboard-logo {
+        height: 70px;
+        width: auto;
+        flex-shrink: 0;
+        object-fit: contain;
+      }
+      @media (max-width: 700px) {
+        .san-dashboard-header { padding: 10px 16px; min-height: 70px; }
+        .san-dashboard-logo { height: 48px; }
+      }
       /* Modal grande: quasi a schermo intero */
       .modal-xl {
         width: 95vw;
@@ -2578,7 +2607,15 @@ dashboard_ui <- fluidPage(
     "))
   ),
   
-  titlePanel("Dashboard 5SAN"),
+  div(
+    class = "san-dashboard-header",
+    span(class = "san-dashboard-title", "Dashboard 5SAN"),
+    tags$img(
+      class = "san-dashboard-logo",
+      src = "5san-symbol.svg",
+      alt = "Logo 5SAN"
+    )
+  ),
   
   # Filtri in orizzontale, a piena larghezza, sempre visibili.
   # In modalita' web la macchina arriva dalla querystring e i filtri
