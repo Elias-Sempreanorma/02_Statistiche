@@ -146,6 +146,8 @@ risposta_errore_web <- function(status, reason) {
 # Le immagini non sono nella cartella www: le espongo a Shiny con un
 # resource path dedicato. Se la cartella non esiste, l'app continua comunque
 # a funzionare e nella Home non viene mostrato alcuno schema.
+# Asset grafici header conservati nella radice 01_5SAN, senza cartella www.
+addResourcePath("san-header", here())
 cds_images_dir <- here("00_Data", "02_CdS")
 if (dir.exists(cds_images_dir)) {
   addResourcePath("cds-images", cds_images_dir)
@@ -757,12 +759,13 @@ dashboard_ui <- fluidPage(
         gap: 20px;
         min-height: 93px;
       }
-      .san-dashboard-title {
-        color: #D4D9DD;
-        font-family: 'Century Gothic', 'Montserrat', 'Avenir Next', Arial, sans-serif;
-        font-size: clamp(22px, 2.5vw, 34px);
-        font-weight: 500;
-        letter-spacing: -0.025em;
+      .san-dashboard-title-img {
+        display: block;
+        width: auto;
+        height: 46px;
+        max-width: min(76%, 670px);
+        object-fit: contain;
+        object-position: left center;
       }
       .san-dashboard-logo {
         height: 70px;
@@ -772,6 +775,7 @@ dashboard_ui <- fluidPage(
       }
       @media (max-width: 700px) {
         .san-dashboard-header { padding: 10px 16px; min-height: 70px; }
+        .san-dashboard-title-img { height: 30px; max-width: 70%; }
         .san-dashboard-logo { height: 48px; }
       }
       /* Modal grande: quasi a schermo intero */
@@ -2609,12 +2613,8 @@ dashboard_ui <- fluidPage(
   
   div(
     class = "san-dashboard-header",
-    span(class = "san-dashboard-title", "Dashboard 5SAN"),
-    tags$img(
-      class = "san-dashboard-logo",
-      src = "5san-symbol.svg",
-      alt = "Logo 5SAN"
-    )
+    tags$img(class = "san-dashboard-title-img", src = "san-header/dashboard_5san_title.svg", alt = "Dashboard 5SAN"),
+    tags$img(class = "san-dashboard-logo", src = "san-header/5san_header_emblem.svg", alt = "Logo 5SAN")
   ),
   
   # Filtri in orizzontale, a piena larghezza, sempre visibili.
