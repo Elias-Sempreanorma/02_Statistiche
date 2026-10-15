@@ -750,20 +750,23 @@ dashboard_ui <- fluidPage(
       /* Titolo dashboard: header blu originale, scritta e simbolo grigio chiaro. */
       .san-dashboard-header {
         margin: 0 -15px;
-        padding: 12px 22px;
+        height: 93px;
+        box-sizing: border-box;
+        padding: 8px 22px;
         background: linear-gradient(115deg, #234A66 10%, #3B5D77 72%, #5F748C);
         border-bottom: 2px solid var(--san-yellow);
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 20px;
-        min-height: 93px;
+        min-height: 0;
       }
       .san-dashboard-title-img {
         display: block;
         width: auto;
         height: 105px;
         max-width: min(76%, 1200px);
+        flex-shrink: 1;
         object-fit: contain;
         object-position: left center;
       }
@@ -774,7 +777,7 @@ dashboard_ui <- fluidPage(
         object-fit: contain;
       }
       @media (max-width: 700px) {
-        .san-dashboard-header { padding: 10px 16px; min-height: 70px; }
+        .san-dashboard-header { height: 70px; min-height: 0; padding: 6px 16px; }
         .san-dashboard-title-img { height: 66px; max-width: 70%; }
         .san-dashboard-logo { height: 48px; }
       }
