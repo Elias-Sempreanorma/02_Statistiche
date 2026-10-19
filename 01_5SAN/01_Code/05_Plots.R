@@ -3288,7 +3288,7 @@ server <- function(input, output, session) {
         uiOutput("modal_panel_dati_nok"),
         h4("Disponibilità giornaliera della macchina", class = "titolo-sezione"),
         p(
-          "Tempo con tutti i sensori a status 1 e gateway acceso. Nei raggruppamenti superiori al giorno è mostrata la media giornaliera. Il calcolo comprende tutti i sensori della macchina.",
+          "Tempo con tutti i sensori chiusi e macchina accesa, indicato come tempo giornaliero in cui la macchina era disponibile al lavoro, indicata  anche la percentuale rispetto al tempo di accensione. Tempo con tutti i sensori a status 1 e gateway acceso. Nei raggruppamenti superiori al giorno è mostrata la media giornaliera. Il calcolo comprende tutti i sensori della macchina.",
           class = "help-block"
         ),
         girafeOutput("modal_disponibilitaPlot", height = "380px")
@@ -7897,39 +7897,27 @@ server <- function(input, output, session) {
   
   disponibilita_macchina_modal <- reactive({
     filtri <- filtri_nok_modal()
-    base <- machine_availability_daily |>
-      filter(coupon == filtri$macchina)
-    finestra <- periodo_precedente_grafici(filtri$date, base$day)
-    base <- base |>
-      mutate(
-        confronto = case_when(
-          day >= filtri$date[1] & day <= filtri$date[2] ~ "Periodo selezionato",
-          day >= finestra$inizio & day <= finestra$fine ~ "Periodo precedente",
-          TRUE ~ NA_character_
-        )
+    machine_availability_daily |>
+      filter(
+        coupon == filtri$macchina,
+        day >= filtri$date[1], day <= filtri$date[2]
       ) |>
-      filter(!is.na(confronto)) |>
-      mutate(
-        confronto = factor(confronto, levels = c("Periodo precedente", "Periodo selezionato")),
-        periodo = as.Date(periodo_bucket(day, filtri$granularita))
-      ) |>
-      group_by(confronto, periodo) |>
+      mutate(periodo = as.Date(periodo_bucket(day, filtri$granularita))) |>
+      group_by(periodo) |>
       summarise(
         ore_disponibili = mean(daily_available_hours),
         ore_totali = sum(daily_available_hours),
         ore_gateway = sum(daily_gateway_hours),
-        giorni = n(), .groups = "drop"
+        .groups = "drop"
       ) |>
       mutate(
         periodo_label = formatta_periodo_label(periodo, filtri$granularita),
         percentuale = if_else(ore_gateway > 0, 100 * ore_totali / ore_gateway, NA_real_)
       )
-    list(dati = base, etichette = finestra$etichette)
   })
 
   output$modal_disponibilitaPlot <- renderGirafe({
-    disponibilita <- disponibilita_macchina_modal()
-    base <- disponibilita$dati
+    base <- disponibilita_macchina_modal()
     granularita <- filtri_nok_modal()$granularita
     validate(need(nrow(base) > 0,
       "Disponibilita non disponibile: eseguire l'ETL aggiornato e verificare i dati del periodo."))
@@ -7940,19 +7928,12 @@ server <- function(input, output, session) {
     grafico <- ggplot(base, aes(x = periodo, y = ore_disponibili)) +
       geom_col_interactive(aes(
         tooltip = paste0(
-          "<b>Disponibilita macchina</b><br/>",
           "Periodo: ", periodo_label, "<br/>",
-          "Ore disponibili medie giornaliere: ", round(ore_disponibili, 2), "<br/>",
-          "Ore disponibili totali: ", round(ore_totali, 2), "<br/>",
-          "Ore gateway acceso: ", round(ore_gateway, 2), "<br/>",
-          "Disponibilita sul tempo acceso: ", round(percentuale, 1), "%<br/>",
-          "Giorni osservati: ", giorni
+          "Ore disponibili giornaliere: ", round(ore_disponibili, 2), "<br/>",
+          "Percentuale di disponibilità: ", round(percentuale, 1), "%"
         ),
-        data_id = paste("disponibilita", confronto, periodo, sep = "__")
+        data_id = paste("disponibilita", periodo, sep = "__")
       ), fill = "#234A66", width = larghezza) +
-      facet_grid(cols = vars(confronto),
-        labeller = labeller(confronto = disponibilita$etichette),
-        scales = "free_x", space = "free_x") +
       scale_x_date(
         breaks = function(limits) {
           periodi <- sort(unique(base$periodo))
@@ -7964,13 +7945,11 @@ server <- function(input, output, session) {
       scale_y_continuous(breaks = scales::pretty_breaks(n = 7),
         labels = scales::label_number(accuracy = 0.1, decimal.mark = ","),
         expand = expansion(mult = c(0, 0.06))) +
-      labs(x = NULL, y = "Ore disponibili medie giornaliere") +
+      labs(x = NULL, y = "Ore disponibili giornaliere") +
       tema_san(base_size = 13) +
       theme(
         panel.grid.minor = element_blank(),
         panel.grid.major.x = element_line(color = "#D7DDE2", linewidth = 0.4),
-        strip.background = element_rect(fill = "#F4F5F6", color = "#CDD2D6"),
-        strip.text = element_text(size = 13, face = "bold", color = "#234A66"),
         axis.text.x = element_text(size = 10, angle = 90, hjust = 1, vjust = 0.5),
         axis.text.y = element_text(size = 11)
       )
