@@ -360,7 +360,7 @@ uptime <- daily_intervals |>
 
 saveRDS(uptime, here("02_Output", "uptime.rds"))
 
-# Disponibilita' macchina: tutti i sensori a status 0, esclusivamente dentro
+# Disponibilita' macchina: tutti i sensori a status 1, esclusivamente dentro
 # gli stessi intervalli usati per l'uptime. Uno status vale dalla misura
 # fino alla successiva o alla fine dell'intervallo gateway. Non si propaga
 # uno stato attraverso uno spegnimento; prima della prima misura e con
@@ -415,9 +415,9 @@ calcola_disponibilita_macchina <- function(raw_data, merged_intervals) {
     arrange(timestamp, .by_group = TRUE) |>
     mutate(interval_end = lead(timestamp, default = last(uptime_end))) |>
     ungroup() |>
-    filter(is.finite(status), status == 0, interval_end > timestamp)
+    filter(is.finite(status), status == 1, interval_end > timestamp)
 
-  # Sweep delle estremita': conta contemporaneamente sensori a zero e
+  # Sweep delle estremita': conta contemporaneamente sensori a uno e
   # gateway accesi. Eventi allo stesso istante vengono applicati insieme.
   boundaries <- bind_rows(
     events |> transmute(coupon, timestamp, sensor_delta = 1L, gateway_delta = 0L),
@@ -433,9 +433,9 @@ calcola_disponibilita_macchina <- function(raw_data, merged_intervals) {
     group_by(coupon) |>
     arrange(timestamp, .by_group = TRUE) |>
     mutate(
-      sensors_zero = cumsum(sensor_delta), gateways_on = cumsum(gateway_delta),
+      sensors_closed = cumsum(sensor_delta), gateways_on = cumsum(gateway_delta),
       interval_end = lead(timestamp),
-      available = sensors_zero == n_sensors & gateways_on == n_gateways,
+      available = sensors_closed == n_sensors & gateways_on == n_gateways,
       gateways_ready = gateways_on == n_gateways
     ) |>
     ungroup() |>

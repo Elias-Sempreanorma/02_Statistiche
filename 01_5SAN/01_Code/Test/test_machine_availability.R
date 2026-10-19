@@ -27,45 +27,45 @@ check <- function(raw, intervals, available, gateway_hours = 4) {
             all(out$daily_available_hours >= 0))
   invisible(out)
 }
-# Tutti zero, interruzione al primo 1, ripresa solo con tutti a zero.
-base <- readings("A", c(0, 1, 2), c(0, 1, 0))
-check(bind_rows(base, readings("B", c(0, 1.5, 3), c(0, 1, 0))), ints, 2)
+# Tutti uno, interruzione al primo 0, ripresa solo con tutti a uno.
+base <- readings("A", c(0, 1, 2), c(1, 0, 1))
+check(bind_rows(base, readings("B", c(0, 1.5, 3), c(1, 0, 1))), ints, 2)
 # Misure ripetute non moltiplicano la durata.
-check(bind_rows(readings("A", c(0, 1, 2, 3), rep(0, 4)),
-                readings("B", 0, 0)), ints, 4)
+check(bind_rows(readings("A", c(0, 1, 2, 3), rep(1, 4)),
+                readings("B", 0, 1)), ints, 4)
 # Prima misura mancante e status ignoto non autorizzano disponibilita'.
-check(bind_rows(readings("A", 0, 0), readings("B", 1, 0)), ints, 3)
-check(bind_rows(readings("A", c(0, 1, 2), c(0, NA, 0)),
-                readings("B", 0, 0)), ints, 3)
-# Duplicati discordanti allo stesso timestamp non devono diventare zero.
-check(bind_rows(readings("A", c(0, 1, 1, 2), c(0, 0, 1, 0)),
-                readings("B", 0, 0)), ints, 3)
+check(bind_rows(readings("A", 0, 1), readings("B", 1, 1)), ints, 3)
+check(bind_rows(readings("A", c(0, 1, 2), c(1, NA, 1)),
+                readings("B", 0, 1)), ints, 3)
+# Duplicati discordanti allo stesso timestamp non devono diventare disponibili.
+check(bind_rows(readings("A", c(0, 1, 1, 2), c(1, 1, 0, 1)),
+                readings("B", 0, 1)), ints, 3)
 # Nessun riuso dello stato precedente allo spegnimento.
 split <- bind_rows(ints |> mutate(end = start + 3600),
                    ints |> mutate(start = start + 2 * 3600))
-check(bind_rows(readings("A", c(0, 2.5), c(0, 0)),
-                readings("B", c(0, 3), c(0, 0))), split, 2, 3)
-# Letture fuori uptime escluse, anche se a zero.
-check(bind_rows(readings("A", c(-1, 1, 5), c(0, 0, 0)),
-                readings("B", 0, 0)), ints, 3)
+check(bind_rows(readings("A", c(0, 2.5), c(1, 1)),
+                readings("B", c(0, 3), c(1, 1))), split, 2, 3)
+# Letture fuori uptime escluse, anche se a uno.
+check(bind_rows(readings("A", c(-1, 1, 5), c(1, 1, 1)),
+                readings("B", 0, 1)), ints, 3)
 # Piu' gateway: conta soltanto la loro intersezione e tutti i sensori.
 multi <- bind_rows(ints, ints |> mutate(gateway_id = "H", start = start + 3600))
-check(bind_rows(readings("A", 0, 0), readings("B", 1, 0, "H")), multi, 3, 3)
+check(bind_rows(readings("A", 0, 1), readings("B", 1, 1, "H")), multi, 3, 3)
 # Nessuna lettura valida: zero ore disponibili, uptime conservato.
-check(bind_rows(readings("A", 0, NA), readings("B", 0, 0)), ints, 0)
+check(bind_rows(readings("A", 0, NA), readings("B", 0, 1)), ints, 0)
 # Spezzatura a mezzanotte e cambio ora legale: giornate locali da 23/25 ore.
 for (day in c("2026-03-29", "2026-10-25")) {
   from <- ts(paste(day, "00:00:00"))
   to <- ts(paste(as.Date(day) + 1L, "00:00:00"))
   duration <- as.numeric(difftime(to, from, units = "hours"))
-  raw <- readings("A", 0, 0) |> mutate(timestamp = from)
+  raw <- readings("A", 0, 1) |> mutate(timestamp = from)
   out <- check(raw, ints |> mutate(start = from, end = to), duration, duration)
   stopifnot(nrow(out) == 1L, out$day == as.Date(day))
 }
 overnight <- ints |> mutate(start = ts("2026-10-19 23:00:00"),
                            end = ts("2026-10-20 01:00:00"))
-out <- check(readings("A", 0, 0) |> mutate(timestamp = overnight$start), overnight, 2, 2)
+out <- check(readings("A", 0, 1) |> mutate(timestamp = overnight$start), overnight, 2, 2)
 stopifnot(nrow(out) == 2L, all(out$daily_available_hours == 1))
 # Input vuoti.
-stopifnot(nrow(calcola_disponibilita_macchina(readings("A", 0, 0)[FALSE, ], ints)) == 0L)
+stopifnot(nrow(calcola_disponibilita_macchina(readings("A", 0, 1)[FALSE, ], ints)) == 0L)
 message("Disponibilita macchina: tutti i controlli superati")

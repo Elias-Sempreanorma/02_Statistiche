@@ -3288,7 +3288,7 @@ server <- function(input, output, session) {
         uiOutput("modal_panel_dati_nok"),
         h4("Disponibilità giornaliera della macchina", class = "titolo-sezione"),
         p(
-          "Tempo con tutti i sensori a status 0 e gateway acceso. Nei raggruppamenti superiori al giorno è mostrata la media giornaliera. Il calcolo comprende tutti i sensori della macchina.",
+          "Tempo con tutti i sensori a status 1 e gateway acceso. Nei raggruppamenti superiori al giorno è mostrata la media giornaliera. Il calcolo comprende tutti i sensori della macchina.",
           class = "help-block"
         ),
         girafeOutput("modal_disponibilitaPlot", height = "380px")
