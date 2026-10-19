@@ -503,17 +503,6 @@ immagini_macchine <- data.frame(
   stringsAsFactors = FALSE
 )
 
-# Solo per Calpeda L4 il collegamento allo schema ignora tutti gli spazi.
-# I nomi originali dei componenti restano invariati nei dati e nei tooltip.
-chiave_componente_schema <- function(coupon, cds_name) {
-  chiave <- str_to_upper(str_squish(cds_name))
-  if_else(
-    coupon == "LIN-SEMP-3167-2891-4825-4255-052",
-    str_remove_all(chiave, "\\s+"),
-    chiave
-  )
-}
-
 mappa_sensori <- bind_rows(
   data.frame(
     coupon = "LIN-SEMP-3625-7560-4998-4816-219", image_width = 964, image_height = 345,
@@ -646,7 +635,7 @@ mappa_sensori <- bind_rows(
   )
 ) |>
   mutate(
-    cds_key = chiave_componente_schema(coupon, cds_name),
+    cds_key = str_to_upper(str_squish(cds_name)),
     x_pct = 100 * x / image_width,
     y_pct = 100 * y / image_height
   )
@@ -5322,7 +5311,7 @@ server <- function(input, output, session) {
         coupon == filtri$macchina,
         cds_name %in% sensori_selezionati
       ) |>
-      mutate(cds_key = chiave_componente_schema(coupon_macchina, cds_name)) |>
+      mutate(cds_key = str_to_upper(str_squish(cds_name))) |>
       group_by(coupon, cds_key) |>
       summarise(
         cds_name = first(cds_name),
@@ -5375,10 +5364,10 @@ server <- function(input, output, session) {
           ore_aperte_medie = mean(daily_open_hours, na.rm = TRUE),
           .groups = "drop"
         ) |>
-        mutate(cds_key = chiave_componente_schema(coupon_macchina, cds_name))
+        mutate(cds_key = str_to_upper(str_squish(cds_name)))
       
       nok_home <- kpi_nok() |>
-        mutate(cds_key = chiave_componente_schema(coupon_macchina, cds_name)) |>
+        mutate(cds_key = str_to_upper(str_squish(cds_name))) |>
         select(cds_key, NOK) |>
         group_by(cds_key) |>
         summarise(NOK = first(NOK), .groups = "drop")
@@ -5406,7 +5395,7 @@ server <- function(input, output, session) {
         anti_join(
           sensori_lookup |>
             filter(coupon == coupon_macchina) |>
-            mutate(cds_key = chiave_componente_schema(coupon_macchina, cds_name)),
+            mutate(cds_key = str_to_upper(str_squish(cds_name))),
           by = c("coupon", "cds_key")
         ) |>
         transmute(
@@ -5481,7 +5470,7 @@ server <- function(input, output, session) {
             sprintf("width: %.4f%%; height: %.4f%%;", 100 * 14 / 913, 100 * 12 / 558)
           } else if (
             identical(coupon_macchina, "LIN-SEMP-3167-2891-4825-4255-052") &&
-            grepl("^BIM[12]-(IN|AV)$", punto$cds_key)
+            punto$cds_name %in% c("BIM 1 - IN", "BIM 1 - AV", "BIM2 - IN", "BIM 2 - AV")
           ) {
             sprintf("width: %.4f%%; height: %.4f%%;", 100 * 8 / 801, 100 * 10 / 340)
           } else {
