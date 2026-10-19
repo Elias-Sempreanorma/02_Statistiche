@@ -172,6 +172,14 @@ documenti_files <- if (dir.exists(documenti_dir)) {
 dati <- readRDS(here("02_Output", "sensor_count_increment.rds")) |>
   mutate(field = if_else(is.na(field) | trimws(field) == "", "(Non specificato)", field))
 
+availability_path <- here("02_Output", "machine_availability_daily.rds")
+machine_availability_daily <- if (file.exists(availability_path)) {
+  readRDS(availability_path)
+} else {
+  tibble(coupon = character(), day = as.Date(character()),
+         daily_available_hours = double(), daily_gateway_hours = double())
+}
+
 # Compatibilita' con dataset generati prima dell'introduzione delle ore aperte.
 # Dopo il rerun completo dell'ETL la colonna e' presente realmente.
 if (!"daily_open_hours" %in% names(dati)) {
@@ -3277,7 +3285,13 @@ server <- function(input, output, session) {
             class = "btn-sm btn-default"
           )
         ),
-        uiOutput("modal_panel_dati_nok")
+        uiOutput("modal_panel_dati_nok"),
+        h4("Disponibilità giornaliera della macchina", class = "titolo-sezione"),
+        p(
+          "Tempo con tutti i sensori a status 0 e gateway acceso. Nei raggruppamenti superiori al giorno è mostrata la media giornaliera. Il calcolo comprende tutti i sensori della macchina.",
+          class = "help-block"
+        ),
+        girafeOutput("modal_disponibilitaPlot", height = "380px")
       )
       
     } else if (vista == "allarmi") {
@@ -7881,6 +7895,95 @@ server <- function(input, output, session) {
     )
   })
   
+  disponibilita_macchina_modal <- reactive({
+    filtri <- filtri_nok_modal()
+    base <- machine_availability_daily |>
+      filter(coupon == filtri$macchina)
+    finestra <- periodo_precedente_grafici(filtri$date, base$day)
+    base <- base |>
+      mutate(
+        confronto = case_when(
+          day >= filtri$date[1] & day <= filtri$date[2] ~ "Periodo selezionato",
+          day >= finestra$inizio & day <= finestra$fine ~ "Periodo precedente",
+          TRUE ~ NA_character_
+        )
+      ) |>
+      filter(!is.na(confronto)) |>
+      mutate(
+        confronto = factor(confronto, levels = c("Periodo precedente", "Periodo selezionato")),
+        periodo = as.Date(periodo_bucket(day, filtri$granularita))
+      ) |>
+      group_by(confronto, periodo) |>
+      summarise(
+        ore_disponibili = mean(daily_available_hours),
+        ore_totali = sum(daily_available_hours),
+        ore_gateway = sum(daily_gateway_hours),
+        giorni = n(), .groups = "drop"
+      ) |>
+      mutate(
+        periodo_label = formatta_periodo_label(periodo, filtri$granularita),
+        percentuale = if_else(ore_gateway > 0, 100 * ore_totali / ore_gateway, NA_real_)
+      )
+    list(dati = base, etichette = finestra$etichette)
+  })
+
+  output$modal_disponibilitaPlot <- renderGirafe({
+    disponibilita <- disponibilita_macchina_modal()
+    base <- disponibilita$dati
+    granularita <- filtri_nok_modal()$granularita
+    validate(need(nrow(base) > 0,
+      "Disponibilita non disponibile: eseguire l'ETL aggiornato e verificare i dati del periodo."))
+    # Larghezze in giorni, coerenti con la scala temporale del NOK.
+    larghezza <- switch(granularita,
+      "Giorno" = 0.8, "Settimana" = 5.6, "Mese" = 24,
+      "Trimestre" = 72, "Anno" = 290, 0.8)
+    grafico <- ggplot(base, aes(x = periodo, y = ore_disponibili)) +
+      geom_col_interactive(aes(
+        tooltip = paste0(
+          "<b>Disponibilita macchina</b><br/>",
+          "Periodo: ", periodo_label, "<br/>",
+          "Ore disponibili medie giornaliere: ", round(ore_disponibili, 2), "<br/>",
+          "Ore disponibili totali: ", round(ore_totali, 2), "<br/>",
+          "Ore gateway acceso: ", round(ore_gateway, 2), "<br/>",
+          "Disponibilita sul tempo acceso: ", round(percentuale, 1), "%<br/>",
+          "Giorni osservati: ", giorni
+        ),
+        data_id = paste("disponibilita", confronto, periodo, sep = "__")
+      ), fill = "#234A66", width = larghezza) +
+      facet_grid(cols = vars(confronto),
+        labeller = labeller(confronto = disponibilita$etichette),
+        scales = "free_x", space = "free_x") +
+      scale_x_date(
+        breaks = function(limits) {
+          periodi <- sort(unique(base$periodo))
+          periodi[periodi >= as.Date(limits[1], origin = "1970-01-01") &
+                  periodi <= as.Date(limits[2], origin = "1970-01-01")]
+        },
+        labels = function(x) formatta_periodo_label(as.Date(x, origin = "1970-01-01"), granularita)
+      ) +
+      scale_y_continuous(breaks = scales::pretty_breaks(n = 7),
+        labels = scales::label_number(accuracy = 0.1, decimal.mark = ","),
+        expand = expansion(mult = c(0, 0.06))) +
+      labs(x = NULL, y = "Ore disponibili medie giornaliere") +
+      tema_san(base_size = 13) +
+      theme(
+        panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_line(color = "#D7DDE2", linewidth = 0.4),
+        strip.background = element_rect(fill = "#F4F5F6", color = "#CDD2D6"),
+        strip.text = element_text(size = 13, face = "bold", color = "#234A66"),
+        axis.text.x = element_text(size = 10, angle = 90, hjust = 1, vjust = 0.5),
+        axis.text.y = element_text(size = 11)
+      )
+    w_px <- if (!is.null(input$modal_px_width) && input$modal_px_width > 0)
+      input$modal_px_width else 1100
+    girafe(ggobj = grafico, width_svg = w_px / 72, height_svg = 360 / 72,
+      options = list(
+        opts_tooltip(css = tooltip_css, use_fill = FALSE),
+        opts_hover(css = "opacity:0.8;cursor:pointer;"),
+        opts_toolbar(hidden = c("selection", "zoom", "misc"))
+      ))
+  })
+
   render_nok_history_gg <- function() {
     
     storico <- kpi_nok_storico_modal()
@@ -8085,3 +8188,4 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+

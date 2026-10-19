@@ -359,3 +359,113 @@ uptime <- daily_intervals |>
   )
 
 saveRDS(uptime, here("02_Output", "uptime.rds"))
+
+# Disponibilita' macchina: tutti i sensori a status 0, esclusivamente dentro
+# gli stessi intervalli usati per l'uptime. Uno status vale dalla misura
+# fino alla successiva o alla fine dell'intervallo gateway. Non si propaga
+# uno stato attraverso uno spegnimento; prima della prima misura e con
+# status mancanti/non binari il sensore non e' considerato disponibile.
+# Per macchine con piu' gateway devono essere accesi tutti i gateway dei
+# sensori monitorati. La selezione dei sensori in Shiny non cambia il KPI.
+calcola_disponibilita_macchina <- function(raw_data, merged_intervals) {
+  empty <- tibble(
+    coupon = character(), day = as.Date(character()),
+    daily_available_hours = double(), daily_gateway_hours = double()
+  )
+  roster <- raw_data |>
+    filter(!is.na(coupon), !is.na(gateway_id), !is.na(sensor_id)) |>
+    distinct(coupon, gateway_id, sensor_id)
+  intervals <- merged_intervals |>
+    semi_join(roster, by = c("coupon", "gateway_id")) |>
+    filter(!is.na(start), !is.na(end), end > start) |>
+    arrange(coupon, gateway_id, start) |>
+    mutate(uptime_interval_id = row_number())
+  if (nrow(roster) == 0 || nrow(intervals) == 0) return(empty)
+
+  # Assegna ogni lettura al suo intervallo gateway senza moltiplicare le
+  # righe con un join cartesiano. Timestamp duplicati discordanti = ignoto.
+  events <- raw_data |>
+    filter(!is.na(timestamp), !is.na(sensor_id)) |>
+    group_by(coupon, gateway_id, sensor_id, timestamp) |>
+    summarise(
+      status = if (all(is.finite(status)) && n_distinct(status) == 1L) {
+        first(status)
+      } else NA_real_,
+      .groups = "drop"
+    ) |>
+    group_by(coupon, gateway_id) |>
+    group_modify(function(.x, .y) {
+      if (nrow(.x) == 0) return(.x |>
+        mutate(uptime_interval_id = integer(), uptime_end = as.POSIXct(character())))
+      active <- intervals |>
+        filter(coupon == .y$coupon, gateway_id == .y$gateway_id)
+      if (nrow(active) == 0) return(.x[FALSE, ] |>
+        mutate(uptime_interval_id = integer(), uptime_end = as.POSIXct(character())))
+      idx <- findInterval(as.numeric(.x$timestamp), as.numeric(active$start))
+      valid <- idx > 0L
+      valid[valid] <- .x$timestamp[valid] < active$end[idx[valid]]
+      .x <- .x[valid, ]
+      idx <- idx[valid]
+      .x$uptime_interval_id <- active$uptime_interval_id[idx]
+      .x$uptime_end <- active$end[idx]
+      .x
+    }) |>
+    ungroup() |>
+    group_by(coupon, gateway_id, sensor_id, uptime_interval_id) |>
+    arrange(timestamp, .by_group = TRUE) |>
+    mutate(interval_end = lead(timestamp, default = last(uptime_end))) |>
+    ungroup() |>
+    filter(is.finite(status), status == 0, interval_end > timestamp)
+
+  # Sweep delle estremita': conta contemporaneamente sensori a zero e
+  # gateway accesi. Eventi allo stesso istante vengono applicati insieme.
+  boundaries <- bind_rows(
+    events |> transmute(coupon, timestamp, sensor_delta = 1L, gateway_delta = 0L),
+    events |> transmute(coupon, timestamp = interval_end, sensor_delta = -1L, gateway_delta = 0L),
+    intervals |> transmute(coupon, timestamp = start, sensor_delta = 0L, gateway_delta = 1L),
+    intervals |> transmute(coupon, timestamp = end, sensor_delta = 0L, gateway_delta = -1L)
+  ) |>
+    group_by(coupon, timestamp) |>
+    summarise(sensor_delta = sum(sensor_delta), gateway_delta = sum(gateway_delta), .groups = "drop") |>
+    filter(sensor_delta != 0L | gateway_delta != 0L) |>
+    left_join(roster |> count(coupon, name = "n_sensors"), by = "coupon") |>
+    left_join(roster |> distinct(coupon, gateway_id) |> count(coupon, name = "n_gateways"), by = "coupon") |>
+    group_by(coupon) |>
+    arrange(timestamp, .by_group = TRUE) |>
+    mutate(
+      sensors_zero = cumsum(sensor_delta), gateways_on = cumsum(gateway_delta),
+      interval_end = lead(timestamp),
+      available = sensors_zero == n_sensors & gateways_on == n_gateways,
+      gateways_ready = gateways_on == n_gateways
+    ) |>
+    ungroup() |>
+    filter(!is.na(interval_end), interval_end > timestamp, gateways_ready)
+  if (nrow(boundaries) == 0) return(empty)
+
+  bind_rows(lapply(seq_len(nrow(boundaries)), function(i) {
+    row <- boundaries[i, ]
+    # Costruisco esplicitamente le mezzanotti locali (anche nei giorni
+    # da 23/25 ore), senza convertire Date direttamente in secondi UTC.
+    days <- seq(as.Date(row$timestamp, tz = "Europe/Rome"),
+                as.Date(row$interval_end - seconds(1), tz = "Europe/Rome"), by = "day")
+    starts <- as.POSIXct(as.character(days), tz = "Europe/Rome")
+    ends <- as.POSIXct(as.character(days + 1L), tz = "Europe/Rome")
+    tibble(day = days, start = pmax(row$timestamp, starts), end = pmin(row$interval_end, ends)) |>
+      transmute(
+        coupon = row$coupon, day,
+        daily_gateway_hours = as.numeric(difftime(end, start, units = "hours")),
+        daily_available_hours = if (row$available) daily_gateway_hours else 0
+      )
+  })) |>
+    group_by(coupon, day) |>
+    summarise(
+      daily_available_hours = sum(daily_available_hours),
+      daily_gateway_hours = sum(daily_gateway_hours),
+      .groups = "drop"
+    ) |>
+    arrange(coupon, day)
+}
+
+machine_availability_daily <- calcola_disponibilita_macchina(raw_data, merged_intervals)
+saveRDS(machine_availability_daily, here("02_Output", "machine_availability_daily.rds"))
+
