@@ -484,7 +484,8 @@ immagini_macchine <- data.frame(
     "MAC-SEMP-9512-3712-9471-1352-029",
     "LIN-SEMP-1711-6111-9357-7313-217",
     "LIN-SEMP-6943-2521-9960-7175-136",
-    "LIN-SEMP-3357-9670-4875-9907-093"
+    "LIN-SEMP-3357-9670-4875-9907-093",
+    "LIN-SEMP-3167-2891-4825-4255-052"
   ),
   file_name = c(
     "Giacomini_G1_A3020.png",
@@ -496,10 +497,22 @@ immagini_macchine <- data.frame(
     "Siboni_Banco_2.png",
     "Zorzetto_Pelatrice_3.png",
     "Zorzetto_Trafila_2.png",
-    "Giacomini_G3_ST21.png"
+    "Giacomini_G3_ST21.png",
+    "Calpeda_Linea_L4.png"
   ),
   stringsAsFactors = FALSE
 )
+
+# Solo per Calpeda L4 il collegamento allo schema ignora tutti gli spazi.
+# I nomi originali dei componenti restano invariati nei dati e nei tooltip.
+chiave_componente_schema <- function(coupon, cds_name) {
+  chiave <- str_to_upper(str_squish(cds_name))
+  if_else(
+    coupon == "LIN-SEMP-3167-2891-4825-4255-052",
+    str_remove_all(chiave, "\\s+"),
+    chiave
+  )
+}
 
 mappa_sensori <- bind_rows(
   data.frame(
@@ -621,10 +634,19 @@ mappa_sensori <- bind_rows(
     ),
     x = c(443, 153, 791, 479, 279, 279, 762, 481, 570, 853, 789, 789, 733, 733, 459, 459, 450, 450, 443, 516, 231, 521),
     y = c(527, 339, 396, 249, 368, 315, 117, 182, 186, 391, 114, 97, 448, 433, 409, 392, 178, 163, 498, 343, 302, 444)
+  ),
+  # BIM1 sulla pulsantiera P1, BIM2 sulla pulsantiera P2.
+  # Le due meta' di ogni pulsantiera distinguono IN e AV.
+  data.frame(
+    coupon = "LIN-SEMP-3167-2891-4825-4255-052",
+    image_width = 801, image_height = 340,
+    cds_name = c("FCM 1", "FCM2", "BIM 1 - IN", "BIM 1 - AV", "BIM2 - IN", "BIM 2 - AV"),
+    x = c(235, 284, 259, 269, 337, 347),
+    y = c(230, 230, 124, 124, 144, 144)
   )
 ) |>
   mutate(
-    cds_key = str_to_upper(str_squish(cds_name)),
+    cds_key = chiave_componente_schema(coupon, cds_name),
     x_pct = 100 * x / image_width,
     y_pct = 100 * y / image_height
   )
@@ -5300,7 +5322,7 @@ server <- function(input, output, session) {
         coupon == filtri$macchina,
         cds_name %in% sensori_selezionati
       ) |>
-      mutate(cds_key = str_to_upper(str_squish(cds_name))) |>
+      mutate(cds_key = chiave_componente_schema(coupon_macchina, cds_name)) |>
       group_by(coupon, cds_key) |>
       summarise(
         cds_name = first(cds_name),
@@ -5353,10 +5375,10 @@ server <- function(input, output, session) {
           ore_aperte_medie = mean(daily_open_hours, na.rm = TRUE),
           .groups = "drop"
         ) |>
-        mutate(cds_key = str_to_upper(str_squish(cds_name)))
+        mutate(cds_key = chiave_componente_schema(coupon_macchina, cds_name))
       
       nok_home <- kpi_nok() |>
-        mutate(cds_key = str_to_upper(str_squish(cds_name))) |>
+        mutate(cds_key = chiave_componente_schema(coupon_macchina, cds_name)) |>
         select(cds_key, NOK) |>
         group_by(cds_key) |>
         summarise(NOK = first(NOK), .groups = "drop")
@@ -5384,7 +5406,7 @@ server <- function(input, output, session) {
         anti_join(
           sensori_lookup |>
             filter(coupon == coupon_macchina) |>
-            mutate(cds_key = str_to_upper(str_squish(cds_name))),
+            mutate(cds_key = chiave_componente_schema(coupon_macchina, cds_name)),
           by = c("coupon", "cds_key")
         ) |>
         transmute(
@@ -5457,6 +5479,11 @@ server <- function(input, output, session) {
             grepl("^RA[2-5] \\((CHIAVE|RESET)\\)$", punto$cds_name)
           ) {
             sprintf("width: %.4f%%; height: %.4f%%;", 100 * 14 / 913, 100 * 12 / 558)
+          } else if (
+            identical(coupon_macchina, "LIN-SEMP-3167-2891-4825-4255-052") &&
+            grepl("^BIM[12]-(IN|AV)$", punto$cds_key)
+          ) {
+            sprintf("width: %.4f%%; height: %.4f%%;", 100 * 8 / 801, 100 * 10 / 340)
           } else {
             ""
           }
