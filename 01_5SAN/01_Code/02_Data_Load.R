@@ -337,6 +337,25 @@ raw_data <- raw_data |>
     )
   )
 
+# Correzione storica dopo l'aggiornamento dei contatori del 19/10/2026.
+# Solo per questo coupon, raddoppio i count antecedenti alla mezzanotte
+# italiana del 19/10. La marca per riga viene salvata nei raw data:
+# evita nuovi raddoppi ai run successivi, anche con caricamenti in overlap.
+if (!"count_doubled_before_20261019" %in% names(raw_data)) {
+  raw_data$count_doubled_before_20261019 <- FALSE
+}
+count_correction_rows <- (
+  !is.na(raw_data$coupon) &
+  raw_data$coupon == "LIN-SEMP-3625-7560-4998-4816-219" &
+  !is.na(raw_data$timestamp) &
+  raw_data$timestamp < as.POSIXct("2026-10-19 00:00:00", tz = "Europe/Rome") &
+  is.finite(raw_data$count) &
+  !(raw_data$count_doubled_before_20261019 %in% TRUE)
+)
+raw_data$count[count_correction_rows] <- raw_data$count[count_correction_rows] * 2
+raw_data$count_doubled_before_20261019[count_correction_rows] <- TRUE
+rm(count_correction_rows)
+
 # Calcolo una sola eta' del componente per coupon + CdS, in anni.
 # Il medesimo valore viene salvato per la barra T10d e usato nel nop.
 # Se presente uso l'ultimo lifetime valido (secondi, incluso zero);
