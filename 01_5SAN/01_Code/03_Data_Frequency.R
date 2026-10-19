@@ -197,6 +197,11 @@ reset_results <- lapply(seq_len(nrow(reset_candidates)), function(i) {
   }) |>
     bind_rows()
 
+  # Se nessun sensore ha letture successive alla soglia del reset,
+  # bind_rows() restituisce una tabella vuota senza colonne.
+  # Non ci sono evidenze da classificare: salto questo candidato.
+  if (nrow(first_after_by_sensor) == 0) return(empty_reset_result())
+
   # Sensori senza una coppia di count valida non partecipano.
   observable <- first_after_by_sensor |>
     filter(is.finite(first_increment))
