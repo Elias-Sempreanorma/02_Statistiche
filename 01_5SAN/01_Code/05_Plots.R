@@ -485,7 +485,8 @@ immagini_macchine <- data.frame(
     "LIN-SEMP-1711-6111-9357-7313-217",
     "LIN-SEMP-6943-2521-9960-7175-136",
     "LIN-SEMP-3357-9670-4875-9907-093",
-    "LIN-SEMP-3167-2891-4825-4255-052"
+    "LIN-SEMP-3167-2891-4825-4255-052",
+    "LIN-SEMP-0831-2914-0355-6989-227"
   ),
   file_name = c(
     "Giacomini_G1_A3020.png",
@@ -498,7 +499,8 @@ immagini_macchine <- data.frame(
     "Zorzetto_Pelatrice_3.png",
     "Zorzetto_Trafila_2.png",
     "Giacomini_G3_ST21.png",
-    "Calpeda_Linea_L4.png"
+    "Calpeda_Linea_L4.png",
+    "Zorzetto_Trafila_3.png"
   ),
   stringsAsFactors = FALSE
 )
@@ -632,6 +634,18 @@ mappa_sensori <- bind_rows(
     cds_name = c("FCM 1", "FCM2", "BIM 1 - IN", "BIM 1 - AV", "BIM2 - IN", "BIM 2 - AV"),
     x = c(235, 284, 259, 269, 337, 347),
     y = c(230, 230, 124, 124, 144, 144)
+  ),
+  # Trafila 3: solo componenti identificabili nel disegno.
+  # FTC1, FTC2 e FTC3 sono ancorati a un estremo della rispettiva barriera.
+  data.frame(
+    coupon = "LIN-SEMP-0831-2914-0355-6989-227",
+    image_width = 945, image_height = 370,
+    cds_name = c(
+      "FTC1", "FCM5", "SC1", "SC2", "PE1", "PE2", "FTC2", "FTC3",
+      "FCM3", "FCM4", "RE1", "RE2", "RE5", "RE4", "RE7"
+    ),
+    x = c(140, 289, 609, 923, 272, 473, 150, 384, 326, 286, 150, 161, 512, 385, 932),
+    y = c(31, 70, 64, 131, 148, 150, 265, 138, 115, 100, 21, 177, 148, 148, 119)
   )
 ) |>
   mutate(
