@@ -216,6 +216,30 @@ testo_manovre <- function(x) {
   ))
 }
 
+# Conserva date e orari per ordinare tutte le righe prima della paginazione.
+# Il formato italiano viene applicato soltanto alla visualizzazione.
+tabella_segnalazioni <- function(dati, ordine, righe = 15) {
+  tabella <- DT::datatable(
+    dati, rownames = FALSE,
+    options = list(pageLength = righe, dom = "tip",
+      order = list(list(match(ordine, names(dati)) - 1L, "desc")))
+  )
+  giorni <- names(dati)[vapply(dati, inherits, logical(1), what = "Date")]
+  orari <- names(dati)[vapply(dati, inherits, logical(1), what = "POSIXt")]
+  if (length(giorni)) {
+    tabella <- DT::formatDate(tabella, giorni, "toLocaleDateString",
+      params = list("it-IT", list(timeZone = "UTC",
+        day = "2-digit", month = "2-digit", year = "numeric")))
+  }
+  if (length(orari)) {
+    tabella <- DT::formatDate(tabella, orari, "toLocaleString",
+      params = list("it-IT", list(timeZone = "Europe/Rome",
+        day = "2-digit", month = "2-digit", year = "numeric",
+        hour = "2-digit", minute = "2-digit", second = "2-digit", hour12 = FALSE)))
+  }
+  tabella
+}
+
 alerts_path <- here("02_Output", "alerts.rds")
 alerts_data <- if (file.exists(alerts_path)) {
   readRDS(alerts_path) |>
@@ -5811,41 +5835,21 @@ server <- function(input, output, session) {
   })
   
   output$modal_allarmi_attivazioni <- renderDT({
-    allarmi_attivazioni_modal() |>
-      mutate(Data = format(Data, "%d-%m-%Y"))
-  },
-  rownames = FALSE,
-  options = list(pageLength = 15, dom = "tip"))
-  
-  output$modal_allarmi_sensori_aperti <- renderDT({
-    allarmi_sensori_aperti_modal() |>
-      mutate(
-        Data = format(Data, "%d-%m-%Y"),
-        Inizio = format(Inizio, "%d-%m-%Y %H:%M:%S", tz = "Europe/Rome"),
-        Fine = format(Fine, "%d-%m-%Y %H:%M:%S", tz = "Europe/Rome")
-      )
-  },
-  rownames = FALSE,
-  options = list(pageLength = 15, dom = "tip"))
-  
-  output$modal_allarmi_nok <- renderDT({
-    allarmi_nok_modal() |>
-      mutate(Data = format(Data, "%d-%m-%Y"))
-  },
-  rownames = FALSE,
-  options = list(pageLength = 15, dom = "tip"))
+    tabella_segnalazioni(allarmi_attivazioni_modal(), "Data")
+  }, server = TRUE)
 
-  
+  output$modal_allarmi_sensori_aperti <- renderDT({
+    tabella_segnalazioni(allarmi_sensori_aperti_modal(), "Inizio")
+  }, server = TRUE)
+
+  output$modal_allarmi_nok <- renderDT({
+    tabella_segnalazioni(allarmi_nok_modal(), "Data")
+  }, server = TRUE)
+
   output$modal_allarmi_gateway <- renderDT({
-    allarmi_gateway_modal() |>
-      mutate(
-        Inizio = format(Inizio, "%d-%m-%Y %H:%M:%S", tz = "Europe/Rome"),
-        Fine = format(Fine, "%d-%m-%Y %H:%M:%S", tz = "Europe/Rome")
-      )
-  },
-  rownames = FALSE,
-  options = list(pageLength = 15, dom = "tip"))
-  
+    tabella_segnalazioni(allarmi_gateway_modal(), "Inizio")
+  }, server = TRUE)
+
   # Dati per i serbatoi: stato attuale (non dipende dal periodo selezionato,
   # rappresenta il valore cumulato/corrente del sensore)
   tank_data_modal <- reactive({
@@ -8131,8 +8135,7 @@ server <- function(input, output, session) {
   
   output$modal_tabella_outlier_nok <- renderDT({
     
-    esclusi <- allarmi_attivazioni_modal() |>
-      mutate(Data = format(Data, "%d-%m-%Y"))
+    esclusi <- allarmi_attivazioni_modal()
     
     validate(
       need(
@@ -8141,8 +8144,8 @@ server <- function(input, output, session) {
       )
     )
     
-    esclusi
-  }, rownames = FALSE, options = list(pageLength = 25, dom = "tip"))
+    tabella_segnalazioni(esclusi, "Data", righe = 25)
+  }, server = TRUE)
   
   output$modal_tabella_dati_profilo_nok <- renderDT({
     
