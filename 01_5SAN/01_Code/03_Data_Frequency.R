@@ -365,7 +365,7 @@ uptime <- daily_intervals |>
 
 saveRDS(uptime, here("02_Output", "uptime.rds"))
 
-# Disponibilita' macchina: tutti i sensori a status 1, esclusivamente dentro
+# Disponibilita' macchina: status 0 per NO e status 1 per NC, dentro
 # gli stessi intervalli usati per l'uptime. Uno status vale dalla misura
 # fino alla successiva o alla fine dell'intervallo gateway. Non si propaga
 # uno stato attraverso uno spegnimento; prima della prima misura e con
@@ -391,7 +391,13 @@ calcola_disponibilita_macchina <- function(raw_data, merged_intervals) {
   # righe con un join cartesiano. Timestamp duplicati discordanti = ignoto.
   events <- raw_data |>
     filter(!is.na(timestamp), !is.na(sensor_id)) |>
-    group_by(coupon, gateway_id, sensor_id, timestamp) |>
+    left_join(
+      progetti_componenti_b10d_san |>
+        transmute(coupon, cds_name = cds, stato) |>
+        distinct(),
+      by = c("coupon", "cds_name")
+    ) |>
+    group_by(coupon, gateway_id, sensor_id, timestamp, stato) |>
     summarise(
       status = if (all(is.finite(status)) && n_distinct(status) == 1L) {
         first(status)
@@ -420,9 +426,13 @@ calcola_disponibilita_macchina <- function(raw_data, merged_intervals) {
     arrange(timestamp, .by_group = TRUE) |>
     mutate(interval_end = lead(timestamp, default = last(uptime_end))) |>
     ungroup() |>
-    filter(is.finite(status), status == 1, interval_end > timestamp)
+    filter(
+      is.finite(status),
+      (stato == "NO" & status == 0) | (stato == "NC" & status == 1),
+      interval_end > timestamp
+    )
 
-  # Sweep delle estremita': conta contemporaneamente sensori a uno e
+  # Sweep delle estremita': conta contemporaneamente sensori nello stato atteso e
   # gateway accesi. Eventi allo stesso istante vengono applicati insieme.
   boundaries <- bind_rows(
     events |> transmute(coupon, timestamp, sensor_delta = 1L, gateway_delta = 0L),
