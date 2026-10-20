@@ -5238,8 +5238,8 @@ server <- function(input, output, session) {
   # invece di ricalcolato.
   # ---------------------------------------------------------------------
   # Unica funzione per preparare i dati giornalieri usati dal NOK.
-  # Il LOF viene calcolato sulle manovre per ora attiva della giornata,
-  # con la stessa funzione condivisa usata dall'ETL.
+  # Legge i flag LOF + limiti al 95% gia' salvati dall'ETL:
+  # nessuna classificazione o stima di distribuzioni nella dashboard.
   prepara_valori_giornalieri_nok <- function(macchina, sensori) {
     prepara_valori_giornalieri_nok_data(
       dati, macchina = macchina, sensori = sensori

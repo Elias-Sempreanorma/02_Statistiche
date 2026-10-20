@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxml2-dev \
     libpq-dev \
     zlib1g-dev \
+    gfortran \
     && rm -rf /var/lib/apt/lists/*
 
 RUN install2.r --error --skipinstalled \
@@ -27,10 +28,14 @@ RUN install2.r --error --skipinstalled \
     purrr \
     DT \
     dbscan \
+    robustbase \
     gridExtra \
     blastula \
     jsonlite \
     otp 
+
+# Stima robusta NB dell'autore: versione fissata, solo in fase di build.
+RUN Rscript -e 'p <- tempfile(fileext=".tar.gz"); download.file("https://raw.githubusercontent.com/williamaeberhard/robnb/7e44f95f2bffdcdb862359e660778da61a79d9da/robNB_0.2.2.tar.gz", p, mode="wb"); stopifnot(unname(tools::md5sum(p)) == "b37b3308cc5e3ecdafe2e05a810fb970"); install.packages(p, repos=NULL, type="source"); stopifnot(requireNamespace("robNB", quietly=TRUE)); unlink(p)'
 
 RUN rm -rf /srv/shiny-server/*
 

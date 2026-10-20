@@ -21,64 +21,157 @@ calcola_sensori_allarmabili <- function(dati) {
     dplyr::filter(n_giorni_conteggio >= MIN_GIORNI_ALLARME)
 }
 
-# Regole giornaliere condivise: LOF e rapporto sulla frequenza di manovre.
-# La soglia assoluta resta 49 manovre oltre l'atteso per le ore del giorno.
+# Parametri della sola classificazione giornaliera; stima eseguita dall'ETL.
+MANOVRE_MODEL_DAYS <- 7L
+MANOVRE_MODEL_VERSION <- 1L
+MANOVRE_ALPHA <- .05
+
+stima_modello_manovre <- function(df) {
+  df <- df[order(df$day), ]
+  df <- df[is.finite(df$daily_count) & df$daily_count >= 0 &
+    abs(df$daily_count - round(df$daily_count)) < 1e-6 &
+    is.finite(df$daily_uptime) & df$daily_uptime > 0, ]
+  if (nrow(df) < MIN_GIORNI_ALLARME) return(NULL)
+  df$daily_count <- round(df$daily_count)
+  # Verifica temporale: il modello non vede le giornate di verifica.
+  n_train <- nrow(df) - max(10L, floor(nrow(df) / 5))
+  train <- df[seq_len(n_train), ]
+  test <- df[seq.int(n_train + 1L, nrow(df)), ]
+  fit <- function(d, family) {
+    # Uno storico solo a zero non dimostra che il tasso reale sia nullo.
+    if (all(d$daily_count == 0)) return(NULL)
+    tryCatch({
+      setTimeLimit(elapsed = 10, transient = TRUE)
+      if (family == "poisson") {
+        m <- robustbase::glmrob(
+          daily_count ~ 1 + offset(log(daily_uptime)), data = d,
+          family = poisson(), method = "Mqle",
+          start = log(max(median(d$daily_count / d$daily_uptime),
+                          1 / sum(d$daily_uptime)))
+        )
+        if (!isTRUE(m$converged)) stop("Stima Poisson non convergente")
+        c(rate = unname(exp(coef(m)[1])), size = Inf)
+      } else {
+        m <- withCallingHandlers(robNB::nb.glm.rob(
+          y = d$daily_count, designX = matrix(1, nrow(d), 1),
+          offset = log(d$daily_uptime), c.tukey.beta = 5,
+          c.tukey.sigma = 5, maxit = 30, warn = TRUE
+        ), message = function(m) stop(conditionMessage(m)))
+        c(rate = unname(exp(m$coef[2])), size = unname(1 / m$coef[1]))
+      }
+    }, error = function(e) NULL,
+       finally = setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE))
+  }
+  candidates <- lapply(c("poisson", "negative_binomial"), function(family) {
+    m <- suppressWarnings(fit(train, family))
+    if (is.null(m) || !is.finite(m["rate"]) || m["rate"] < 0 ||
+        is.na(m["size"]) || m["size"] <= 0) return(NULL)
+    mu <- m["rate"] * test$daily_uptime
+    lower <- if (is.infinite(m["size"])) qpois(MANOVRE_ALPHA / 2, mu) else qnbinom(MANOVRE_ALPHA / 2, mu = mu, size = m["size"])
+    upper <- if (is.infinite(m["size"])) qpois(1 - MANOVRE_ALPHA / 2, mu) else qnbinom(1 - MANOVRE_ALPHA / 2, mu = mu, size = m["size"])
+    outside <- test$daily_count < lower | test$daily_count > upper
+    # Non forzo un modello che fallisce sistematicamente sui giorni successivi.
+    if (binom.test(sum(outside), nrow(test), p = MANOVRE_ALPHA,
+                   alternative = "greater")$p.value < .01) return(NULL)
+    logp <- if (is.infinite(m["size"])) dpois(test$daily_count, mu, log = TRUE) else
+      dnbinom(test$daily_count, mu = mu, size = m["size"], log = TRUE)
+    # Score predittivo limitato: un solo estremo non decide la distribuzione.
+    data.frame(family, score = mean(pmin(-logp, -log(.001))),
+               coverage = mean(!outside))
+  }) |>
+    dplyr::bind_rows()
+  if (nrow(candidates) == 0) return(NULL)
+  chosen <- candidates[which.min(candidates$score), ]
+  m <- suppressWarnings(fit(df, chosen$family))
+  if (is.null(m) || !is.finite(m["rate"]) || is.na(m["size"]) || m["size"] <= 0) return(NULL)
+  tibble::tibble(family = chosen$family, rate = unname(m["rate"]),
+    size = unname(m["size"]), coverage = chosen$coverage,
+    fitted_at = Sys.time(), train_end = max(df$day), n_days = nrow(df))
+}
+
+aggiorna_modelli_manovre <- function(giornalieri, path) {
+  if (!requireNamespace("robustbase", quietly = TRUE) || !requireNamespace("robNB", quietly = TRUE)) {
+    stop("Mancano robustbase/robNB: ricostruire l'immagine Docker prima dell'ETL.")
+  }
+  cache <- if (file.exists(path)) readRDS(path) else NULL
+  if (is.null(cache) || !identical(cache$version, MANOVRE_MODEL_VERSION)) {
+    cache <- list(version = MANOVRE_MODEL_VERSION, models = tibble::tibble())
+  }
+  # Il giorno corrente e' incompleto: non entra nella stima del riferimento.
+  storico <- giornalieri |>
+    dplyr::filter(day < as.Date(Sys.time(), tz = "Europe/Rome"))
+  models <- storico |>
+    dplyr::group_by(coupon, gateway_id, sensor_id) |>
+    dplyr::group_modify(function(.x, .y) {
+      old <- cache$models
+      if (nrow(old) > 0) old <- dplyr::semi_join(old, .y,
+        by = c("coupon", "gateway_id", "sensor_id"))
+      history <- if (nrow(old) > 0) dplyr::filter(.x, day <= old$train_end[1]) else .x
+      unchanged <- nrow(old) > 0 && nrow(history) == old$n_history[1] &&
+        isTRUE(all.equal(sum(history$daily_count, na.rm = TRUE), old$sum_count[1])) &&
+        isTRUE(all.equal(sum(history$daily_uptime, na.rm = TRUE), old$sum_hours[1]))
+      if (unchanged && (old$n_days[1] >= MIN_GIORNI_ALLARME || nrow(.x) < MIN_GIORNI_ALLARME) &&
+          as.numeric(difftime(Sys.time(), old$fitted_at[1], units = "days")) < MANOVRE_MODEL_DAYS) {
+        return(dplyr::select(old, -coupon, -gateway_id, -sensor_id))
+      }
+      model <- stima_modello_manovre(.x)
+      if (is.null(model)) model <- tibble::tibble(
+        family = NA_character_, rate = NA_real_, size = NA_real_,
+        coverage = NA_real_, fitted_at = Sys.time(),
+        train_end = if (nrow(.x)) max(.x$day) else as.Date(NA), n_days = nrow(.x)
+      )
+      model <- dplyr::mutate(model, n_history = nrow(.x),
+        sum_count = sum(.x$daily_count, na.rm = TRUE),
+        sum_hours = sum(.x$daily_uptime, na.rm = TRUE))
+      if (nrow(.x) == 0) model[FALSE, ] else model
+    }) |>
+    dplyr::ungroup()
+  cache$models <- models
+  saveRDS(cache, path)
+  models
+}
+
+# Il nome outlier_lof resta compatibile con tutti i calcoli NMN esistenti:
+# ora significa LOF > 2 E conteggio fuori dai limiti probabilistici al 95%.
 classifica_anomalie_giornaliere <- function(df, k = 4L) {
-  x <- df$daily_value
-  validi <- (
-    is.finite(x) & is.finite(df$daily_count) &
-    df$daily_count >= 0 & is.finite(df$daily_uptime) &
-    df$daily_uptime > 0
-  )
+  validi <- is.finite(df$daily_value) & is.finite(df$daily_count) &
+    df$daily_count >= 0 & is.finite(df$daily_uptime) & df$daily_uptime > 0
+  validi <- validi & abs(df$daily_count - round(df$daily_count)) < 1e-6
   df$lof_score <- NA_real_
   df$outlier_lof <- FALSE
-  mediana_conteggi <- if (any(validi)) {
-    stats::median(df$daily_count[validi])
-  } else NA_real_
-  df$mediana_manovre_giornaliera <- mediana_conteggi
-
-  # Zero e' una segnalazione operativa solo quando il componente
-  # ha mediana >= 1 nelle giornate con ore di attivita' valide.
-  zero_anomalo <- validi & df$daily_count == 0 &
-    is.finite(mediana_conteggi) & mediana_conteggi >= 1
-  df$outlier_lof[zero_anomalo] <- TRUE
-
-  n_validi <- sum(validi)
-  if (n_validi >= 6L && dplyr::n_distinct(x[validi]) >= 3L) {
-    score <- dbscan::lof(
-      matrix(x[validi], ncol = 1),
-      minPts = min(as.integer(k), n_validi - 1L)
-    )
-    x_validi <- x[validi]
-    mediana_senza_valore <- vapply(
-      seq_along(x_validi),
-      function(i) stats::median(x_validi[-i]),
-      numeric(1)
-    )
-    rapporto_anomalo <- (
-      is.finite(mediana_senza_valore) &
-      mediana_senza_valore > 0 &
-      x_validi >= mediana_senza_valore * 5
-    )
-    atteso <- mediana_senza_valore * df$daily_uptime[validi]
-    differenza_anomala <- (
-      is.finite(atteso) &
-      df$daily_count[validi] - atteso >= 49
-    )
-    lof_anomalo <- !is.na(score) & score > 2
+  df$limite_manovre_inf <- df$limite_manovre_sup <- NA_real_
+  if (sum(validi) < MIN_GIORNI_ALLARME ||
+      !"rate" %in% names(df) || !is.finite(df$rate[1])) return(df)
+  mu <- df$rate[1] * df$daily_uptime[validi]
+  size <- df$size[1]
+  df$limite_manovre_inf[validi] <- if (is.infinite(size)) qpois(MANOVRE_ALPHA / 2, mu) else qnbinom(MANOVRE_ALPHA / 2, mu = mu, size = size)
+  df$limite_manovre_sup[validi] <- if (is.infinite(size)) qpois(1 - MANOVRE_ALPHA / 2, mu) else qnbinom(1 - MANOVRE_ALPHA / 2, mu = mu, size = size)
+  if (dplyr::n_distinct(df$daily_value[validi]) >= 2L) {
+    score <- dbscan::lof(matrix(df$daily_value[validi], ncol = 1),
+      minPts = min(as.integer(k), sum(validi) - 1L))
     df$lof_score[validi] <- score
-    df$outlier_lof[validi] <- (
-      df$outlier_lof[validi] | lof_anomalo |
-      rapporto_anomalo | differenza_anomala
-    )
+    df$outlier_lof[validi] <- !is.na(score) & score > 2 &
+      (df$daily_count[validi] < df$limite_manovre_inf[validi] |
+       df$daily_count[validi] > df$limite_manovre_sup[validi])
   }
   df
 }
 
+# Lettura dei risultati ETL: nessun LOF o modello viene stimato in Shiny.
+prepara_valori_giornalieri_nok_data <- function(dati, macchina = NULL, sensori = NULL) {
+  base <- if (all(c("daily_count", "outlier_lof") %in% names(dati))) dati else
+    attr(dati, "giornalieri_nok")
+  if (is.null(base)) stop("Eseguire l'ETL aggiornato per generare i dati giornalieri NOK.")
+  base <- dplyr::ungroup(base)
+  if (!is.null(macchina)) base <- dplyr::filter(base, coupon == macchina)
+  if (!is.null(sensori)) base <- dplyr::filter(base, cds_name %in% sensori)
+  base
+}
+
+
 # Base giornaliera condivisa tra dashboard ed ETL.
-# Mantiene la stessa logica LOF gia' usata dalla dashboard, ma la rende
-# riutilizzabile senza duplicare calcoli o regole.
-prepara_valori_giornalieri_nok_data <- function(
+# Aggregazione eseguita una sola volta nell'ETL.
+aggrega_valori_giornalieri_nok_data <- function(
   dati,
   macchina = NULL,
   sensori = NULL
@@ -131,16 +224,7 @@ prepara_valori_giornalieri_nok_data <- function(
         is.na(daily_uptime) | daily_uptime <= 0 ~ NA_real_,
         TRUE ~ daily_count / daily_uptime
       )
-    ) |>
-    dplyr::group_by(
-      coupon,
-      gateway_id,
-      sensor_id,
-      cds_name,
-      sensor_description
-    ) |>
-    dplyr::group_modify(~ classifica_anomalie_giornaliere(.x)) |>
-    dplyr::ungroup()
+    )
 }
 
 # Eventi di sensore aperto / assenza di contatto elettrico condivisi tra

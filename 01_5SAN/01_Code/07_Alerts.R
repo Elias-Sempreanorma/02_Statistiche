@@ -83,7 +83,9 @@ raw_allarmabile <- raw_data |>
 # ---------------------------------------------------------------------------
 # 1) Anomalie giornaliere delle attivazioni.
 # ---------------------------------------------------------------------------
-base_giornaliera <- prepara_valori_giornalieri_nok_data(dati_allarmabili) |>
+base_giornaliera <- prepara_valori_giornalieri_nok_data(sensor_count_increment) |>
+  semi_join(sensori_allarmabili,
+    by = c("coupon", "gateway_id", "sensor_id", "cds_name", "sensor_description")) |>
   group_by(coupon, gateway_id, sensor_id, cds_name, sensor_description) |>
   mutate(
     media_manovre_storica = mean(daily_value[is.finite(daily_value)])
@@ -111,10 +113,10 @@ alert_attivazioni_giornaliere <- base_giornaliera |>
     alert_scope = "sensor",
     functional_unit = paste(cds_name, sensor_description, sep = " - "),
     signal_description = case_when(
-      daily_value > media_manovre_storica ~
-        "Manovre giornaliere anomale: superiori alla media storica",
-      daily_value < media_manovre_storica ~
-        "Manovre giornaliere anomale: inferiori alla media storica",
+      daily_count > limite_manovre_sup ~
+        "Manovre giornaliere anomale: superiori al limite probabilistico del 95%",
+      daily_count < limite_manovre_inf ~
+        "Manovre giornaliere anomale: inferiori al limite probabilistico del 95%",
       TRUE ~ "Manovre giornaliere anomale rispetto alla media storica"
     ),
     signal_data_text = paste0(
@@ -122,6 +124,9 @@ alert_attivazioni_giornaliere <- base_giornaliera |>
       round(daily_count),
       "; ore attive: ", round(daily_uptime, 2),
       "; manovre/ora: ", round(daily_value, 2),
+      "; atteso: ", round(rate * daily_uptime, 2),
+      "; limiti giornalieri 95%: ", limite_manovre_inf, " - ", limite_manovre_sup,
+      "; modello: ", if_else(family == "poisson", "Poisson", "Binomiale negativa"),
       if_else(
         gateway_disconnect_affected,
         "; dato possibilmente alterato da una disconnessione del gateway",
@@ -137,6 +142,10 @@ alert_attivazioni_giornaliere <- base_giornaliera |>
       maneuvers_per_hour = daily_value,
       historical_mean_per_hour = media_manovre_storica,
       lof_score = lof_score,
+      probability_model = family,
+      expected_count = rate * daily_uptime,
+      lower_limit_95 = limite_manovre_inf,
+      upper_limit_95 = limite_manovre_sup,
       gateway_disconnect_affected = gateway_disconnect_affected
     ))
   ) |>
@@ -1065,3 +1074,4 @@ message(
   nrow(alerts_dashboard),
   " alert persistiti."
 )
+

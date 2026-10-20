@@ -303,9 +303,26 @@ sensor_count_increment <- raw_data |>
 #             .groups = "drop_last") 
 # 
 # salvo i dati in formato R
+# Unica classificazione giornaliera per dashboard, NMN e allarmi.
+# Le distribuzioni vengono ristimate ogni 7 giorni; LOF e limiti solo in ETL.
+giornalieri_nok <- aggrega_valori_giornalieri_nok_data(sensor_count_increment)
+modelli_manovre <- aggiorna_modelli_manovre(
+  giornalieri_nok, here("02_Output", "modelli_manovre.rds")
+)
+giornalieri_nok <- giornalieri_nok |>
+  left_join(modelli_manovre, by = c("coupon", "gateway_id", "sensor_id")) |>
+  group_by(coupon, gateway_id, sensor_id, cds_name, sensor_description) |>
+  group_modify(~ classifica_anomalie_giornaliere(.x)) |>
+  ungroup()
+message("Modelli manovre: ", sum(is.finite(modelli_manovre$rate)),
+        " validi, ", sum(!is.finite(modelli_manovre$rate)),
+        " senza modello valido (nessuna esclusione automatica).")
+# Stesso file degli incrementi: impossibile leggere flag di un altro run.
+attr(sensor_count_increment, "giornalieri_nok") <- giornalieri_nok
 saveRDS(sensor_count_increment, here("02_Output", "sensor_count_increment.rds"))
 # saveRDS(sensor_hour_average, here("02_Output", "sensor_hour_average.rds"))
 # # e in xlsx
 # write.xlsx(sensor_hour_average, here("02_Output", "Attivazioni_Sensori.xlsx"))
 # write.xlsx(sensor_day_average, here("02_Output", "Attivazioni_Sensori_giorno.xlsx"))
 # write.xlsx(sensor_count_increment, here("02_Output", "Conteggio_Attivazioni_Sensori.xlsx"))
+
