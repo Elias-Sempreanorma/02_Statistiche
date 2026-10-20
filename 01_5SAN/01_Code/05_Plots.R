@@ -3336,9 +3336,9 @@ server <- function(input, output, session) {
           )
         ),
         uiOutput("modal_panel_dati_nok"),
-        h4("Disponibilità giornaliera della macchina", class = "titolo-sezione"),
+        h4("Disponibilità della macchina", class = "titolo-sezione"),
         p(
-          "Tempo in cui la macchina era accesa e tutti i componenti monitorati si trovavano nella condizione prevista per lavorare. La percentuale indica quanta parte del tempo di accensione era disponibile al lavoro. Per settimane e mesi è mostrata la media giornaliera.",
+          "La percentuale indica quanta parte del tempo di accensione la macchina era disponibile al lavoro, con tutti i componenti monitorati nella condizione prevista. Nel dettaglio sono riportate le ore disponibili rispetto alle ore di accensione dell’intero periodo.",
           class = "help-block"
         ),
         girafeOutput("modal_disponibilitaPlot", height = "380px")
@@ -7950,12 +7950,15 @@ server <- function(input, output, session) {
     larghezza <- switch(granularita,
       "Giorno" = 0.8, "Settimana" = 5.6, "Mese" = 24,
       "Trimestre" = 72, "Anno" = 290, 0.8)
-    grafico <- ggplot(base, aes(x = periodo, y = ore_disponibili)) +
+    grafico <- ggplot(base, aes(x = periodo, y = percentuale)) +
       geom_col_interactive(aes(
         tooltip = paste0(
           "Periodo: ", periodo_label, "<br/>",
-          "Ore disponibili giornaliere: ", round(ore_disponibili, 2), "<br/>",
-          "Percentuale di disponibilità: ", round(percentuale, 1), "%"
+          "Disponibilità: ", formatC(percentuale, format = "f", digits = 1, decimal.mark = ","), "%<br/>",
+          formatC(ore_totali, format = "f", digits = 2, decimal.mark = ","),
+          " ore disponibili su ",
+          formatC(ore_gateway, format = "f", digits = 2, decimal.mark = ","),
+          " ore di accensione"
         ),
         data_id = paste("disponibilita", periodo, sep = "__")
       ), fill = "#234A66", width = larghezza) +
@@ -7967,10 +7970,10 @@ server <- function(input, output, session) {
         },
         labels = function(x) formatta_periodo_label(as.Date(x, origin = "1970-01-01"), granularita)
       ) +
-      scale_y_continuous(breaks = scales::pretty_breaks(n = 7),
-        labels = scales::label_number(accuracy = 0.1, decimal.mark = ","),
-        expand = expansion(mult = c(0, 0.06))) +
-      labs(x = NULL, y = "Ore disponibili giornaliere") +
+      scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 20),
+        labels = function(x) paste0(x, "%"),
+        expand = expansion(mult = c(0, 0.02))) +
+      labs(x = NULL, y = "Disponibilità (%)") +
       tema_san(base_size = 13) +
       theme(
         panel.grid.minor = element_blank(),
