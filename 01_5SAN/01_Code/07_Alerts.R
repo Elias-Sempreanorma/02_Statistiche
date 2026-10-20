@@ -405,7 +405,7 @@ alert_nok <- base_nok |>
 # ---------------------------------------------------------------------------
 # 5) Disconnessioni gateway.
 # Un unico alert di scope gateway. Almeno uno dei sensori che fornisce
-# evidenza (incremento > 1) deve essere gia' allarmabile.
+# evidenza (sensore NC con incremento > 2) deve essere gia' allarmabile.
 # ---------------------------------------------------------------------------
 disconnect_events <- if (
   file.exists(disconnect_events_path)

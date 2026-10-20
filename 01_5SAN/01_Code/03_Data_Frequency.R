@@ -15,8 +15,8 @@ library(here)
 #   Ne calcolo l'incremento rispetto al count precedente dello stesso sensore.
 #   restart_ts resta usato per la stima del riavvio e dell'uptime.
 # - una disconnessione rilevante viene registrata solo quando almeno un
-#   sensore mostra un primo incremento > 1.
-# - incrementi 0 o 1 non generano da soli un evento di disconnessione.
+#   sensore NC mostra un primo incremento > 2.
+# - incrementi 0, 1 o 2 non generano da soli un evento di disconnessione.
 # - il buco tra l'ultimo SystemInfo precedente e il restart NON viene
 #   recuperato nell'uptime: non ricostruiamo tempo non osservato.
 # - i segmenti di uptime realmente osservati prima/dopo eventuali reset
@@ -31,6 +31,12 @@ system_info <- readRDS(here("02_Output", "system_info.rds"))
 
 # Serie count con incremento per sensore, usata solo per classificare i reset.
 count_events <- raw_data |>
+  semi_join(
+    progetti_componenti_b10d_san |>
+      filter(stato == "NC") |>
+      transmute(coupon, cds_name = cds),
+    by = c("coupon", "cds_name")
+  ) |>
   filter(
     !is.na(gateway_id),
     !is.na(sensor_id),
@@ -143,7 +149,7 @@ base_intervals <- system_info_clean |>
 # Non modifichiamo i conteggi e non ricostruiamo il tempo mancante.
 # L'evento serve solo a:
 # - storicizzare nel DB la disconnessione;
-# - marcare i primi dati post-reset con incremento > 1 come potenzialmente
+# - marcare i primi dati post-reset NC con incremento > 2 come potenzialmente
 #   alterati temporalmente dalla disconnessione.
 # ---------------------------------------------------------------------------
 reset_candidates <- system_info_clean |>
@@ -208,9 +214,9 @@ reset_results <- lapply(seq_len(nrow(reset_candidates)), function(i) {
 
   if (nrow(observable) == 0) return(empty_reset_result())
 
-  # Regola concordata: solo incremento > 1 rende la disconnessione rilevante.
+  # Regola concordata: solo incremento NC > 2 rende la disconnessione rilevante.
   evidence <- observable |>
-    filter(first_increment > 1)
+    filter(first_increment > 2)
 
   if (nrow(evidence) == 0) return(empty_reset_result())
 
