@@ -636,7 +636,7 @@ mappa_sensori <- bind_rows(
     y = c(230, 230, 124, 124, 144, 144)
   ),
   # Trafila 3: solo componenti identificabili nel disegno.
-  # FTC1, FTC2 e FTC3 sono ancorati a un estremo della rispettiva barriera.
+  # FTC1, FTC2 e FTC3 sono ancorati alle rispettive scritte.
   data.frame(
     coupon = "LIN-SEMP-0831-2914-0355-6989-227",
     image_width = 945, image_height = 370,
@@ -644,8 +644,8 @@ mappa_sensori <- bind_rows(
       "FTC1", "FCM5", "SC1", "SC2", "PE1", "PE2", "FTC2", "FTC3",
       "FCM3", "FCM4", "RE1", "RE2", "RE5", "RE4", "RE7"
     ),
-    x = c(140, 289, 609, 923, 272, 473, 150, 384, 326, 286, 150, 161, 512, 385, 932),
-    y = c(31, 70, 64, 131, 148, 150, 265, 138, 115, 100, 21, 177, 148, 148, 119)
+    x = c(80, 289, 609, 923, 272, 473, 173, 428, 326, 286, 150, 161, 512, 385, 932),
+    y = c(17, 70, 64, 131, 148, 150, 230, 152, 115, 100, 21, 177, 148, 148, 119)
   )
 ) |>
   mutate(
