@@ -338,23 +338,57 @@ raw_data <- raw_data |>
   )
 
 # Correzione storica dopo l'aggiornamento dei contatori del 19/10/2026.
-# Solo per questo coupon, raddoppio i count antecedenti alla mezzanotte
-# italiana del 19/10. La marca per riga viene salvata nei raw data:
-# evita nuovi raddoppi ai run successivi, anche con caricamenti in overlap.
+# Per questo coupon individuo il raddoppio osservato del count per sensore.
+# Anche le letture del 19 precedenti al cambio vanno sulla nuova scala.
+# La marca salvata per riga evita raddoppi ripetuti nei run e nell'overlap.
 if (!"count_doubled_before_20261019" %in% names(raw_data)) {
   raw_data$count_doubled_before_20261019 <- FALSE
 }
+count_scale_changes <- raw_data |>
+  filter(
+    coupon == "LIN-SEMP-3625-7560-4998-4816-219",
+    !is.na(timestamp),
+    is.finite(count)
+  ) |>
+  mutate(
+    .original_count = if_else(
+      count_doubled_before_20261019 %in% TRUE, count / 2, count
+    )
+  ) |>
+  group_by(coupon, gateway_id, sensor_id) |>
+  arrange(timestamp, .by_group = TRUE) |>
+  mutate(.previous_original_count = lag(.original_count)) |>
+  filter(
+    timestamp >= as.POSIXct("2026-10-19 00:00:00", tz = "Europe/Rome"),
+    timestamp < as.POSIXct("2026-10-20 00:00:00", tz = "Europe/Rome"),
+    is.finite(.previous_original_count),
+    .previous_original_count > 0,
+    .original_count == 2 * .previous_original_count
+  ) |>
+  summarise(.count_scale_change_ts = min(timestamp), .groups = "drop")
+
+raw_data <- raw_data |>
+  left_join(
+    count_scale_changes,
+    by = c("coupon", "gateway_id", "sensor_id")
+  )
+
 count_correction_rows <- (
   !is.na(raw_data$coupon) &
   raw_data$coupon == "LIN-SEMP-3625-7560-4998-4816-219" &
   !is.na(raw_data$timestamp) &
-  raw_data$timestamp < as.POSIXct("2026-10-19 00:00:00", tz = "Europe/Rome") &
+  raw_data$timestamp < coalesce(
+    raw_data$.count_scale_change_ts,
+    as.POSIXct("2026-10-19 00:00:00", tz = "Europe/Rome")
+  ) &
   is.finite(raw_data$count) &
   !(raw_data$count_doubled_before_20261019 %in% TRUE)
 )
 raw_data$count[count_correction_rows] <- raw_data$count[count_correction_rows] * 2
 raw_data$count_doubled_before_20261019[count_correction_rows] <- TRUE
-rm(count_correction_rows)
+raw_data <- raw_data |>
+  select(-.count_scale_change_ts)
+rm(count_correction_rows, count_scale_changes)
 
 # Calcolo una sola eta' del componente per coupon + CdS, in anni.
 # Il medesimo valore viene salvato per la barra T10d e usato nel nop.
