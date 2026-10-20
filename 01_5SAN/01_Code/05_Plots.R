@@ -228,7 +228,7 @@ tabella_segnalazioni <- function(dati, ordine, righe = 15) {
   orari <- names(dati)[vapply(dati, inherits, logical(1), what = "POSIXt")]
   if (length(giorni)) {
     tabella <- DT::formatDate(tabella, giorni, "toLocaleDateString",
-      params = list("it-IT", list(timeZone = "UTC",
+      params = list("it-IT", list(
         day = "2-digit", month = "2-digit", year = "numeric")))
   }
   if (length(orari)) {
