@@ -338,7 +338,8 @@ raw_data <- raw_data |>
   )
 
 # Correzione storica dopo l'aggiornamento dei contatori del 19/10/2026.
-# Per questo coupon individuo il raddoppio osservato del count per sensore.
+# Per questo coupon individuo il primo count >= doppio del precedente
+# nel giorno indicato, separatamente per ogni sensore.
 # Anche le letture del 19 precedenti al cambio vanno sulla nuova scala.
 # La marca salvata per riga evita raddoppi ripetuti nei run e nell'overlap.
 if (!"count_doubled_before_20261019" %in% names(raw_data)) {
@@ -363,7 +364,7 @@ count_scale_changes <- raw_data |>
     timestamp < as.POSIXct("2026-10-20 00:00:00", tz = "Europe/Rome"),
     is.finite(.previous_original_count),
     .previous_original_count > 0,
-    .original_count == 2 * .previous_original_count
+    .original_count >= 2 * .previous_original_count
   ) |>
   summarise(.count_scale_change_ts = min(timestamp), .groups = "drop")
 
