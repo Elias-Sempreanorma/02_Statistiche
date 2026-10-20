@@ -194,7 +194,7 @@ if (!"gateway_disconnect_affected" %in% names(dati)) {
 }
 
 nota_disconnessione_gateway <-
-  ", dato possibilmente alterato da una disconnessione del gateway"
+  ". Il momento di registrazione delle manovre può risentire di un’interruzione delle comunicazioni."
 
 raw_life_data <- readRDS(here("02_Output", "raw_data.rds")) |>
   mutate(timestamp = with_tz(timestamp, "Europe/Rome"))
@@ -2701,7 +2701,7 @@ dashboard_ui <- fluidPage(
         label = div(
           class = "home-card-label",
           h4("Conteggio manovre"),
-          p("Grafico a barre e trend nel tempo per componente")
+          p("Quante manovre ha effettuato ciascun componente nel tempo")
         ),
         class = "card-home"
       )
@@ -2713,8 +2713,8 @@ dashboard_ui <- fluidPage(
         "home_nok",
         label = div(
           class = "home-card-label",
-          h4("NOK"),
-          p("KPI e andamento storico del NOK per componente")
+          h4("Utilizzo rispetto allo storico"),
+          p("Come vengono usati i componenti rispetto al passato")
         ),
         class = "card-home"
       )
@@ -2727,7 +2727,7 @@ dashboard_ui <- fluidPage(
         label = div(
           class = "home-card-label",
           h4("Vita componenti"),
-          p("Stato dei componenti rispetto alle soglie B10dSAN e T10d")
+          p("Manovre e tempo di utilizzo rispetto ai valori di riferimento")
         ),
         class = "card-home"
       )
@@ -2739,8 +2739,8 @@ dashboard_ui <- fluidPage(
         "home_allarmi",
         label = div(
           class = "home-card-label",
-          h4("Allarmi e Near Miss"),
-          p("Allarmi e segnalazioni Near Miss")
+          h4("Allarmi e segnalazioni"),
+          p("Eventi insoliti e situazioni da verificare")
         ),
         class = "card-home"
       )
@@ -3029,9 +3029,9 @@ server <- function(input, output, session) {
           label = NULL,
           choices = c(
             "Conteggio manovre" = "attivazioni",
-            "NOK"                   = "nok",
+            "Utilizzo rispetto allo storico" = "nok",
             "Vita componenti"          = "vita",
-            "Allarmi e Near Miss"   = "allarmi"
+            "Allarmi e segnalazioni"   = "allarmi"
           ),
           selected = vista_iniziale,
           status   = "primary",
@@ -3186,7 +3186,7 @@ server <- function(input, output, session) {
           div(
             h4("Vita componenti", class = "life-header-title"),
             div(
-              "Consumo attuale rispetto ai limiti massimi B10dSAN e T10d",
+              "Manovre effettuate e anni di utilizzo rispetto ai valori di riferimento",
               class = "life-header-subtitle"
             )
           )
@@ -3292,7 +3292,8 @@ server <- function(input, output, session) {
           )
         ),
         uiOutput("modal_panel_dati_profilo_nok"),
-        h4("Andamento NOK nel tempo", class = "titolo-sezione"),
+        h4("Utilizzo rispetto allo storico nel tempo", class = "titolo-sezione"),
+        p("Il valore 1 indica un numero di manovre per ora in linea con il passato. Il valore 2 indica il doppio; 0,5 indica la metà.", class = "help-block"),
         radioButtons(
           "modal_granularita_nok",
           "Raggruppamento:",
@@ -3313,7 +3314,7 @@ server <- function(input, output, session) {
         uiOutput("modal_panel_dati_nok"),
         h4("Disponibilità giornaliera della macchina", class = "titolo-sezione"),
         p(
-          "Tempo con tutti i sensori chiusi e macchina accesa, indicato come tempo giornaliero in cui la macchina era disponibile al lavoro, indicata  anche la percentuale rispetto al tempo di accensione. Tempo con tutti i sensori a status 1 e gateway acceso. Nei raggruppamenti superiori al giorno è mostrata la media giornaliera. Il calcolo comprende tutti i sensori della macchina.",
+          "Tempo in cui la macchina era accesa e tutti i componenti monitorati si trovavano nella condizione prevista per lavorare. La percentuale indica quanta parte del tempo di accensione era disponibile al lavoro. Per settimane e mesi è mostrata la media giornaliera.",
           class = "help-block"
         ),
         girafeOutput("modal_disponibilitaPlot", height = "380px")
@@ -3373,7 +3374,7 @@ server <- function(input, output, session) {
           h4("Report anomalie", class = "titolo-sezione"),
           radioButtons(
             "report_granularita",
-            "Granularità report:",
+            "Periodo del rapporto:",
             choices = c("Settimana", "Mese"),
             selected = "Settimana",
             inline = TRUE
@@ -3384,7 +3385,7 @@ server <- function(input, output, session) {
           class = "alarm-section",
           h4("Manovre anomale", class = "titolo-sezione"),
           p(
-            "Anomalie nei conteggi delle manovre: oltre alle anomalie giornaliere, viene segnalata ogni ora in cui il conteggio del componente e' almeno 4 volte la sua mediana oraria."
+            "Giornate o singole ore con un numero di manovre molto diverso dal comportamento abituale del componente."
           ),
           uiOutput("modal_allarmi_attivazioni_panel")
         ),
@@ -3392,23 +3393,23 @@ server <- function(input, output, session) {
           class = "alarm-section",
           h4("Componenti aperti o senza contatto elettrico", class = "titolo-sezione"),
           p(
-            "Eventi in cui il componente è rimasto aperto per oltre 1 ora consecutiva mentre il gateway continuava a trasmettere."
+            "Periodi di oltre un'ora in cui il componente è rimasto aperto o senza contatto elettrico mentre la macchina continuava a inviare dati."
           ),
           uiOutput("modal_allarmi_sensori_aperti_panel")
         ),
         div(
           class = "alarm-section",
-          h4("Valori NOK anomali", class = "titolo-sezione"),
+          h4("Utilizzo diverso dal solito", class = "titolo-sezione"),
           p(
-            "Giornate in cui il NOK giornaliero del componente è fuori dai limiti media storica ± 3σ."
+            "Giornate con un utilizzo del componente molto più alto o più basso del consueto, tenendo conto delle ore di attività."
           ),
           uiOutput("modal_allarmi_nok_panel")
         )
 ,        div(
           class = "alarm-section",
-          h4("Disconnessioni gateway", class = "titolo-sezione"),
+          h4("Interruzioni delle comunicazioni", class = "titolo-sezione"),
           p(
-            "Segnalazioni di possibile disconnessione del gateway supportate da conteggi accumulati sui componenti."
+            "Possibili interruzioni dell’invio dei dati, seguite da nuove manovre registrate alla ripresa delle comunicazioni."
           ),
           uiOutput("modal_allarmi_gateway_panel")
         )
@@ -3984,11 +3985,11 @@ server <- function(input, output, session) {
         Conteggio = round(daily_count),
         Descrizione = paste0(
           case_when(
-            daily_value > media_manovre_storica ~
-              "Manovre giornaliere anomale: superiori alla media storica",
-            daily_value < media_manovre_storica ~
-              "Manovre giornaliere anomale: inferiori alla media storica",
-            TRUE ~ "Manovre giornaliere anomale rispetto alla media storica"
+            daily_count > limite_manovre_sup ~
+              "Più manovre del solito nella giornata",
+            daily_count < limite_manovre_inf ~
+              "Meno manovre del solito nella giornata",
+            TRUE ~ "Numero di manovre diverso dal solito nella giornata"
           ),
           if_else(
             gateway_disconnect_affected,
@@ -4032,9 +4033,7 @@ server <- function(input, output, session) {
         Ora = format(hour, "%H:00", tz = "Europe/Rome"),
         Conteggio = round(attivazioni_orarie),
         Descrizione = paste0(
-          "Conteggio orario >= 4 x mediana oraria (",
-          round(mediana_oraria, 1),
-          ")",
+          "Molte più manovre del solito in un'ora",
           if_else(
             gateway_disconnect_affected,
             nota_disconnessione_gateway,
@@ -4065,20 +4064,12 @@ server <- function(input, output, session) {
           format(fine, "%d/%m/%Y"),
           sep = " - "
         ),
-        NOK = round(NOK, 3),
+        `Utilizzo / storico` = round(NOK, 3),
         Descrizione = paste0(
           case_when(
-            NOK < limite_inf ~ paste0(
-              "NOK sotto il limite inferiore (",
-              round(limite_inf, 3),
-              ")"
-            ),
-            NOK > limite_sup ~ paste0(
-              "NOK sopra il limite superiore (",
-              round(limite_sup, 3),
-              ")"
-            ),
-            TRUE ~ "NOK fuori range"
+            NOK < limite_inf ~ "Utilizzo più basso del solito",
+            NOK > limite_sup ~ "Utilizzo più alto del solito",
+            TRUE ~ "Utilizzo diverso dal solito"
           ),
           if_else(
             gateway_disconnect_affected,
@@ -4112,7 +4103,7 @@ server <- function(input, output, session) {
           identical(utilizzo_stato, "Elevato")
         ) {
           paste0(
-            "Utilizzo sopra P90 (",
+            "Utilizzo più alto del solito (valore di confronto: ",
             round(p90_u, 3),
             ")",
             if (isTRUE(periodo_affetto_disconnessione)) {
@@ -4123,7 +4114,7 @@ server <- function(input, output, session) {
           )
         } else {
           paste0(
-            "Utilizzo sotto P10 (",
+            "Utilizzo più basso del solito (valore di confronto: ",
             round(p10_u, 3),
             ")",
             if (isTRUE(periodo_affetto_disconnessione)) {
@@ -4218,7 +4209,7 @@ server <- function(input, output, session) {
       is.finite(r$p90_utilizzo)
     ) {
       paste0(
-        "intervallo storico di riferimento da ",
+        "intervallo abituale da ",
         formatC(r$p10_utilizzo, format = "f", digits = 3, decimal.mark = ","),
         " a ",
         formatC(r$p90_utilizzo, format = "f", digits = 3, decimal.mark = ",")
@@ -4232,13 +4223,13 @@ server <- function(input, output, session) {
       is.finite(r$nok_macchina_sup)
     ) {
       paste0(
-        "range storico da ",
+        "valori abituali da ",
         formatC(r$nok_macchina_inf, format = "f", digits = 3, decimal.mark = ","),
         " a ",
         formatC(r$nok_macchina_sup, format = "f", digits = 3, decimal.mark = ",")
       )
     } else {
-      "range storico non disponibile"
+      "dati insufficienti per il confronto con lo storico"
     }
     
     stato_utilizzo <- if (identical(r$utilizzo_stato, "Normale")) {
@@ -4258,7 +4249,7 @@ server <- function(input, output, session) {
     }
     
     p1 <- paste0(
-      "Il presente rapporto sintetizza il comportamento operativo della macchina ",
+      "Questo rapporto descrive come è stata utilizzata la macchina ",
       r$macchina,
       " (coupon ",
       r$coupon,
@@ -4266,16 +4257,16 @@ server <- function(input, output, session) {
       format(r$inizio, "%d/%m/%Y"),
       " - ",
       format(r$fine, "%d/%m/%Y"),
-      ". I risultati vengono letti in confronto al periodo immediatamente precedente di pari durata, ",
+      ". Il confronto riguarda il periodo precedente della stessa durata, ",
       format(r$precedente_inizio, "%d/%m/%Y"),
       " - ",
       format(r$precedente_fine, "%d/%m/%Y"),
-      ", così da evidenziare variazioni recenti senza perdere il riferimento allo storico disponibile."
+      ". I risultati sono confrontati anche con il comportamento abituale della macchina."
     )
     
     p2 <- paste0(
-      "Sul piano dell'intensità di utilizzo, ",
-      testo_andamento_report(r$utilizzo_pct, "l'indice complessivo"),
+      "Per quanto riguarda l’utilizzo, ",
+      testo_andamento_report(r$utilizzo_pct, "l'utilizzo complessivo"),
       ". Il valore del periodo è ",
       ifelse(
         is.finite(r$utilizzo),
@@ -4284,13 +4275,13 @@ server <- function(input, output, session) {
       ),
       " e risulta ",
       stato_utilizzo,
-      " rispetto all'",
+      "; riferimento: ",
       utilizzo_range,
-      ". La variazione percentuale va quindi interpretata insieme alla posizione nel range: un incremento non costituisce automaticamente un'anomalia se il livello finale resta coerente con il comportamento storico della macchina."
+      ". Un aumento rispetto al periodo precedente non indica, da solo, un problema: conta anche quanto il valore si discosta dall’uso abituale."
     )
     
     p3 <- paste0(
-      "Il NOK medio della macchina è ",
+      "L’utilizzo medio rispetto allo storico è ",
       ifelse(
         is.finite(r$nok_macchina),
         formatC(r$nok_macchina, format = "f", digits = 3, decimal.mark = ","),
@@ -4298,7 +4289,7 @@ server <- function(input, output, session) {
       ),
       "; ",
       testo_andamento_report(r$nok_macchina_pct, "rispetto al periodo precedente"),
-      ". Nel complesso il NOK è ",
+      ". Un valore di 1 corrisponde all’utilizzo abituale. Nel complesso, il risultato è ",
       stato_nok,
       " (",
       nok_range,
@@ -4319,7 +4310,7 @@ server <- function(input, output, session) {
       )
     } else {
       paste0(
-        "Nel periodo non risultano anomalie di manovra rilevanti. Il quadro operativo non evidenzia quindi eventi di conteggio meritevoli di segnalazione nel periodo considerato."
+        "Nel periodo non sono state rilevate manovre da segnalare."
       )
     }
     
@@ -4383,9 +4374,9 @@ server <- function(input, output, session) {
       stato <- if (!is.finite(valore)) {
         "N/D"
       } else if (isTRUE(fuori)) {
-        "Fuori range"
+        "Diverso dal solito"
       } else {
-        "Nel range"
+        "Abituale"
       }
       
       tagList(
@@ -4472,7 +4463,7 @@ server <- function(input, output, session) {
             lapply(colonne, function(x) tags$td(x$att))
           ),
           tags$tr(
-            tags$td(tags$strong("NOK")),
+            tags$td(tags$strong("Utilizzo / storico")),
             lapply(colonne, function(x) tags$td(x$nok))
           )
         )
@@ -4619,14 +4610,14 @@ server <- function(input, output, session) {
         ),
         div(
           class = "report-kpi-card",
-          div("NOK medio macchina", class = "report-kpi-label"),
+          div("Utilizzo medio rispetto allo storico", class = "report-kpi-label"),
           div(nok_val, class = "report-kpi-value"),
           div(
             paste0(
               ifelse(
                 isTRUE(r$nok_macchina_fuori),
-                "Fuori range",
-                "Nel range"
+                "Diverso dal solito",
+                "Abituale"
               ),
               " · ",
               formatta_variazione_report(r$nok_macchina_pct)
@@ -4642,7 +4633,7 @@ server <- function(input, output, session) {
         ),
         div(
           class = "report-kpi-card",
-          div("Componenti NOK fuori range", class = "report-kpi-label"),
+          div("Componenti con utilizzo insolito", class = "report-kpi-label"),
           div(n_nok, class = "report-kpi-value"),
           div(
             paste0("Su ", nrow(r$confronto), " componenti analizzati"),
@@ -4660,7 +4651,7 @@ server <- function(input, output, session) {
       sezione(
         "1",
         "Sintesi per componente e macchina",
-        "Le manovre riportano il valore medio del periodo e, tra parentesi, la variazione rispetto al periodo precedente. Il NOK è evidenziato in base alla permanenza nel proprio range storico.",
+        "Le manovre sono la media giornaliera del periodo. Tra parentesi è indicato il cambiamento rispetto al periodo precedente. Il confronto con lo storico distingue l’utilizzo abituale da quello insolito.",
         tabella_sintesi
       ),
       
@@ -4677,21 +4668,21 @@ server <- function(input, output, session) {
       
       sezione(
         "3",
-        "NOK per componente fuori range",
-        "Dettaglio dei componenti il cui NOK di periodo supera i limiti storici calcolati.",
+        "Componenti con utilizzo insolito",
+        "Componenti usati più o meno del solito, tenendo conto delle ore di attività. Un valore di 1 corrisponde all’utilizzo abituale.",
         tabella_html(
           r$nok_anomalo,
-          "Nessun NOK per componente fuori range nel periodo."
+          "Nessun componente con utilizzo insolito nel periodo."
         )
       ),
       
       sezione(
         "4",
-        "Utilizzo macchina fuori range",
-        "La sezione viene popolata solo quando l'indice di utilizzo complessivo è sotto P10 o sopra P90 rispetto allo storico di riferimento.",
+        "Utilizzo della macchina diverso dal solito",
+        "Questa sezione mostra i periodi in cui l’utilizzo complessivo della macchina è più alto o più basso del suo intervallo abituale.",
         tabella_html(
           r$utilizzo_anomalo,
-          "L'utilizzo complessivo della macchina rientra nel range storico nel periodo."
+          "L’utilizzo complessivo della macchina è in linea con il suo storico nel periodo."
         )
       )
     )
@@ -4919,10 +4910,10 @@ server <- function(input, output, session) {
       )
       kpi_card(
         0.385,
-        "NOK MEDIO MACCHINA",
+        "UTILIZZO / STORICO",
         nok_val,
         paste0(
-          ifelse(isTRUE(r$nok_macchina_fuori), "Fuori range", "Nel range"),
+          ifelse(isTRUE(r$nok_macchina_fuori), "Diverso dal solito", "Abituale"),
           " · ",
           formatta_variazione_report(r$nok_macchina_pct)
         ),
@@ -4937,7 +4928,7 @@ server <- function(input, output, session) {
       )
       kpi_card(
         0.865,
-        "COMPONENTI NOK FUORI RANGE",
+        "COMPONENTI CON USO INSOLITO",
         as.character(nrow(r$nok_anomalo)),
         paste0("Su ", nrow(r$confronto), " componenti"),
         if (nrow(r$nok_anomalo) > 0) "bad" else "good"
@@ -5005,7 +4996,7 @@ server <- function(input, output, session) {
             formatC(NOK, format = "f", digits = 3, decimal.mark = ","),
             "N/D"
           ),
-          Stato = ifelse(nok_fuori_range, "FUORI", "OK")
+          Stato = ifelse(nok_fuori_range, "INSOLITO", "ABITUALE")
         )
       
       idx_chunks <- split(
@@ -5019,7 +5010,7 @@ server <- function(input, output, session) {
         idx <- idx_chunks[[chunk_i]]
         chunk <- sensori_summary[idx, , drop = FALSE]
         
-        metriche <- c("Manovre medie", "NOK")
+        metriche <- c("Manovre medie", "Utilizzo / storico")
         tab <- data.frame(Metrica = metriche, check.names = FALSE)
         
         if (nrow(chunk) > 0) {
@@ -5052,7 +5043,7 @@ server <- function(input, output, session) {
         grid::grid.text(
           paste0(
             "Valori medi del periodo; tra parentesi la variazione rispetto al periodo precedente. ",
-            "NOK classificato rispetto al range storico."
+            "Il confronto con lo storico distingue l’utilizzo abituale da quello insolito."
           ),
           x = 0.04,
           y = 0.84,
@@ -5161,15 +5152,15 @@ server <- function(input, output, session) {
       )
       
       disegna_tabella_paginata(
-        "NOK per componente fuori range",
+        "Componenti con utilizzo insolito",
         r$nok_anomalo,
-        "Nessun NOK per componente fuori range nel periodo."
+        "Nessun componente con utilizzo insolito nel periodo."
       )
       
       disegna_tabella_paginata(
-        "Utilizzo macchina fuori range",
+        "Utilizzo della macchina diverso dal solito",
         r$utilizzo_anomalo,
-        "L'utilizzo complessivo della macchina rientra nel range storico."
+        "L’utilizzo complessivo della macchina è in linea con il suo storico."
       )
     },
     contentType = "application/pdf"
@@ -5222,7 +5213,7 @@ server <- function(input, output, session) {
       class = "modal-data-panel",
       p(
         "Manovre anomale rilevate nel periodo selezionato. ",
-        "Sono mostrate sia le anomalie giornaliere sia le ore con manovre almeno 4 volte superiori alla mediana oraria del componente. Le anomalie giornaliere continuano a essere usate per pulire l'NMN storico."
+        "La tabella riunisce le segnalazioni giornaliere e quelle riferite a una singola ora. Le giornate con anomalie confermate non vengono usate per definire l’utilizzo abituale del componente."
       ),
       DTOutput("modal_tabella_outlier_nok")
     )
@@ -5467,7 +5458,7 @@ server <- function(input, output, session) {
           descrizione,
           "; manovre giornaliere medie: ", attivazioni_medie,
           "; ", etichetta_ore_aperte, ": ", ore_aperte,
-          "; NOK: ", nok_periodo
+          "; Utilizzo rispetto allo storico: ", nok_periodo
         ),
         style = paste0(
           sprintf(
@@ -5496,7 +5487,7 @@ server <- function(input, output, session) {
           tags$span(descrizione, class = "sensor-tooltip-title"),
           tags$div("Manovre giornaliere medie: ", tags$strong(attivazioni_medie)),
           tags$div(etichetta_ore_aperte, ": ", tags$strong(paste0(ore_aperte, " h"))),
-          tags$div("NOK: ", tags$strong(nok_periodo))
+          tags$div("Utilizzo rispetto allo storico: ", tags$strong(nok_periodo))
         )
       )
     })
@@ -5747,7 +5738,7 @@ server <- function(input, output, session) {
       arrange(period_start, alert_id) |>
       transmute(
         `ID segnalazione` = alert_id,
-        Gateway = if_else(
+        `Dispositivo di collegamento` = if_else(
           is.na(gateway_name) | gateway_name == "",
           gateway_id,
           gateway_name
@@ -5796,7 +5787,7 @@ server <- function(input, output, session) {
       return(
         div(
           class = "alarm-empty",
-          "Nessun valore NOK anomalo nel periodo selezionato."
+          "Nessun utilizzo insolito nel periodo selezionato."
         )
       )
     }
@@ -5811,7 +5802,7 @@ server <- function(input, output, session) {
       return(
         div(
           class = "alarm-empty",
-          "Nessuna disconnessione gateway rilevata nel periodo selezionato."
+          "Nessuna interruzione delle comunicazioni segnalata nel periodo selezionato."
         )
       )
     }
@@ -6020,7 +6011,7 @@ server <- function(input, output, session) {
         
         div(
           class = "life-row-header",
-          span(riga$tipo, class = "life-metric"),
+          span(if (riga$tipo == "B10dSAN") "Manovre effettuate" else "Anni di utilizzo", class = "life-metric"),
           span(valore_testo, class = "life-value")
         ),
         
@@ -7433,7 +7424,7 @@ server <- function(input, output, session) {
         )
       ),
       div(
-        "Indice dell’intensità di utilizzo dei componenti. Valori alti indicano uno stress della macchina più elevato o una discrepanza nell’utilizzo rispetto allo storico. Valori bassi indicano uno stress della macchina meno elevato rispetto allo storico.",
+        "Riassume quanto e con quale regolarità sono stati usati i componenti rispetto al passato. Un valore alto può indicare un utilizzo più intenso o meno regolare; un valore basso indica un utilizzo meno intenso o più regolare.",
         style = "margin-top:7px;font-size:13px;color:#5F6F7F;"
       ),
       div(
@@ -7681,8 +7672,8 @@ server <- function(input, output, session) {
         tooltip_utilizzo = paste0(
           "<b>", confronto, "</b><br/>",
           "<b>", etichetta_sensore, "</b><br/>",
-          "Media NOK: ", round(media_nok, 4), "<br/>",
-          "Varianza NOK: ", round(varianza_nok, 4), "<br/>",
+          "Utilizzo medio rispetto allo storico: ", round(media_nok, 4), "<br/>",
+          "Variazioni nell’utilizzo (più basso = più regolare): ", round(varianza_nok, 4), "<br/>",
           "Utilizzo componente: ", round(U_sensore, 4)
         )
       )
@@ -7722,7 +7713,7 @@ server <- function(input, output, session) {
       ) +
       labs(
         x = NULL,
-        y = "NOK medio"
+        y = "Utilizzo medio / storico"
       ) +
       tema_san(base_size = 13) +
       theme(
@@ -7775,7 +7766,7 @@ server <- function(input, output, session) {
     validate(
       need(
         nrow(sensori) > 0,
-        "Nessun dato NOK disponibile per il periodo selezionato"
+        "Dati insufficienti per confrontare l’utilizzo con lo storico nel periodo selezionato"
       )
     )
     
@@ -7799,7 +7790,7 @@ server <- function(input, output, session) {
           tooltip = paste0(
             "<b>", etichetta_sensore, "</b><br/>",
             "Periodo: ", periodo_label, "<br/>",
-            "NOK: ", round(NOK, 3)
+            "Utilizzo rispetto allo storico: ", round(NOK, 3)
           ),
           data_id = paste(
             confronto,
@@ -7830,7 +7821,7 @@ server <- function(input, output, session) {
           tooltip = paste0(
             "<b>Media macchina</b><br/>",
             "Periodo: ", periodo_label, "<br/>",
-            "NOK medio: ", round(NOK, 3)
+            "Utilizzo medio rispetto allo storico: ", round(NOK, 3)
           ),
           data_id = paste(
             confronto,
@@ -7879,7 +7870,7 @@ server <- function(input, output, session) {
       ) +
       labs(
         x = NULL,
-        y = "NOK"
+        y = "Utilizzo / storico"
       ) +
       tema_san(base_size = 13) +
       theme(
@@ -8044,7 +8035,7 @@ server <- function(input, output, session) {
           tooltip = paste0(
             "<b>", etichetta_sensore, "</b><br/>",
             "Periodo: ", periodo_label, "<br/>",
-            "NOK: ", round(NOK_periodo, 3)
+            "Utilizzo rispetto allo storico: ", round(NOK_periodo, 3)
           ),
           data_id = paste(etichetta_sensore, periodo_label, sep = "__")
         ),
@@ -8065,7 +8056,7 @@ server <- function(input, output, session) {
         expand = expansion(mult = c(0.02, 0.04))
       ) +
       scale_color_manual(values = palette_sensori, name = "Componente") +
-      labs(x = NULL, y = "NOK") +
+      labs(x = NULL, y = "Utilizzo / storico") +
       tema_san(base_size = 13) +
       theme(
         panel.grid.minor = element_blank(),
@@ -8127,7 +8118,7 @@ server <- function(input, output, session) {
     tank_data_modal() |>
       transmute(
         Componente = gsub("\n", " ", as.character(etichetta_sensore)),
-        Tipo    = tipo,
+        Tipo    = if_else(tipo == "B10dSAN", "Manovre effettuate", "Anni di utilizzo"),
         Valore  = round(valore, 1),
         Massimo = massimo,
         `%`     = ifelse(
@@ -8159,8 +8150,8 @@ server <- function(input, output, session) {
       transmute(
         Confronto = as.character(confronto),
         Componente = etichetta_sensore,
-        `Media NOK` = round(media_nok, 3),
-        `Varianza NOK` = round(varianza_nok, 3),
+        `Utilizzo medio rispetto allo storico` = round(media_nok, 3),
+        `Variazioni nell’utilizzo (più basso = più regolare)` = round(varianza_nok, 3),
         `Utilizzo sensore` = round(U_sensore, 3)
       ) |>
       arrange(Confronto, Componente)
@@ -8179,14 +8170,14 @@ server <- function(input, output, session) {
             Confronto = as.character(confronto),
             Periodo = periodo_label,
             Serie = etichetta_sensore,
-            NOK = round(NOK, 3)
+            `Utilizzo / storico` = round(NOK, 3)
           ),
         andamento$media_macchina |>
           transmute(
             Confronto = as.character(confronto),
             Periodo = periodo_label,
             Serie = "Media macchina",
-            NOK = round(NOK, 3)
+            `Utilizzo / storico` = round(NOK, 3)
           )
       ) |>
         arrange(Confronto, Periodo, Serie)
@@ -8197,4 +8188,5 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+
 

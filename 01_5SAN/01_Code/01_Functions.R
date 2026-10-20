@@ -482,3 +482,23 @@ interpola_spline <- function(df, x_col, y_col, group_col, n = 300, gap_factor = 
     }) |>
     ungroup()
 }
+
+
+# Durate leggibili nei messaggi e nei report, senza ore decimali.
+durata_in_testo <- function(ore) {
+  minuti <- round(ore * 60)
+  h <- minuti %/% 60
+  m <- minuti %% 60
+  testo_ore <- paste(h, ifelse(h == 1, "ora", "ore"))
+  testo_minuti <- paste(m, ifelse(m == 1, "minuto", "minuti"))
+  ifelse(!is.finite(ore) | ore < 0, "durata non disponibile",
+    ifelse(minuti == 0 & ore > 0, "meno di un minuto",
+      ifelse(h == 0, testo_minuti,
+        ifelse(m == 0, testo_ore, paste(testo_ore, "e", testo_minuti)))))
+}
+
+testo_manovre_giornaliere <- function(conteggio, ore, minimo, massimo) {
+  paste0(round(conteggio), " manovre in ", durata_in_testo(ore),
+    " di attività. Per una durata simile, in base allo storico ci si aspetta da ",
+    minimo, " a ", massimo, " manovre.")
+}

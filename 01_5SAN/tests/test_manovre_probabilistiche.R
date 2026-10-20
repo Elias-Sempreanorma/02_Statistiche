@@ -141,6 +141,15 @@ a <- grep("^base_giornaliera <-",alerts_code)
 b <- grep("^# 2\\) Anomalie orarie",alerts_code)-2L
 eval(parse(text=alerts_code[a:b]))
 stopifnot(nrow(alert_attivazioni_giornaliere)==1,
-  grepl("limiti giornalieri 95%: 0 - 7",alert_attivazioni_giornaliere$signal_data_text),
-  grepl("superiori al limite probabilistico",alert_attivazioni_giornaliere$signal_description))
-cat("OK: allarme giornaliero dal flag condiviso, testo con atteso/limiti/modello.\n")
+  grepl("400 manovre in 14 ore e 13 minuti di attività",alert_attivazioni_giornaliere$signal_data_text),
+  grepl("ci si aspetta da 0 a 7 manovre",alert_attivazioni_giornaliere$signal_data_text),
+  identical("Più manovre del solito nella giornata",alert_attivazioni_giornaliere$signal_description))
+stopifnot(identical(
+  testo_manovre_giornaliere(26, 3.03, 0, 3),
+  "26 manovre in 3 ore e 2 minuti di attività. Per una durata simile, in base allo storico ci si aspetta da 0 a 3 manovre."
+), identical(
+  durata_in_testo(c(1, 1.999, 0.5, NA_real_, Inf)),
+  c("1 ora", "2 ore", "30 minuti", "durata non disponibile", "durata non disponibile")
+))
+cat("OK: allarme giornaliero dal flag condiviso, confronto leggibile e durate in ore e minuti.\n")
+

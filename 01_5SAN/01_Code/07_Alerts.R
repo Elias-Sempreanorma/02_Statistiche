@@ -114,22 +114,18 @@ alert_attivazioni_giornaliere <- base_giornaliera |>
     functional_unit = paste(cds_name, sensor_description, sep = " - "),
     signal_description = case_when(
       daily_count > limite_manovre_sup ~
-        "Manovre giornaliere anomale: superiori al limite probabilistico del 95%",
+        "Più manovre del solito nella giornata",
       daily_count < limite_manovre_inf ~
-        "Manovre giornaliere anomale: inferiori al limite probabilistico del 95%",
-      TRUE ~ "Manovre giornaliere anomale rispetto alla media storica"
+        "Meno manovre del solito nella giornata",
+      TRUE ~ "Numero di manovre diverso dal solito nella giornata"
     ),
     signal_data_text = paste0(
-      "Manovre giornaliere: ",
-      round(daily_count),
-      "; ore attive: ", round(daily_uptime, 2),
-      "; manovre/ora: ", round(daily_value, 2),
-      "; atteso: ", round(rate * daily_uptime, 2),
-      "; limiti giornalieri 95%: ", limite_manovre_inf, " - ", limite_manovre_sup,
-      "; modello: ", if_else(family == "poisson", "Poisson", "Binomiale negativa"),
+      testo_manovre_giornaliere(
+        daily_count, daily_uptime, limite_manovre_inf, limite_manovre_sup
+      ),
       if_else(
         gateway_disconnect_affected,
-        "; dato possibilmente alterato da una disconnessione del gateway",
+        " Il momento di registrazione delle manovre può risentire di un'interruzione delle comunicazioni.",
         ""
       )
     )
@@ -212,15 +208,14 @@ alert_attivazioni_orarie <- base_oraria |>
     alert_scope = "sensor",
     functional_unit = paste(cds_name, sensor_description, sep = " - "),
     signal_description =
-      "Conteggio orario almeno 4 volte la mediana oraria del componente",
+      "Molte più manovre del solito in un'ora",
     signal_data_text = paste0(
-      "Manovre nell'ora: ",
-      round(hourly_count),
-      "; mediana oraria: ",
-      round(hourly_median, 2),
+      round(hourly_count), " manovre in un'ora. Nelle ore con attività, il valore abituale è ",
+      formatC(hourly_median, format = "f", digits = 1, decimal.mark = ","),
+      " manovre.",
       if_else(
         gateway_disconnect_affected,
-        "; dato possibilmente alterato da una disconnessione del gateway",
+        " Il momento di registrazione delle manovre può risentire di un'interruzione delle comunicazioni.",
         ""
       )
     )
@@ -264,9 +259,8 @@ alert_sensori_aperti <- eventi_aperti |>
     signal_description =
       "Componente aperto o senza contatto elettrico per oltre 1 ora consecutiva",
     signal_data_text = paste0(
-      "Durata evento: ",
-      round(open_hours, 2),
-      " ore"
+      "Il componente è rimasto aperto o senza contatto elettrico per ",
+      durata_in_testo(open_hours), "."
     )
   ) |>
   rowwise() |>
@@ -369,21 +363,20 @@ alert_nok <- base_nok |>
       "sotto limite",
       "sopra limite"
     ),
-    signal_description = paste(
-      "NOK giornaliero",
-      direction,
-      "rispetto ai limiti storici +/- 3 sigma"
+    signal_description = if_else(
+      NOK_giornaliero < limite_nok_inf,
+      "Utilizzo giornaliero più basso del solito",
+      "Utilizzo giornaliero più alto del solito"
     ),
     signal_data_text = paste0(
-      "NOK: ",
-      round(NOK_giornaliero, 3),
-      "; limite inferiore: ",
-      round(limite_nok_inf, 3),
-      "; limite superiore: ",
-      round(limite_nok_sup, 3),
+      "Tenendo conto delle ore di attività, le manovre sono pari al ",
+      round(100 * NOK_giornaliero),
+      "% del livello storico. Il 100% corrisponde all'utilizzo abituale. ",
+      "Per questo componente, i valori di confronto vanno dal ",
+      round(100 * limite_nok_inf), "% al ", round(100 * limite_nok_sup), "%.",
       if_else(
         gateway_disconnect_affected,
-        "; dato possibilmente alterato da una disconnessione del gateway",
+        " Il momento di registrazione delle manovre può risentire di un'interruzione delle comunicazioni.",
         ""
       )
     )
@@ -509,8 +502,8 @@ if (
               paste0(" - ", sensor_description),
               ""
             ),
-            ": incremento ",
-            accumulated_increment
+            ": ",
+            accumulated_increment, " manovre registrate alla ripresa delle comunicazioni"
           )
         ) |>
         pull(x) |>
@@ -554,11 +547,14 @@ if (
         alert_scope = "gateway",
         functional_unit = NA_character_,
         signal_description =
-          "Possibile disconnessione del gateway con conteggi accumulati durante l'assenza di comunicazione",
+          "Possibile interruzione delle comunicazioni con la macchina",
         signal_data_text = paste0(
-          "Durata intervallo non osservato: ",
-          round(ev$gap_minutes, 1),
-          " min; componenti con evidenza: ",
+          ifelse(
+            is.finite(ev$gap_minutes),
+            paste0("Dati mancanti per ", durata_in_testo(ev$gap_minutes / 60), ". "),
+            "Durata dell'interruzione non disponibile. "
+          ),
+          "Alla ripresa delle comunicazioni: ",
           evidenze_text
         ),
         signal_data_json = json_alert(list(
@@ -957,16 +953,15 @@ if (nrow(pending) > 0 && smtp_ready) {
     ev <- pending[i, ]
 
     subject <- paste0(
-      "[5SAN] Disconnessione gateway - ",
+      "[5SAN] Possibile interruzione delle comunicazioni - ",
       ev$alert_id
     )
 
     body_text <- paste0(
-      "Il sistema 5SAN ha generato una segnalazione di possibile ",
-      "disconnessione del gateway.\n\n",
+      "La macchina potrebbe aver smesso temporaneamente di comunicare con 5SAN.\n\n",
       "ID segnalazione: ", ev$alert_id, "\n",
-      "Coupon: ", ev$coupon, "\n",
-      "Gateway: ",
+      "Codice macchina: ", ev$coupon, "\n",
+      "Dispositivo di collegamento: ",
       ifelse(
         is.na(ev$gateway_name) || ev$gateway_name == "",
         ev$gateway_id,
@@ -978,7 +973,7 @@ if (nrow(pending) > 0 && smtp_ready) {
       " - ",
       fmt_mail_ts(ev$period_end),
       "\n",
-      "Generato: ",
+      "Segnalazione riferita al: ",
       fmt_mail_ts(ev$generated_at),
       "\n",
       "Dati: ",
@@ -1074,4 +1069,5 @@ message(
   nrow(alerts_dashboard),
   " alert persistiti."
 )
+
 

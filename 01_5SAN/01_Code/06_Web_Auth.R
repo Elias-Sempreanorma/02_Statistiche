@@ -43,7 +43,7 @@ reply <- function(status, body) {
 app <- list(
   call = function(req) {
     if (is.null(otp_verifier) || length(valid_coupons) == 0L) {
-      return(reply(503L, "Authentication service unavailable"))
+      return(reply(503L, "Il collegamento alla dashboard non è al momento disponibile."))
     }
 
     query_string <- req$HTTP_X_ORIGINAL_ARGS
@@ -58,7 +58,7 @@ app <- list(
 
     if (is.null(coupon) || length(coupon) < 1L ||
         is.null(otp_code) || length(otp_code) < 1L) {
-      return(reply(403L, "Forbidden"))
+      return(reply(403L, "Accesso non consentito. Apri nuovamente la dashboard dal sito di provenienza."))
     }
 
     coupon <- trimws(as.character(coupon[[1]]))
@@ -66,7 +66,7 @@ app <- list(
 
     if (!nzchar(coupon) ||
         !grepl(paste0("^\\d{", OTP_DIGITS, "}$"), otp_code)) {
-      return(reply(403L, "Forbidden"))
+      return(reply(403L, "Accesso non consentito. Apri nuovamente la dashboard dal sito di provenienza."))
     }
 
     otp_ok <- tryCatch(
@@ -75,7 +75,7 @@ app <- list(
     )
 
     if (!isTRUE(otp_ok) || !coupon %in% valid_coupons) {
-      return(reply(403L, "Forbidden"))
+      return(reply(403L, "Accesso non consentito. Apri nuovamente la dashboard dal sito di provenienza."))
     }
 
     reply(200L, "OK")
@@ -83,3 +83,4 @@ app <- list(
 )
 
 httpuv::runServer("0.0.0.0", 8080, app)
+
