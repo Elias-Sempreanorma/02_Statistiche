@@ -3423,7 +3423,7 @@ server <- function(input, output, session) {
         ),
         div(
           class = "alarm-section",
-          h4("Utilizzo diverso dal solito", class = "titolo-sezione"),
+          h4("NOK", class = "titolo-sezione"),
           p(
             "Giornate con un utilizzo del componente molto più alto o più basso del consueto, tenendo conto delle ore di attività."
           ),
@@ -5751,8 +5751,7 @@ server <- function(input, output, session) {
         `ID segnalazione` = alert_id,
         Componente = paste(sensor_code, sensor_description, sep = " - "),
         Data = as.Date(period_start, tz = "Europe/Rome"),
-        Descrizione = signal_description,
-        Dati = signal_data_text
+        Descrizione = paste0(signal_description, ". ", signal_data_text)
       )
   })
 

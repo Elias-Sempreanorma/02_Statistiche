@@ -365,15 +365,20 @@ alert_nok <- base_nok |>
     ),
     signal_description = if_else(
       NOK_giornaliero < limite_nok_inf,
-      "Utilizzo giornaliero più basso del solito",
-      "Utilizzo giornaliero più alto del solito"
+      "NOK giornaliero inferiore al valore atteso",
+      "NOK giornaliero superiore al valore atteso"
     ),
     signal_data_text = paste0(
-      "Tenendo conto delle ore di attività, le manovre sono pari al ",
-      round(100 * NOK_giornaliero),
-      "% del livello storico. Il 100% corrisponde all'utilizzo abituale. ",
-      "Per questo componente, i valori di confronto vanno dal ",
-      round(100 * limite_nok_inf), "% al ", round(100 * limite_nok_sup), "%.",
+      if_else(
+        NOK_giornaliero == 0,
+        "Nessuna manovra registrata nelle ore di attività, a fronte di un valore atteso maggiore di zero.",
+        paste0(
+          "Il numero di manovre per ora di attività è pari a circa ",
+          trimws(formatC(NOK_giornaliero, format = "fg", digits = 2,
+            decimal.mark = ",")),
+          " volte il valore atteso in base allo storico del componente."
+        )
+      ),
       if_else(
         gateway_disconnect_affected,
         " Il momento di registrazione delle manovre può risentire di un'interruzione delle comunicazioni.",
