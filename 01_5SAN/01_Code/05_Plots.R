@@ -2737,7 +2737,7 @@ dashboard_ui <- fluidPage(
         "home_nok",
         label = div(
           class = "home-card-label",
-          h4("Utilizzo rispetto allo storico"),
+          h4("Utilizzo storico"),
           p("Come vengono usati i componenti rispetto al passato")
         ),
         class = "card-home"
@@ -3053,7 +3053,7 @@ server <- function(input, output, session) {
           label = NULL,
           choices = c(
             "Conteggio manovre" = "attivazioni",
-            "Utilizzo rispetto allo storico" = "nok",
+            "Utilizzo storico" = "nok",
             "Vita componenti"          = "vita",
             "Allarmi e segnalazioni"   = "allarmi"
           ),
