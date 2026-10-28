@@ -6343,7 +6343,7 @@ server <- function(input, output, session) {
             if_else(
               filtri_attivazioni_modal()$granularita == "Ora",
               "Manovre nell'ora: ",
-              "Manovre medie giornaliere: "
+              "Manovre giornaliere: "
             ),
             scales::label_number(
               accuracy = 0.1,
@@ -6410,7 +6410,7 @@ server <- function(input, output, session) {
     tooltip_punti <- paste0(
       "<b>", grafico$etichetta_completa, "</b><br/>",
       "Periodo: ", grafico$periodo_label, "<br/>",
-      if (identical(granularita, "Ora")) "Manovre nell'ora: " else "Manovre medie giornaliere: ",
+      if (identical(granularita, "Ora")) "Manovre nell'ora: " else "Manovre giornaliere: ",
       scales::label_number(
         accuracy = 1,
         big.mark = "."
