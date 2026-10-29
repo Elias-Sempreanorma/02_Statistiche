@@ -12,6 +12,9 @@ library(scales)
 library(DT)
 library(dbscan)
 
+# Guida sintetica per gli utilizzatori esterni della versione web.
+source(here("01_Code", "09_Guida_Online.R"), local = TRUE)
+
 # Modalita' applicativa:
 # - internal: dashboard completa con selezione Azienda/Stabilimento/Macchina
 # - web: macchina fissata dal parametro ?coupon=... della querystring
@@ -688,6 +691,7 @@ mappa_sensori <- bind_rows(
 dashboard_ui <- fluidPage(
   
   tags$head(
+    if (IS_WEB_MODE) guida_online_assets(),
     tags$script(HTML("
       function aggiornaLarghezzaModal() {
         setTimeout(function () {
@@ -790,7 +794,7 @@ dashboard_ui <- fluidPage(
           }
         });
         $(document).on('shown.bs.modal.san', '#shiny-modal', function () {
-          var title = this.querySelector('.modal-machine-title, .report-title');
+          var title = this.querySelector('.modal-machine-title, .report-title, .san-guide-title');
           if (title) {
             title.id = 'san-dialog-title';
             this.setAttribute('aria-labelledby', title.id);
@@ -2709,7 +2713,20 @@ dashboard_ui <- fluidPage(
           separator = " a ",
           language = "it", weekstart = 1
         )
-      )
+      ),
+      if (IS_WEB_MODE) {
+        column(
+          8,
+          div(
+            class = "san-guide-action",
+            actionButton(
+              "home_guida", "Guida alla dashboard", icon = icon("circle-question"),
+              class = "san-guide-button",
+              title = "Apri la guida alla dashboard"
+            )
+          )
+        )
+      }
     )
   ),
   
@@ -2832,6 +2849,12 @@ server <- function(input, output, session) {
     dashboard_ui
   })
   
+  # La guida e' disponibile soltanto dopo l'accesso web autorizzato.
+  observeEvent(input$home_guida, {
+    req(IS_WEB_MODE, isTRUE(web_access()$ok))
+    showModal(guida_online_modal())
+  }, ignoreInit = TRUE)
+
   # Sorgente unica della macchina per tutta la dashboard.
   # Internal -> selectInput; Web -> coupon validato dalla querystring.
   macchina_attiva <- reactive({
@@ -8209,5 +8232,6 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+
 
 
