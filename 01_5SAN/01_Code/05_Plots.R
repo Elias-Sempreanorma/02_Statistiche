@@ -241,36 +241,39 @@ tabella_segnalazioni <- function(dati, ordine, righe = 15) {
 }
 
 alerts_path <- here("02_Output", "alerts.rds")
-alerts_data <- if (file.exists(alerts_path)) {
-  readRDS(alerts_path) |>
-    mutate(
-      period_start = with_tz(period_start, "Europe/Rome"),
-      period_end = with_tz(period_end, "Europe/Rome"),
-      generated_at = with_tz(generated_at, "Europe/Rome"),
-      across(any_of(c("signal_description", "signal_data_text")), testo_manovre)
+leggi_alerts_dashboard <- function(path = alerts_path) {
+  if (file.exists(path)) {
+    readRDS(path) |>
+      mutate(
+        period_start = with_tz(period_start, "Europe/Rome"),
+        period_end = with_tz(period_end, "Europe/Rome"),
+        generated_at = with_tz(generated_at, "Europe/Rome"),
+        across(any_of(c("signal_description", "signal_data_text")), testo_manovre)
+      )
+  } else {
+    tibble(
+      alert_id = character(),
+      alert_type = character(),
+      alert_scope = character(),
+      period_start = as.POSIXct(character(), tz = "Europe/Rome"),
+      period_end = as.POSIXct(character(), tz = "Europe/Rome"),
+      generated_at = as.POSIXct(character(), tz = "Europe/Rome"),
+      machine_code = character(),
+      machine_serial_number = character(),
+      machine_name = character(),
+      coupon = character(),
+      gateway_id = character(),
+      gateway_name = character(),
+      sensor_id = character(),
+      sensor_code = character(),
+      sensor_description = character(),
+      functional_unit = character(),
+      signal_description = character(),
+      signal_data_text = character(),
+      source = character()
     )
-} else {
-  tibble(
-    alert_id = character(),
-    alert_type = character(),
-    alert_scope = character(),
-    period_start = as.POSIXct(character(), tz = "Europe/Rome"),
-    period_end = as.POSIXct(character(), tz = "Europe/Rome"),
-    generated_at = as.POSIXct(character(), tz = "Europe/Rome"),
-    machine_code = character(),
-    machine_serial_number = character(),
-    machine_name = character(),
-    coupon = character(),
-    gateway_id = character(),
-    gateway_name = character(),
-    sensor_id = character(),
-    sensor_code = character(),
-    sensor_description = character(),
-    functional_unit = character(),
-    signal_description = character(),
-    signal_data_text = character(),
-    source = character()
-  )
+  }
+
 }
 
 # L'eta' mostrata nella barra T10d e' quella calcolata dall'ETL,
@@ -5685,10 +5688,14 @@ server <- function(input, output, session) {
   # In questo modo ID, soglia dei 30 giorni e logica di rilevazione
   # hanno un'unica sorgente e non vengono ricalcolati ad ogni apertura.
   # ---------------------------------------------------------------------
+  alerts_correnti <- reactiveFileReader(
+    intervalMillis = 60000, session = session,
+    filePath = alerts_path, readFunc = leggi_alerts_dashboard
+  )
   alerts_filtrati_modal <- reactive({
     filtri <- filtri_nok_modal()
 
-    alerts_data |>
+    alerts_correnti() |>
       filter(
         coupon == filtri$macchina,
         as.Date(period_end, tz = "Europe/Rome") >= filtri$date[1],
@@ -5702,12 +5709,14 @@ server <- function(input, output, session) {
     alerts_filtrati_modal() |>
       filter(
         alert_type %in% c("activation_daily", "activation_hourly"),
-        sensor_code %in% filtri$sensori
+        vapply(strsplit(coalesce(sensor_code, ""), "; ", fixed = TRUE),
+          function(codes) any(codes %in% filtri$sensori), logical(1))
       ) |>
       arrange(period_start, sensor_code, alert_id) |>
       transmute(
         `ID segnalazione` = alert_id,
-        Componente = paste(sensor_code, sensor_description, sep = " - "),
+        Componente = if_else(alert_scope == "machine", functional_unit,
+          paste(sensor_code, sensor_description, sep = " - ")),
         Data = as.Date(period_start, tz = "Europe/Rome"),
         Ora = if_else(
           alert_type == "activation_hourly",
@@ -5725,12 +5734,14 @@ server <- function(input, output, session) {
     alerts_filtrati_modal() |>
       filter(
         alert_type == "sensor_open",
-        sensor_code %in% filtri$sensori
+        vapply(strsplit(coalesce(sensor_code, ""), "; ", fixed = TRUE),
+          function(codes) any(codes %in% filtri$sensori), logical(1))
       ) |>
       arrange(period_start, sensor_code, alert_id) |>
       transmute(
         `ID segnalazione` = alert_id,
-        Componente = paste(sensor_code, sensor_description, sep = " - "),
+        Componente = if_else(alert_scope == "machine", functional_unit,
+          paste(sensor_code, sensor_description, sep = " - ")),
         Data = as.Date(period_start, tz = "Europe/Rome"),
         Inizio = period_start,
         Fine = period_end,
@@ -5744,12 +5755,14 @@ server <- function(input, output, session) {
     alerts_filtrati_modal() |>
       filter(
         alert_type == "nok_daily",
-        sensor_code %in% filtri$sensori
+        vapply(strsplit(coalesce(sensor_code, ""), "; ", fixed = TRUE),
+          function(codes) any(codes %in% filtri$sensori), logical(1))
       ) |>
       arrange(period_start, sensor_code, alert_id) |>
       transmute(
         `ID segnalazione` = alert_id,
-        Componente = paste(sensor_code, sensor_description, sep = " - "),
+        Componente = if_else(alert_scope == "machine", functional_unit,
+          paste(sensor_code, sensor_description, sep = " - ")),
         Data = as.Date(period_start, tz = "Europe/Rome"),
         Descrizione = paste0(signal_description, ". ", signal_data_text)
       )
