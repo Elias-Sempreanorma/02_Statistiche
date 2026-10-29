@@ -4,7 +4,8 @@ Il primo ETL riuscito dopo le 07:00 Europe/Rome consolida il giorno precedente.
 L'ora si configura con `ALERT_EVALUATION_HOUR` (0–23); resta valido il cron
 Lightsail esistente. I giorni saltati vengono recuperati in ordine cronologico.
 
-Il raggruppamento usa coupon, tipo, periodo esatto e comportamento. Il testo e
+Il raggruppamento usa coupon, tipo, periodo esatto e comportamento codificato
+(aumento/diminuzione), indipendentemente da intensificatori come "molte". Il testo e
 il JSON conservano sensori, gateway e misure. Comportamenti superiori e inferiori
 all'atteso restano separati. Un gruppo resta visibile filtrando qualsiasi suo
 sensore.
@@ -49,3 +50,7 @@ Verifica raggruppamenti, periodi/comportamenti distinti, tracciabilita' degli ID
 ora legale e isolamento da giorni successivi. Simula il DB per verificare retry,
 checkpoint, orario mattutino, giorni senza alert, recupero interruzioni e rollback.
 Non si collega al DB operativo e non invia email.
+
+La migrazione v3 aggiorna anche i gruppi v2 salvati: unisce i comportamenti
+equivalenti senza ricalcolo statistico. Gli identificativi tecnici restano nel
+JSON e nelle colonne interne; la descrizione mostra codice e nome del sensore.

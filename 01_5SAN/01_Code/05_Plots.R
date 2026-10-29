@@ -248,7 +248,10 @@ leggi_alerts_dashboard <- function(path = alerts_path) {
         period_start = with_tz(period_start, "Europe/Rome"),
         period_end = with_tz(period_end, "Europe/Rome"),
         generated_at = with_tz(generated_at, "Europe/Rome"),
-        across(any_of(c("signal_description", "signal_data_text")), testo_manovre)
+        across(any_of(c("signal_description", "signal_data_text")), testo_manovre),
+        # Compatibilita' con le descrizioni gia' salvate prima della migrazione.
+        signal_data_text = gsub("[[:space:]]*\\[[^]\\r\\n]+/Sensor[^]\\r\\n]+\\]", "",
+          signal_data_text, perl = TRUE)
       )
   } else {
     tibble(

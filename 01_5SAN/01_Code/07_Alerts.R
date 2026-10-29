@@ -57,23 +57,81 @@ fine_giorno <- function(x) {
   inizio_giorno(x) + days(1) - seconds(1)
 }
 
+# Il comportamento e' indipendente dagli intensificatori del testo.
+codice_comportamento <- function(type, description) {
+  text <- tolower(description)
+  case_when(
+    type == "sensor_open" ~ "open",
+    type %in% c("activation_daily", "activation_hourly", "nok_daily") &
+      grepl("meno|inferior|sotto|dimin", text) ~ "decrease",
+    type %in% c("activation_daily", "activation_hourly", "nok_daily") &
+      grepl("più|piu|superior|sopra|aument", text) ~ "increase",
+    TRUE ~ paste0("other:", description)
+  )
+}
+
+descrizione_comportamento <- function(type, behavior, fallback) {
+  case_when(
+    type == "activation_hourly" & behavior == "increase" ~ "Più manovre del solito in un'ora",
+    type == "activation_hourly" & behavior == "decrease" ~ "Meno manovre del solito in un'ora",
+    type == "activation_daily" & behavior == "increase" ~ "Più manovre del solito nella giornata",
+    type == "activation_daily" & behavior == "decrease" ~ "Meno manovre del solito nella giornata",
+    type == "nok_daily" & behavior == "increase" ~ "NOK giornaliero superiore al valore atteso",
+    type == "nok_daily" & behavior == "decrease" ~ "NOK giornaliero inferiore al valore atteso",
+    TRUE ~ fallback
+  )
+}
+
+# Riapre solo i dettagli persistiti: nessuna rivalutazione statistica dello storico.
+espandi_segnalazioni_salvate <- function(alerts) {
+  if (!nrow(alerts)) return(alerts)
+  bind_rows(lapply(seq_len(nrow(alerts)), function(i) {
+    a <- alerts[i, , drop = FALSE]
+    data <- jsonlite::fromJSON(a$signal_data_json, simplifyVector = FALSE)
+    if (is.null(data$sensors)) return(a)
+    lines <- strsplit(a$signal_data_text, "\n", fixed = TRUE)[[1]]
+    if (length(lines) != length(data$sensors)) {
+      stop("Dettagli sensore incoerenti per la segnalazione ", a$alert_id)
+    }
+    bind_rows(lapply(seq_along(data$sensors), function(j) {
+      member <- data$sensors[[j]]
+      row <- a
+      row$gateway_id <- member$gateway_id
+      row$sensor_id <- member$sensor_id
+      row$cds_name <- member$sensor_code
+      row$sensor_description <- member$sensor_description
+      row$functional_unit <- paste(row$cds_name, row$sensor_description, sep = " - ")
+      row$alert_scope <- "sensor"
+      # I gruppi v2 avevano il prefisso codice/descrizione [gateway/sensore].
+      row$signal_data_text <- if (!is.null(member$text)) member$text else {
+        sub("^.*?\\]:[[:space:]]*", "", lines[j], perl = TRUE)
+      }
+      row$signal_data_json <- json_alert(member$data)
+      row
+    }))
+  }))
+}
+
 # Raggruppamento persistito: stessa macchina, periodo esatto e comportamento.
 # Gateway e sensori restano distinti nel JSON, anche con codici ripetuti.
 raggruppa_segnalazioni <- function(alerts) {
   if (!nrow(alerts)) return(alerts)
   sensors <- alerts |> filter(alert_scope %in% c("sensor", "machine"))
   gateways <- alerts |> filter(!alert_scope %in% c("sensor", "machine"))
+  if (!nrow(sensors)) return(gateways)
   grouped <- sensors |>
-    group_by(coupon, alert_type, period_start, period_end, signal_description) |>
+    mutate(behavior_code = codice_comportamento(alert_type, signal_description)) |>
+    group_by(coupon, alert_type, period_start, period_end, behavior_code) |>
     group_modify(function(.x, .y) {
       .x <- arrange(.x, gateway_id, sensor_id)
       a <- .x[1, , drop = FALSE]
-      labels <- paste0(.x$cds_name, " - ", .x$sensor_description,
-                       " [", .x$gateway_id, "/", .x$sensor_id, "]")
+      labels <- paste(.x$cds_name, .x$sensor_description, sep = " - ")
+      a$signal_description <- descrizione_comportamento(
+        .y$alert_type, .y$behavior_code, a$signal_description)
       a$event_key <- as.character(jsonlite::toJSON(list(
-        version = 2L, coupon = .y$coupon, type = .y$alert_type,
+        version = 3L, coupon = .y$coupon, type = .y$alert_type,
         start = fmt_iso_utc(.y$period_start), end = fmt_iso_utc(.y$period_end),
-        behavior = .y$signal_description
+        behavior = .y$behavior_code
       ), auto_unbox = TRUE))
       a$alert_scope <- if (nrow(.x) > 1L) "machine" else "sensor"
       a$gateway_id <- paste(sort(unique(.x$gateway_id)), collapse = "; ")
@@ -89,17 +147,18 @@ raggruppa_segnalazioni <- function(alerts) {
       a$signal_data_json <- json_alert(list(sensors = lapply(seq_len(nrow(.x)), function(i) {
         list(gateway_id = .x$gateway_id[i], sensor_id = .x$sensor_id[i],
              sensor_code = .x$cds_name[i], sensor_description = .x$sensor_description[i],
+             text = .x$signal_data_text[i],
              original_event_key = .x$event_key[i],
              original_alert_id = if ("alert_id" %in% names(.x)) .x$alert_id[i] else NULL,
              data = jsonlite::fromJSON(.x$signal_data_json[i], simplifyVector = FALSE))
       })))
       a$generated_at <- min(.x$generated_at)
       if ("created_at" %in% names(.x)) a$created_at <- min(.x$created_at)
-      if ("alert_id" %in% names(.x) && nrow(.x) > 1L) a$alert_id <- NA_character_
+      if ("alert_id" %in% names(.x) && n_distinct(.x$alert_id) > 1L) a$alert_id <- NA_character_
       a
     }) |>
     ungroup()
-  bind_rows(grouped, gateways)
+  bind_rows(select(grouped, -behavior_code), gateways)
 }
 
 calcola_segnalazioni_giorno <- function(evaluation_day, incrementi, dati_raw) {
@@ -871,7 +930,7 @@ dbExecute(con_alerts, "CREATE TABLE IF NOT EXISTS public.alert_migrations (
   # Le disconnessioni e il relativo stato mail restano invariati.
   dbWithTransaction(con_alerts, {
     migrated <- dbGetQuery(con_alerts,
-      "SELECT 1 FROM public.alert_migrations WHERE version = 2")
+      "SELECT 1 FROM public.alert_migrations WHERE version = 3")
     if (!nrow(migrated)) {
 for (column in c("gateway_id", "gateway_name", "sensor_id", "sensor_code")) {
   dbExecute(con_alerts, paste0("ALTER TABLE public.alerts ALTER COLUMN ", column, " TYPE TEXT"))
@@ -888,12 +947,12 @@ for (column in c("gateway_id", "gateway_name", "sensor_id", "sensor_code")) {
         END AS type_code,
         alert_scope, functional_unit, signal_description, signal_data_text,
         signal_data::text AS signal_data_json
-        FROM public.alerts WHERE alert_scope = 'sensor'
+        FROM public.alerts WHERE alert_scope IN ('sensor', 'machine')
           AND period_end <= date_trunc('day', NOW() AT TIME ZONE 'Europe/Rome') AT TIME ZONE 'Europe/Rome'")
-      grouped <- raggruppa_segnalazioni(legacy)
-      dbExecute(con_alerts, "DELETE FROM public.alerts WHERE alert_scope = 'sensor'")
+      grouped <- raggruppa_segnalazioni(espandi_segnalazioni_salvate(legacy))
+      dbExecute(con_alerts, "DELETE FROM public.alerts WHERE alert_scope IN ('sensor', 'machine')")
       inserisci_segnalazioni(con_alerts, grouped)
-      dbExecute(con_alerts, "INSERT INTO public.alert_migrations(version) VALUES (2)")
+      dbExecute(con_alerts, "INSERT INTO public.alert_migrations(version) VALUES (3)")
     }
   })
 

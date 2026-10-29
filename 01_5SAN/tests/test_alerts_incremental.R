@@ -80,6 +80,45 @@ stopifnot(identical(sort(result$event_key), sort(again$event_key)),
 if (nzchar(Sys.getenv("ALERT_TEST_SQL"))) writeLines(insert_alert_sql, Sys.getenv("ALERT_TEST_SQL"))
 cat("OK: raggruppamento, separazione comportamenti/periodi/macchine, migrazione ID, DST, valutazione giornaliera e assenza di dati futuri.\n")
 
+gateway_only <- mutate(example[1, ], alert_scope = "gateway", alert_type = "gateway_disconnection")
+stopifnot(identical(raggruppa_segnalazioni(gateway_only), gateway_only))
+# Intensificatori non discriminanti; verso e tipo restano discriminanti.
+variants <- example[1:2, ]
+variants$signal_description <- c("Più manovre del solito in un'ora", "Molte più manovre del solito in un'ora")
+stopifnot(nrow(raggruppa_segnalazioni(variants)) == 1L,
+          !grepl("/Sensor|G1/|G2/", raggruppa_segnalazioni(variants)$signal_data_text))
+variants$signal_description[2] <- "Molte meno manovre del solito in un'ora"
+stopifnot(nrow(raggruppa_segnalazioni(variants)) == 2L)
+variants$alert_type <- "nok_daily"
+variants$signal_description <- c("NOK superiore al valore atteso", "NOK molto superiore al valore atteso")
+stopifnot(nrow(raggruppa_segnalazioni(variants)) == 1L)
+variants$signal_description[2] <- "NOK inferiore al valore atteso"
+stopifnot(nrow(raggruppa_segnalazioni(variants)) == 2L)
+# Migrazione di un gruppo v2 realmente gia' persistito: ID e dettagli conservati.
+old_group <- filter(grouped, coupon == "A")
+old_group$alert_id <- "OLD-GROUP-ID"
+old_group$created_at <- start
+old_details <- fromJSON(old_group$signal_data_json, simplifyVector = FALSE)
+for (i in seq_along(old_details$sensors)) old_details$sensors[[i]]$text <- NULL
+old_group$signal_data_json <- json_alert(old_details)
+old_group$signal_data_text <- paste0(
+  c("S1 - Porta [G1/Sensor001]: 10 manovre", "S2 - Riparo [G2/Sensor002]: 20 manovre"), collapse = "\n")
+remigrated <- raggruppa_segnalazioni(espandi_segnalazioni_salvate(old_group))
+stopifnot(remigrated$alert_id == "OLD-GROUP-ID",
+          !grepl("Sensor|G1/|G2/", remigrated$signal_data_text),
+          grepl("10 manovre", remigrated$signal_data_text), grepl("20 manovre", remigrated$signal_data_text))
+# Anche il lettore Shiny pulisce i vecchi testi prima del prossimo ETL.
+for (expr in parse("01_Code/05_Plots.R")) {
+  if (is.call(expr) && identical(expr[[1]], as.name("<-")) &&
+      identical(as.character(expr[[2]]), "leggi_alerts_dashboard")) eval(expr)
+}
+testo_manovre <- identity
+legacy_file <- tempfile()
+saveRDS(old_group, legacy_file)
+stopifnot(!grepl("Sensor|G1/|G2/", leggi_alerts_dashboard(legacy_file)$signal_data_text))
+unlink(legacy_file)
+cat("OK: intensificatori, direzioni NOK, migrazione gruppi esistenti e pulizia dashboard.\n")
+
 # Test del job con DB simulato: retry, recupero giorni e rollback del checkpoint.
 # Le query di produzione restano intatte; nessuna connessione esterna.
 state <- new.env()
@@ -95,7 +134,7 @@ connetti_postgres <- function(...) state
 dbDisconnect <- function(...) invisible(TRUE)
 dbGetQuery <- function(con, sql, params = NULL) {
   if (grepl("pg_try_advisory_lock", sql, fixed = TRUE)) return(data.frame(locked = TRUE))
-  if (grepl("FROM public.alert_migrations", sql, fixed = TRUE)) return(tibble(version = if (state$migrated) 2L else integer()))
+  if (grepl("FROM public.alert_migrations", sql, fixed = TRUE)) return(tibble(version = if (state$migrated) 3L else integer()))
   if (grepl("MAX(evaluation_day)", sql, fixed = TRUE)) return(tibble(day = if (length(state$days)) max(state$days) else as.Date(NA)))
   if (grepl("AS signal_data_json", sql, fixed = TRUE)) return(legacy_for_test)
   if (grepl("WHERE alert_type = 'gateway_disconnection'", sql, fixed = TRUE)) return(tibble())
