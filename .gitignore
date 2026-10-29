@@ -12,3 +12,4 @@
 *.env
 01_5SAN/00_Data/OTP SECRET*
 01_5SAN/00_Data/04_Server_Backup/
+/01_5SAN/02_Output/anomaly_checks/
