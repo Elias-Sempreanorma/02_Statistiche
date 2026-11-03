@@ -12,7 +12,7 @@ library(scales)
 library(DT)
 library(dbscan)
 
-# Guida sintetica per gli utilizzatori esterni della versione web.
+# Guida sintetica condivisa dalle versioni interna e web.
 source(here("01_Code", "09_Guida_Online.R"), local = TRUE)
 
 # Modalita' applicativa:
@@ -691,7 +691,7 @@ mappa_sensori <- bind_rows(
 dashboard_ui <- fluidPage(
   
   tags$head(
-    if (IS_WEB_MODE) guida_online_assets(),
+    guida_online_assets(),
     tags$script(HTML("
       function aggiornaLarghezzaModal() {
         setTimeout(function () {
@@ -2714,19 +2714,17 @@ dashboard_ui <- fluidPage(
           language = "it", weekstart = 1
         )
       ),
-      if (IS_WEB_MODE) {
-        column(
-          8,
-          div(
-            class = "san-guide-action",
-            actionButton(
-              "home_guida", "Guida alla dashboard", icon = icon("circle-question"),
-              class = "san-guide-button",
-              title = "Apri la guida alla dashboard"
-            )
+      column(
+        width = if (IS_WEB_MODE) 8 else 2,
+        div(
+          class = "san-guide-action",
+          actionButton(
+            "home_guida", "Guida alla dashboard", icon = icon("circle-question"),
+            class = "san-guide-button",
+            title = "Apri la guida alla dashboard"
           )
         )
-      }
+      )
     )
   ),
   
@@ -2849,9 +2847,9 @@ server <- function(input, output, session) {
     dashboard_ui
   })
   
-  # La guida e' disponibile soltanto dopo l'accesso web autorizzato.
+  # In modalita' web la guida richiede l'accesso autorizzato.
   observeEvent(input$home_guida, {
-    req(IS_WEB_MODE, isTRUE(web_access()$ok))
+    if (IS_WEB_MODE) req(isTRUE(web_access()$ok))
     showModal(guida_online_modal())
   }, ignoreInit = TRUE)
 
