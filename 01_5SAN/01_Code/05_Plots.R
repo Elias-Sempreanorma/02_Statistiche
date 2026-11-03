@@ -1619,11 +1619,11 @@ dashboard_ui <- fluidPage(
       .machine-guide-open { margin-left: auto; border-radius: 12px; color: #234A66; }
       .machine-details-content { position: relative; }
       .machine-details-content > .machine-layout-thumbs {
-        position: absolute; right: 22px; top: 18px; z-index: 2;
-        display: flex; gap: 8px; max-width: 150px; overflow-x: auto; padding: 4px;
+        position: absolute; right: 22px; top: 18px; z-index: 31;
+        display: flex; gap: 8px; max-width: 190px; overflow-x: auto; padding: 4px;
       }
       .machine-details-content:has(> .machine-layout-thumbs) .modal-filters {
-        padding-right: 195px; min-height: 108px;
+        padding-right: 235px; min-height: 128px;
       }
       #machine-guide-dialog {
         width: min(1120px, 94vw); max-width: 94vw; max-height: 90dvh;
@@ -1642,7 +1642,7 @@ dashboard_ui <- fluidPage(
         flex: 0 0 auto; border: 1px solid #CCD6DE; border-radius: 10px;
         background: white; padding: 4px 8px; cursor: zoom-in;
       }
-      .machine-layout-thumb img { width: 108px; height: 54px; object-fit: contain; display: block; }
+      .machine-layout-thumb img { width: 150px; height: 80px; object-fit: contain; display: block; }
       .machine-layout-thumb:focus-visible { outline: 3px solid #EDBE48; outline-offset: 2px; }
       #machine-layout-dialog {
         width: min(1200px, 94vw); max-width: 94vw; max-height: 90vh;
