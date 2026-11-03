@@ -782,6 +782,26 @@ dashboard_ui <- fluidPage(
         }
       });
 
+      // Il dialog nativo resta sopra il modal Shiny senza sostituirlo.
+      $(document).on('click', '.machine-layout-thumb', function () {
+        var dialog = document.getElementById('machine-layout-dialog');
+        if (!dialog) return;
+        dialog.querySelector('img').src = this.querySelector('img').src;
+        dialog.querySelector('img').alt = this.querySelector('img').alt;
+        if (!dialog.open) dialog.showModal();
+      });
+      $(document).on('click', '.machine-layout-close', function () {
+        this.closest('dialog').close();
+      });
+      document.addEventListener('keydown', function (event) {
+        var dialog = document.getElementById('machine-layout-dialog');
+        if (dialog && dialog.open && event.key === 'Escape') {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          dialog.close();
+        }
+      }, true);
+
       // Ripristina il focus al controllo di apertura, anche chiudendo con Esc.
       // Non intercetta gli eventi di Bootstrap o i messaggi reattivi di Shiny.
       if (!window.sanInteractionsBound) {
@@ -1582,6 +1602,31 @@ dashboard_ui <- fluidPage(
         opacity: 1;
         outline: none;
       }
+      .modal-machine-toolbar {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 16px; flex-wrap: wrap; margin-bottom: 20px;
+      }
+      .modal-machine-toolbar > .modal-nav-bar { margin-bottom: 0; }
+      .machine-layout-thumbs {
+        display: flex; gap: 8px; margin-left: auto;
+        max-width: 100%; overflow-x: auto; padding: 4px;
+      }
+      .machine-layout-thumb {
+        flex: 0 0 auto; border: 1px solid #CCD6DE; border-radius: 10px;
+        background: white; padding: 4px 8px; cursor: zoom-in;
+      }
+      .machine-layout-thumb img { width: 108px; height: 54px; object-fit: contain; display: block; }
+      .machine-layout-thumb:focus-visible { outline: 3px solid #EDBE48; outline-offset: 2px; }
+      #machine-layout-dialog {
+        width: min(1200px, 94vw); max-width: 94vw; max-height: 90vh;
+        padding: 16px; border: 1px solid #CCD6DE; border-radius: 16px;
+        box-shadow: 0 20px 70px rgba(0,0,0,.35); overflow: auto;
+      }
+      #machine-layout-dialog::backdrop { background: rgba(18,35,49,.55); }
+      .machine-layout-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+      .machine-layout-heading strong { color: #234A66; font-size: 18px; }
+      .machine-layout-close { border: 1px solid #CCD6DE; border-radius: 8px; background: white; padding: 6px 12px; }
+      #machine-layout-dialog img { display: block; width: 100%; height: auto; }
       .modal-nav-bar {
         margin-bottom: 20px;
         padding-bottom: 14px;
@@ -3050,6 +3095,32 @@ server <- function(input, output, session) {
     mostra_dati_profilo_nok(FALSE)
     mostra_storico_utilizzo_nok(FALSE)
     
+    layout_macchina <- immagini_macchine |>
+      filter(coupon == isolate(macchina_attiva())) |>
+      distinct(file_name)
+    layout_macchina <- layout_macchina[
+      file.exists(file.path(cds_images_dir, layout_macchina$file_name)), , drop = FALSE
+    ]
+    miniature_layout <- if (nrow(layout_macchina) > 0) {
+      div(
+        class = "machine-layout-thumbs",
+        `aria-label` = "Layout macchina",
+        lapply(seq_len(nrow(layout_macchina)), function(i) {
+          nome_file <- layout_macchina$file_name[i]
+          versione <- unname(tools::md5sum(file.path(cds_images_dir, nome_file)))
+          tags$button(
+            type = "button", class = "machine-layout-thumb",
+            title = "Ingrandisci layout", `aria-haspopup` = "dialog",
+            `aria-controls` = "machine-layout-dialog",
+            tags$img(
+              src = paste0("cds-images/", nome_file, "?v=", versione),
+              alt = paste("Layout", riferimento_macchina, i)
+            )
+          )
+        })
+      )
+    }
+
     showModal(modalDialog(
       title = NULL,
       size = "xl",
@@ -3074,23 +3145,37 @@ server <- function(input, output, session) {
       ),
       
       div(
-        class = "modal-nav-bar",
-        radioGroupButtons(
-          "vista_selezionata",
-          label = NULL,
-          choices = c(
-            "Conteggio manovre" = "attivazioni",
-            "Utilizzo storico" = "nok",
-            "Vita componenti"          = "vita",
-            "Allarmi e segnalazioni"   = "allarmi"
-          ),
-          selected = vista_iniziale,
-          status   = "primary",
-          size     = "normal",
-          width    = "auto"
-        )
+        class = "modal-machine-toolbar",
+        div(
+          class = "modal-nav-bar",
+          radioGroupButtons(
+            "vista_selezionata",
+            label = NULL,
+            choices = c(
+              "Conteggio manovre" = "attivazioni",
+              "Utilizzo storico" = "nok",
+              "Vita componenti"          = "vita",
+              "Allarmi e segnalazioni"   = "allarmi"
+            ),
+            selected = vista_iniziale,
+            status   = "primary",
+            size     = "normal",
+            width    = "auto"
+          )
+        ),
+        miniature_layout
       ),
-      
+      if (nrow(layout_macchina) > 0) tags$dialog(
+        id = "machine-layout-dialog",
+        `aria-labelledby` = "machine-layout-title",
+        div(
+          class = "machine-layout-heading",
+          tags$strong("Layout macchina", id = "machine-layout-title"),
+          tags$button(type = "button", class = "machine-layout-close", "Chiudi layout", autofocus = NA)
+        ),
+        tags$img(alt = "Layout macchina")
+      ),
+
       uiOutput("modal_contenuto")
     ))
   }
@@ -8230,6 +8315,7 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+
 
 
 
