@@ -16,13 +16,13 @@ guida_online_assets <- function() {
       .san-guide a:focus-visible, .san-guide-close:focus-visible {
         outline: 3px solid #234A66; outline-offset: 3px;
       }
-      #shiny-modal:has(.san-guide) .modal-dialog {
+      #shiny-modal:has(.san-guide):not(:has(#machine-guide-dialog)) .modal-dialog {
         width: calc(100% - 32px); max-width: 1120px; margin: 24px auto;
       }
-      #shiny-modal:has(.san-guide) .modal-content {
+      #shiny-modal:has(.san-guide):not(:has(#machine-guide-dialog)) .modal-content {
         border-radius: 22px; overflow: hidden; background: #FFFFFF;
       }
-      #shiny-modal:has(.san-guide) .modal-body {
+      #shiny-modal:has(.san-guide):not(:has(#machine-guide-dialog)) .modal-body {
         padding: 0; max-height: none; overflow: hidden;
       }
       .san-guide {
@@ -94,7 +94,7 @@ guida_online_assets <- function() {
       .san-guide-section h3:focus-visible { outline: 2px solid #234A66; outline-offset: 4px; }
       @media (max-width: 700px) {
         .san-guide-action { padding-top: 0; padding-bottom: 10px; }
-        #shiny-modal:has(.san-guide) .modal-dialog { width: calc(100% - 16px); margin: 8px auto; }
+        #shiny-modal:has(.san-guide):not(:has(#machine-guide-dialog)) .modal-dialog { width: calc(100% - 16px); margin: 8px auto; }
         .san-guide { height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); }
         .san-guide-header { padding: 18px; gap: 12px; }
         .san-guide h2.san-guide-title { font-size: 20px; }
@@ -143,9 +143,11 @@ guida_online_assets <- function() {
           });
         }
 
-        $(document).on('shown.bs.modal.sanGuide', '#shiny-modal', function () {
+        $(document).on('shown.bs.modal.sanGuide san:guide-open', '#shiny-modal', function () {
           var guide = this.querySelector('.san-guide');
           if (!guide) return;
+          var dialog = guide.closest('dialog');
+          if (dialog && !dialog.open) return;
           var content = guide.querySelector('.san-guide-content');
           if (!content.sanGuideScrollBound) {
             content.sanGuideScrollBound = true;
@@ -182,10 +184,8 @@ guida_online_assets <- function() {
   )
 }
 
-guida_online_modal <- function() {
-  modalDialog(
-    title = NULL, size = "xl", easyClose = TRUE, fade = TRUE, footer = NULL,
-    div(
+guida_online_modal <- function(nested = FALSE) {
+  contenuto <- div(
       class = "san-guide",
       div(
         class = "san-guide-header",
@@ -194,7 +194,8 @@ guida_online_modal <- function() {
           p("Come consultare i dati della macchina e interpretare le informazioni mostrate")
         ),
         tags$button(
-          type = "button", class = "san-guide-close", `data-dismiss` = "modal",
+          type = "button", class = if (nested) "san-guide-close machine-guide-close" else "san-guide-close",
+          `data-dismiss` = if (!nested) "modal" else NULL,
           `aria-label` = "Chiudi la guida", title = "Chiudi la guida (Esc)", HTML("&times;")
         )
       ),
@@ -329,5 +330,12 @@ guida_online_modal <- function() {
         )
       )
     )
-  )
+  if (nested) {
+    tags$dialog(id = "machine-guide-dialog", `aria-label` = "Guida alla dashboard", contenuto)
+  } else {
+    modalDialog(
+      title = NULL, size = "xl", easyClose = TRUE, fade = TRUE, footer = NULL,
+      contenuto
+    )
+  }
 }

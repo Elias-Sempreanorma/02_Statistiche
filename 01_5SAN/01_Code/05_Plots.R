@@ -790,11 +790,20 @@ dashboard_ui <- fluidPage(
         dialog.querySelector('img').alt = this.querySelector('img').alt;
         if (!dialog.open) dialog.showModal();
       });
+      $(document).on('click', '.machine-guide-open', function () {
+        var dialog = document.getElementById('machine-guide-dialog');
+        if (!dialog) return;
+        if (!dialog.open) dialog.showModal();
+        $('#shiny-modal').trigger('san:guide-open');
+      });
+      $(document).on('click', '.machine-guide-close', function () {
+        this.closest('dialog').close();
+      });
       $(document).on('click', '.machine-layout-close', function () {
         this.closest('dialog').close();
       });
       document.addEventListener('keydown', function (event) {
-        var dialog = document.getElementById('machine-layout-dialog');
+        var dialog = document.querySelector('#machine-layout-dialog[open], #machine-guide-dialog[open]');
         if (dialog && dialog.open && event.key === 'Escape') {
           event.preventDefault();
           event.stopImmediatePropagation();
@@ -1607,9 +1616,27 @@ dashboard_ui <- fluidPage(
         gap: 16px; flex-wrap: wrap; margin-bottom: 20px;
       }
       .modal-machine-toolbar > .modal-nav-bar { margin-bottom: 0; }
-      .machine-layout-thumbs {
-        display: flex; gap: 8px; margin-left: auto;
-        max-width: 100%; overflow-x: auto; padding: 4px;
+      .machine-guide-open { margin-left: auto; border-radius: 12px; color: #234A66; }
+      .machine-details-content { position: relative; }
+      .machine-details-content > .machine-layout-thumbs {
+        position: absolute; right: 22px; top: 18px; z-index: 2;
+        display: flex; gap: 8px; max-width: 150px; overflow-x: auto; padding: 4px;
+      }
+      .machine-details-content:has(> .machine-layout-thumbs) .modal-filters {
+        padding-right: 195px; min-height: 108px;
+      }
+      #machine-guide-dialog {
+        width: min(1120px, 94vw); max-width: 94vw; max-height: 90dvh;
+        padding: 0; border: 0; border-radius: 22px; overflow: hidden;
+        box-shadow: 0 20px 70px rgba(0,0,0,.35);
+      }
+      #machine-guide-dialog::backdrop { background: rgba(18,35,49,.55); }
+      #machine-guide-dialog .san-guide { max-height: 88dvh; }
+      @media (max-width: 700px) {
+        .machine-details-content > .machine-layout-thumbs {
+          position: static; max-width: 100%; justify-content: flex-end; margin-bottom: 10px;
+        }
+        .machine-details-content:has(> .machine-layout-thumbs) .modal-filters { padding-right: 12px; }
       }
       .machine-layout-thumb {
         flex: 0 0 auto; border: 1px solid #CCD6DE; border-radius: 10px;
@@ -3163,8 +3190,13 @@ server <- function(input, output, session) {
             width    = "auto"
           )
         ),
-        miniature_layout
+        tags$button(
+          type = "button", class = "machine-guide-open btn btn-default",
+          `aria-haspopup` = "dialog", `aria-controls` = "machine-guide-dialog",
+          icon("circle-question"), " Guida alla dashboard"
+        )
       ),
+      guida_online_modal(nested = TRUE),
       if (nrow(layout_macchina) > 0) tags$dialog(
         id = "machine-layout-dialog",
         `aria-labelledby` = "machine-layout-title",
@@ -3176,7 +3208,11 @@ server <- function(input, output, session) {
         tags$img(alt = "Layout macchina")
       ),
 
-      uiOutput("modal_contenuto")
+      div(
+        class = "machine-details-content",
+        miniature_layout,
+        uiOutput("modal_contenuto")
+      )
     ))
   }
   
