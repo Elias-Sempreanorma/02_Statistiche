@@ -182,7 +182,7 @@ calcola_segnalazioni_giorno <- function(evaluation_day, incrementi, dati_raw) {
   attr(sensor_count_increment, "giornalieri_nok") <- giornalieri
   # ---------------------------------------------------------------------------
   # Una sola regola di maturita' per tutti gli alert.
-  # Il valore 30 NON viene salvato nel DB: e' una regola applicativa.
+  # Il valore 7 NON viene salvato nel DB: e' una regola applicativa.
   # ---------------------------------------------------------------------------
   sensori_allarmabili <- calcola_sensori_allarmabili(sensor_count_increment)
 
