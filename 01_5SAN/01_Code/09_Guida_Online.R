@@ -301,7 +301,7 @@ guida_online_modal <- function(nested = FALSE) {
   </table>
   <p><strong>Una riga può coinvolgere più componenti.</strong> I casi dello stesso tipo, nello stesso intervallo e con lo stesso comportamento possono essere riuniti. Il dettaglio permette di riconoscere i singoli componenti.</p>
   <p><strong>L’ID identifica la segnalazione.</strong> Conserva questo codice, il periodo e i componenti interessati quando chiedi una verifica. Le segnalazioni salvate restano nello storico; cambiare filtro non le ricalcola.</p>
-  <p class="san-guide-note">Le segnalazioni dei componenti richiedono almeno 30 giornate con dati validi; per alcune analisi serve anche un riferimento sufficiente. Le giornate vengono consolidate dopo la loro conclusione: l’elenco può non includere il giorno in corso.</p>
+  <p class="san-guide-note">Le segnalazioni dei componenti richiedono almeno 7 giornate con dati validi; per alcune analisi serve anche un riferimento sufficiente. Le giornate vengono consolidate dopo la loro conclusione: l’elenco può non includere il giorno in corso.</p>
 </section>
 <section id="guida-report" class="san-guide-section" aria-labelledby="guida-report-titolo">
   <h3 id="guida-report-titolo" tabindex="-1">Report e documenti</h3>
