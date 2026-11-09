@@ -1,5 +1,5 @@
-# Almeno 30 giornate distinte con un conteggio valido per componente.
-MIN_GIORNI_ALLARME <- 30L
+# Almeno 7 giornate distinte con un conteggio valido per componente.
+MIN_GIORNI_ALLARME <- 7L
 
 calcola_sensori_allarmabili <- function(dati) {
   dati |>
@@ -23,7 +23,7 @@ calcola_sensori_allarmabili <- function(dati) {
 
 # Parametri della sola classificazione giornaliera; stima eseguita dall'ETL.
 MANOVRE_MODEL_DAYS <- 7L
-MANOVRE_MODEL_VERSION <- 1L
+MANOVRE_MODEL_VERSION <- 2L
 MANOVRE_ALPHA <- .05
 
 stima_modello_manovre <- function(df) {
@@ -34,7 +34,9 @@ stima_modello_manovre <- function(df) {
   if (nrow(df) < MIN_GIORNI_ALLARME) return(NULL)
   df$daily_count <- round(df$daily_count)
   # Verifica temporale: il modello non vede le giornate di verifica.
-  n_train <- nrow(df) - max(10L, floor(nrow(df) / 5))
+  # Con storici brevi riserva almeno 5 giorni alla stima e 2 alla verifica.
+  n_test <- min(max(10L, floor(nrow(df) / 5)), nrow(df) - 5L)
+  n_train <- nrow(df) - n_test
   train <- df[seq_len(n_train), ]
   test <- df[seq.int(n_train + 1L, nrow(df)), ]
   fit <- function(d, family) {
