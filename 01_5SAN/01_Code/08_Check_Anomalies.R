@@ -71,7 +71,7 @@ probabilita_code <- function(y, mu, theta = NULL) {
 
 self_test <- function() {
   dates <- as.POSIXct("2026-01-01 12:00:00", tz = "Europe/Rome") +
-    days(0:29)
+    days(0:6)
   specimen <- tibble(
     coupon = "TEST", gateway_id = "GW", sensor_id = "S1",
     cds_name = "C1", sensor_description = "Test",
@@ -81,8 +81,8 @@ self_test <- function() {
     nrow(calcola_sensori_allarmabili(
       specimen |> mutate(timestamp = dates[[1]])
     )) == 0L,
-    nrow(calcola_sensori_allarmabili(specimen[1:29, ])) == 0L,
-    calcola_sensori_allarmabili(specimen)$n_giorni_conteggio == 30L
+    nrow(calcola_sensori_allarmabili(specimen[1:6, ])) == 0L,
+    calcola_sensori_allarmabili(specimen)$n_giorni_conteggio == 7L
   )
   make_daily <- function(counts, hours = rep(1, length(counts))) {
     tibble(
@@ -104,7 +104,7 @@ self_test <- function() {
   stopifnot(!any(constant_rate$outlier_lof))
   tails <- probabilita_code(c(0, 0), c(1, 10))
   stopifnot(tails$p_basso[[1]] > 0.3, tails$p_basso[[2]] < 0.001)
-  cat("Self-test OK: 30 giorni, mediana zero, zero operativo, ore attive e code.\n")
+  cat("Self-test OK: 7 giorni, mediana zero, zero operativo, ore attive e code.\n")
 }
 if ("--self-test" %in% args) {
   self_test()
