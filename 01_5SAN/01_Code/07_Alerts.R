@@ -373,7 +373,7 @@ calcola_segnalazioni_giorno <- function(evaluation_day, incrementi, dati_raw) {
           "Utilizzo settimanale superiore al riferimento storico",
           "Utilizzo settimanale inferiore al riferimento storico"),
         signal_data_text = paste0("Utilizzo: ", round(utilization, 3),
-          ". Intervallo storico P5-P95: ", round(lower_limit, 3), "–", round(upper_limit, 3),
+          ". Intervallo storico abituale: ", round(lower_limit, 3), "–", round(upper_limit, 3),
           ". Settimane precedenti confrontabili: ", reference_weeks, ".")) |>
       rowwise() |> mutate(signal_data_json = json_alert(list(
         utilization = utilization, lower_limit_05 = lower_limit, upper_limit_95 = upper_limit,
@@ -1042,5 +1042,6 @@ message(
 }
 
 aggiorna_segnalazioni()
+
 
 

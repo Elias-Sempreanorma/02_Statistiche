@@ -33,10 +33,13 @@ y <- mutate(x, sensor_id = "OTHER", increment = c(0, 10), gateway_disconnect_aff
 r <- redistribuisci_manovre_grafico(bind_rows(x, y), flags(x))
 stopifnot(abs(sum(r$attivazioni_orarie) - 34) < 1e-9,
   r$attivazioni_orarie[r$hour == floor_date(x$timestamp[2], "hour")] == 14)
-# Estremo esatto: nessuna quota viene aggiunta all'ora successiva.
+# Estremo esatto: origine evidenziata anche se resta a zero.
 y <- make("2026-11-01 22:00:00", "2026-11-02 01:00:00")
 r <- redistribuisci_manovre_grafico(y, flags(y))
-stopifnot(sum(r$attivazioni_orarie) == 24, max(r$hour) < y$timestamp[2])
+stopifnot(sum(r$attivazioni_orarie) == 24,
+  all(r$redistribuite),
+  r$attivazioni_orarie[r$hour == y$timestamp[2]] == 0,
+  r$redistribuite[r$hour == y$timestamp[2]])
 # Ora legale: conserva il totale e distingue le due ore locali ripetute.
 y <- make("2026-10-25 00:30:00", "2026-10-25 04:30:00")
 r <- redistribuisci_manovre_grafico(y, flags(y))
@@ -61,3 +64,13 @@ stopifnot(nrow(visible) == 2, !any(visible$alert_type == "gateway_disconnection"
   identical(readRDS(path), alerts))
 unlink(path)
 cat("OK: totali, mezzanotte, ora legale, anomalie, isolamento sensori, input immutati e filtro dashboard.\n")
+
+# Palette temporale: estremi alternati dell'intera palette.
+SAN_BLUE <- "#234A66"; SAN_BLUE_2 <- "#5F748C"; SAN_YELLOW <- "#EBBD55"
+for (expr in exprs) {
+  if (is.call(expr) && identical(expr[[1]], as.name("<-")) &&
+      as.character(expr[[2]]) %in% c("palette_sensori_brand", "palette_sensori_alternata")) eval(expr)
+}
+p <- palette_sensori_brand(8)
+stopifnot(identical(palette_sensori_alternata(8), p[c(1,8,2,7,3,6,4,5)]),
+  identical(palette_sensori_alternata(2), p[c(1,8)]))

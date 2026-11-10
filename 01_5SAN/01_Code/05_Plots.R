@@ -204,6 +204,8 @@ raw_life_data <- readRDS(here("02_Output", "raw_data.rds")) |>
 
 # Uniforma anche i testi degli alert gia' salvati, senza attendere il prossimo ETL.
 testo_manovre <- function(x) {
+  # Uniforma anche i testi storici gia' persistiti, senza riscrivere il DB.
+  x <- gsub("[[:space:]]*P5[[:space:]]*[-–][[:space:]]*P95", "", x)
   stringr::str_replace_all(x, c(
     "\\bAttivazioni\\b" = "Manovre",
     "\\battivazioni\\b" = "manovre",
@@ -349,6 +351,21 @@ palette_sensori_brand <- function(n) {
   } else {
     grDevices::colorRampPalette(base)(n)
   }
+}
+
+# Colori alternati dagli estremi: primo, ultimo, secondo, penultimo, ...
+palette_sensori_alternata <- function(n) {
+  palette <- palette_sensori_brand(max(8L, n))
+  m <- length(palette)
+  ordine <- unique(as.vector(rbind(seq_len(ceiling(m / 2)),
+    m - seq_len(ceiling(m / 2)) + 1L)))
+  palette[ordine][seq_len(n)]
+}
+
+legenda_redistribuzione <- function() {
+  scale_alpha_manual(name = NULL,
+    values = c("Interruzione: origine e redistribuzione delle manovre" = 0.18),
+    guide = guide_legend(override.aes = list(fill = "#EBBD55", colour = NA, alpha = 0.3)))
 }
 
 # ---------------------------------------------------------------------------
@@ -505,7 +522,12 @@ redistribuisci_manovre_grafico <- function(dati, orari) {
       attivazioni_orarie = ev$increment * peso,
       redistribuite = TRUE, gateway_disconnect_affected = TRUE)
   }) |> bind_rows()
-  bind_rows(normali, quote) |>
+  # Mantiene evidenziata anche l'ora di origine, persino quando la quota
+  # rimasta dopo la redistribuzione e' zero (es. arrivo su un'ora esatta).
+  origini <- eventi |> transmute(coupon, cds_name, sensor_description,
+    hour = floor_date(with_tz(timestamp, "Europe/Rome"), "hour"),
+    attivazioni_orarie = 0, redistribuite = TRUE, gateway_disconnect_affected = TRUE)
+  bind_rows(normali, quote, origini) |>
     mutate(day = as.Date(hour, tz = "Europe/Rome")) |>
     group_by(coupon, day, hour, cds_name, sensor_description) |>
     summarise(attivazioni_orarie = if (any(is.finite(attivazioni_orarie)))
@@ -3592,7 +3614,7 @@ server <- function(input, output, session) {
           class = "alarm-section",
           h4("Utilizzo della macchina", class = "titolo-sezione"),
           p(
-            "Settimane concluse con utilizzo complessivo fuori dall’intervallo storico P5–P95."
+            "Settimane concluse con utilizzo complessivo fuori dall’intervallo storico abituale."
           ),
           uiOutput("modal_allarmi_nok_panel")
         ),
@@ -4727,7 +4749,7 @@ server <- function(input, output, session) {
           div("Settimane con utilizzo insolito", class = "report-kpi-label"),
           div(nrow(r$utilizzo_anomalo), class = "report-kpi-value"),
           div(
-            "Segnalazioni macchina P5–P95",
+            "Segnalazioni di utilizzo",
             class = "report-kpi-note"
           )
         )
@@ -5011,7 +5033,7 @@ server <- function(input, output, session) {
         0.865,
         "SETTIMANE CON USO INSOLITO",
         as.character(nrow(r$utilizzo_anomalo)),
-        "Segnalazioni macchina P5–P95",
+        "Segnalazioni di utilizzo",
         if (nrow(r$utilizzo_anomalo) > 0) "bad" else "good"
       )
       
@@ -5863,7 +5885,7 @@ server <- function(input, output, session) {
       return(
         div(
           class = "alarm-empty",
-          "Nessuna settimana con utilizzo macchina fuori P5–P95. Il confronto richiede almeno 7 settimane precedenti confrontabili."
+          "Nessuna settimana con utilizzo fuori dall’intervallo storico abituale. Il confronto richiede almeno 7 settimane precedenti confrontabili."
         )
       )
     }
@@ -6392,11 +6414,12 @@ server <- function(input, output, session) {
       aes(x = etichetta, y = attivazioni, fill = etichetta_completa)
     ) +
       geom_rect(
-        data = grafico |> filter(redistribuite),
-        aes(xmin = as.numeric(etichetta) - 0.5,
-            xmax = as.numeric(etichetta) + 0.5, ymin = -Inf, ymax = Inf),
-        inherit.aes = FALSE, fill = "#EBBD55", alpha = 0.18
+        data = grafico |> filter(redistribuite) |> distinct(periodo_label),
+        aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf,
+          alpha = "Interruzione: origine e redistribuzione delle manovre"),
+        inherit.aes = FALSE, fill = "#EBBD55", show.legend = TRUE
       ) +
+      legenda_redistribuzione() +
       geom_col_interactive(
         aes(
           tooltip = paste0(
@@ -6445,7 +6468,7 @@ server <- function(input, output, session) {
       tema_san(base_size = 13) +
       theme(
         panel.grid.major.x = element_blank(),
-        panel.spacing.x = grid::unit(10, "pt"),
+        panel.spacing.x = grid::unit(0, "pt"),
         strip.placement = "outside",
         strip.background = element_blank(),
         axis.text.x = element_text(size = 13, angle = 90),
@@ -6470,7 +6493,7 @@ server <- function(input, output, session) {
     )
     
     n_sensori <- dplyr::n_distinct(grafico$etichetta_completa)
-    palette_sensori <- palette_sensori_brand(n_sensori)
+    palette_sensori <- palette_sensori_alternata(n_sensori)
     
     tooltip_punti <- paste0(
       "<b>", grafico$etichetta_completa, "</b><br/>",
@@ -6494,9 +6517,18 @@ server <- function(input, output, session) {
           if (identical(granularita, "Mese")) periodo %m+% months(1) - 0.5 else
           if (identical(granularita, "Trimestre")) periodo %m+% months(3) - 0.5 else
           if (identical(granularita, "Anno")) periodo %m+% years(1) - 0.5 else periodo + 0.5)
+    # Unisce intervalli adiacenti: un solo sfondo per ciascuna interruzione.
+    if (nrow(sfondo) > 1L) {
+      sfondo <- sfondo |> arrange(xmin)
+      sfondo$.gruppo <- cumsum(c(TRUE,
+        as.numeric(sfondo$xmin[-1]) > head(cummax(as.numeric(sfondo$xmax)), -1)))
+      sfondo <- sfondo |> group_by(.gruppo) |>
+        summarise(xmin = min(xmin), xmax = max(xmax), .groups = "drop")
+    }
     sfondo_layer <- geom_rect(data = sfondo,
-      aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf),
-      inherit.aes = FALSE, fill = "#EBBD55", alpha = 0.18)
+      aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf,
+        alpha = "Interruzione: origine e redistribuzione delle manovre"),
+      inherit.aes = FALSE, fill = "#EBBD55", show.legend = TRUE)
 
     if (identical(granularita, "Ora")) {
       return(
@@ -6519,6 +6551,7 @@ server <- function(input, output, session) {
           )
         ) +
           sfondo_layer +
+          legenda_redistribuzione() +
           geom_line(linewidth = 0.8) +
           geom_point_interactive(
             aes(
@@ -6593,6 +6626,7 @@ server <- function(input, output, session) {
     
     ggplot() +
       sfondo_layer +
+      legenda_redistribuzione() +
       geom_line(
         data = spline_att,
         aes(
@@ -7271,7 +7305,7 @@ server <- function(input, output, session) {
       ),
       div(
         paste0(
-          "Intervallo normale P5–P95 ",
+          "Intervallo normale ",
           if (
             identical(granularita, "Mese")
           ) "mensile" else "settimanale",
@@ -7345,7 +7379,7 @@ server <- function(input, output, session) {
           etichetta_periodo,
           "<br/>",
           "Utilizzo componenti di sicurezza: ", round(U_macchina, 3),
-          "<br/>Intervallo normale P5–P95: ", round(limite_inf, 3), "–", round(limite_sup, 3)
+          "<br/>Intervallo normale: ", round(limite_inf, 3), "–", round(limite_sup, 3)
         )
       )
     
@@ -8019,6 +8053,7 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+
 
 
 

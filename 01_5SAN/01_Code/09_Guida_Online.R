@@ -241,7 +241,7 @@ guida_online_modal <- function(nested = FALSE) {
   <p class="san-guide-example"><strong>Esempio.</strong> Tre giorni con 8, 10 e 12 manovre danno una media di <strong>10 manovre al giorno</strong>. Nel raggruppamento settimanale il grafico mostra 10, non il totale di 30.</p>
   <p>Il dettaglio al passaggio del puntatore riporta anche le ore macchina: per intervalli maggiori del giorno si tratta di ore medie giornaliere. Se noti un picco, passa a Giorno o Ora e seleziona il componente interessato.</p>
   <p class="san-guide-note">Una manovra non corrisponde necessariamente a un pezzo prodotto. I giorni senza dati non sono automaticamente giorni con zero manovre.</p>
-  <p class="san-guide-note">Gli accumuli alla ripresa di una connessione, se già classificati come anomalie orarie, sono redistribuiti uniformemente soltanto nei grafici. Lo sfondo giallo identifica i periodi interessati; il dettaglio al passaggio del puntatore identifica l’accumulo orario anomalo. Il grafico mostra una distribuzione temporale stimata; le medie e gli indicatori continuano a usare le misure originali e le esclusioni previste per le anomalie. La distribuzione temporale è stimata e non modifica i dati originali né gli indicatori.</p>
+  <p class="san-guide-note">Gli accumuli alla ripresa di una connessione, se già classificati come anomalie orarie, sono redistribuiti uniformemente soltanto nei grafici. Un unico sfondo giallo, descritto nella legenda, comprende sia le barre ricostruite sia quella da cui è stato tolto l’accumulo, anche se il valore rimasto è zero; il dettaglio al passaggio del puntatore identifica l’accumulo orario anomalo. Il grafico mostra una distribuzione temporale stimata; le medie e gli indicatori continuano a usare le misure originali e le esclusioni previste per le anomalie. La distribuzione temporale è stimata e non modifica i dati originali né gli indicatori.</p>
 </section>
 <section id="guida-utilizzo" class="san-guide-section" aria-labelledby="guida-utilizzo-titolo">
   <h3 id="guida-utilizzo-titolo" tabindex="-1">Utilizzo storico</h3>
@@ -340,5 +340,6 @@ guida_online_modal <- function(nested = FALSE) {
     )
   }
 }
+
 
 
