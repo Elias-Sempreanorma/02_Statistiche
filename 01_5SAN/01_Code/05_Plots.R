@@ -3425,7 +3425,7 @@ server <- function(input, output, session) {
             "margin-top:10px;"
           ),
           h4(
-            "Profilo utilizzo macchina",
+            "Profilo utilizzo componenti di sicurezza",
             class = "titolo-sezione",
             style = "margin:0;"
           ),
@@ -3453,7 +3453,7 @@ server <- function(input, output, session) {
               "flex-wrap:wrap;"
             ),
             div(
-              "Utilizzo nel periodo",
+              "Utilizzo componenti di sicurezza nel periodo",
               style = paste0(
                 "font-size:16px;",
                 "font-weight:700;",
@@ -3487,8 +3487,8 @@ server <- function(input, output, session) {
           )
         ),
         uiOutput("modal_panel_dati_profilo_nok"),
-        h4("Utilizzo rispetto allo storico nel tempo", class = "titolo-sezione"),
-        p("Il valore 1 indica un numero di manovre per ora in linea con il passato. Il valore 2 indica il doppio; 0,5 indica la metà.", class = "help-block"),
+        h4("NOK", class = "titolo-sezione"),
+        p("Rapporto tra il numero di manovre medie nel periodo e quello storico. Le medie sono rapportate alle ore di attività giornaliere. Il valore 1 indica un numero di manovre per ora in linea con il passato. Il valore 2 indica il doppio; 0,5 indica la metà.", class = "help-block"),
         radioButtons(
           "modal_granularita_nok",
           "Raggruppamento:",
@@ -5519,7 +5519,7 @@ server <- function(input, output, session) {
           descrizione,
           "; manovre giornaliere medie: ", attivazioni_medie,
           "; ", etichetta_ore_aperte, ": ", ore_aperte,
-          "; Utilizzo rispetto allo storico: ", nok_periodo
+          "; NOK: ", nok_periodo
         ),
         style = paste0(
           sprintf(
@@ -5548,7 +5548,7 @@ server <- function(input, output, session) {
           tags$span(descrizione, class = "sensor-tooltip-title"),
           tags$div("Manovre giornaliere medie: ", tags$strong(attivazioni_medie)),
           tags$div(etichetta_ore_aperte, ": ", tags$strong(paste0(ore_aperte, " h"))),
-          tags$div("Utilizzo rispetto allo storico: ", tags$strong(nok_periodo))
+          tags$div("NOK: ", tags$strong(nok_periodo))
         )
       )
     })
@@ -7495,7 +7495,7 @@ server <- function(input, output, session) {
         )
       ),
       div(
-        "Riassume quanto e con quale regolarità sono stati usati i componenti rispetto al passato. Un valore alto può indicare un utilizzo più intenso o meno regolare; un valore basso indica un utilizzo meno intenso o più regolare.",
+        "Riassume quanto e con quale regolarità sono stati usati i componenti di sicurezza rispetto al passato. Un valore alto può indicare un utilizzo più intenso o meno regolare; un valore basso indica un utilizzo meno intenso o più regolare.",
         style = "margin-top:7px;font-size:13px;color:#5F6F7F;"
       ),
       div(
@@ -7677,7 +7677,7 @@ server <- function(input, output, session) {
       ) +
       labs(
         x = NULL,
-        y = "Utilizzo macchina"
+        y = "Utilizzo componenti di sicurezza"
       ) +
       tema_san(base_size = 12) +
       theme(
@@ -7784,7 +7784,7 @@ server <- function(input, output, session) {
       ) +
       labs(
         x = NULL,
-        y = "Utilizzo medio / storico"
+        y = "NOK"
       ) +
       tema_san(base_size = 13) +
       theme(
@@ -7861,7 +7861,7 @@ server <- function(input, output, session) {
           tooltip = paste0(
             "<b>", etichetta_sensore, "</b><br/>",
             "Periodo: ", periodo_label, "<br/>",
-            "Utilizzo rispetto allo storico: ", round(NOK, 3)
+            "NOK: ", round(NOK, 3)
           ),
           data_id = paste(
             confronto,
@@ -7941,7 +7941,7 @@ server <- function(input, output, session) {
       ) +
       labs(
         x = NULL,
-        y = "Utilizzo / storico"
+        y = "NOK"
       ) +
       tema_san(base_size = 13) +
       theme(
@@ -8109,7 +8109,7 @@ server <- function(input, output, session) {
           tooltip = paste0(
             "<b>", etichetta_sensore, "</b><br/>",
             "Periodo: ", periodo_label, "<br/>",
-            "Utilizzo rispetto allo storico: ", round(NOK_periodo, 3)
+            "NOK: ", round(NOK_periodo, 3)
           ),
           data_id = paste(etichetta_sensore, periodo_label, sep = "__")
         ),
@@ -8130,7 +8130,7 @@ server <- function(input, output, session) {
         expand = expansion(mult = c(0.02, 0.04))
       ) +
       scale_color_manual(values = palette_sensori, name = "Componente") +
-      labs(x = NULL, y = "Utilizzo / storico") +
+      labs(x = NULL, y = "NOK") +
       tema_san(base_size = 13) +
       theme(
         panel.grid.minor = element_blank(),
@@ -8261,6 +8261,7 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+
 
 
 
