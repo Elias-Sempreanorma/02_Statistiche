@@ -1015,6 +1015,10 @@ alerts_dashboard <- dbGetQuery(
     functional_unit,
     signal_description,
     signal_data_text,
+    (signal_data->>'utilization')::double precision AS utilization_value,
+    (signal_data->>'lower_limit_05')::double precision AS utilization_lower,
+    (signal_data->>'upper_limit_95')::double precision AS utilization_upper,
+    (signal_data->>'reference_weeks')::integer AS utilization_references,
     source
   FROM public.alerts
   ORDER BY generated_at, alert_id
@@ -1038,4 +1042,5 @@ message(
 }
 
 aggiorna_segnalazioni()
+
 

@@ -259,7 +259,7 @@ guida_online_modal <- function(nested = FALSE) {
   <p>Il grafico nel tempo aiuta a capire <strong>quando è cambiato il ritmo</strong>. Un valore maggiore di 1 non indica automaticamente un problema: conta anche quanto il comportamento varia abitualmente.</p>
   <h4>Profilo utilizzo componenti di sicurezza</h4>
   <p>Il profilo mostra il livello medio di ciascun componente di sicurezza e quanto varia tra le giornate. Il riquadro <strong>Utilizzo componenti di sicurezza nel periodo</strong> riassume quanto e con quale regolarità sono stati usati i componenti di sicurezza rispetto al passato. Anche questo confronto parte da medie rapportate alle ore di attività giornaliere.</p>
-  <p>Le tessere <strong>Basso, Normale ed Elevato</strong> confrontano l’indice con il comportamento storico dei componenti di sicurezza monitorati. Puoi scegliere Settimana o Mese e aprire <strong>Storico utilizzo</strong> per seguirne l’evoluzione. Sono giudizi relativi al passato, non limiti di sicurezza.</p>
+  <p>Le tessere <strong>Basso, Normale ed Elevato</strong> confrontano l’indice con il comportamento storico dei componenti di sicurezza monitorati. Puoi scegliere Settimana o Mese e aprire <strong>Storico utilizzo</strong> per seguirne l’evoluzione. Grafici e segnalazioni usano lo stesso intervallo abituale, gli stessi componenti di sicurezza e soltanto periodi precedenti confrontabili. Le settimane sono sempre da lunedì a domenica: selezionarne una parte non cambia il periodo valutato. Le settimane e i mesi ancora aperti sono indicati come <strong>In corso</strong>, senza un giudizio di anomalia. Con uno storico insufficiente compare N/D. Sono giudizi relativi al passato, non limiti di sicurezza.</p>
   <p class="san-guide-note">Il NOK e l’indice non sono percentuali di produzione o di vita residua. Controlla le date riportate: lo storico precedente nei grafici può coprire un intervallo più lungo del periodo scelto.</p>
 </section>
 <section id="guida-disponibilita" class="san-guide-section" aria-labelledby="guida-disponibilita-titolo">
@@ -313,7 +313,7 @@ guida_online_modal <- function(nested = FALSE) {
   </ol>
   <p>Il rapporto riepiloga manovre medie giornaliere, NOK, utilizzo dei componenti di sicurezza e situazioni insolite. Le medie usate per NOK e utilizzo tengono conto delle ore di attività giornaliere; i conteggi delle manovre restano invece espressi come totali o medie giornaliere, secondo il raggruppamento scelto. Le variazioni fra parentesi confrontano il periodo con quello immediatamente precedente della stessa durata.</p>
   <p><strong>Controlla le date.</strong> Nei report le fasce settimanali sono 1–7, 8–14, 15–21 e 22–fine mese. L’ultima può durare più di sette giorni. Se il filtro taglia una fascia, il rapporto considera il tratto selezionato.</p>
-  <p>Il rapporto descrive l’intero periodo con i dati disponibili; l’elenco delle segnalazioni conserva invece i singoli eventi consolidati. <strong>I risultati e il numero di casi possono quindi differire.</strong></p>
+  <p>Il rapporto descrive il periodo scelto; le segnalazioni di utilizzo riguardano settimane concluse da lunedì a domenica. Un intervallo parziale non riceve un nuovo giudizio di anomalia. Per la stessa settimana, grafici e segnalazioni riportano gli stessi limiti e lo stesso esito.</p>
   <p class="san-guide-note">Quando presenti, i documenti scaricabili nella sezione Documenti accompagnano la verifica delle segnalazioni.</p>
 </section>
 <section id="guida-dubbi" class="san-guide-section" aria-labelledby="guida-dubbi-titolo">

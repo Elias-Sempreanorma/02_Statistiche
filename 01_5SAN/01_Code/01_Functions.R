@@ -560,10 +560,9 @@ prepara_manovre_orarie <- function(dati) {
 # Utilizzo: RMS per componente e media macchina. Solo settimane complete;
 # stesso insieme di componenti e stesso NMN per candidato e riferimenti.
 MIN_SETTIMANE_UTILIZZO <- 7L
-valuta_utilizzo_settimanale <- function(giornalieri, evaluation_day) {
-  end <- as.Date(evaluation_day)
-  if (lubridate::wday(end, week_start = 1) != 7L) return(tibble::tibble())
-  start <- end - 6L
+valuta_utilizzo_periodo <- function(giornalieri, start, end, granularita = "Settimana") {
+  start <- as.Date(start)
+  end <- as.Date(end)
   ids <- c("coupon", "gateway_id", "sensor_id", "cds_name", "sensor_description")
   base <- giornalieri |> dplyr::filter(day <= end, is.finite(daily_value))
   if (!nrow(base)) return(tibble::tibble())
@@ -575,7 +574,8 @@ valuta_utilizzo_settimanale <- function(giornalieri, evaluation_day) {
         dplyr::summarise(NMN = mean(daily_value), n_days = dplyr::n_distinct(day), .groups = "drop") |>
         dplyr::filter(n_days >= MIN_GIORNI_ALLARME, is.finite(NMN), NMN > 0)
       y <- x |> dplyr::inner_join(nmn, by = setdiff(ids, "coupon")) |>
-        dplyr::mutate(week = as.Date(lubridate::floor_date(day, "week", week_start = 1)),
+        dplyr::mutate(week = as.Date(lubridate::floor_date(day,
+          if (identical(granularita, "Mese")) "month" else "week", week_start = 1)),
           NOK = daily_value / NMN)
       per_sensor <- y |> dplyr::group_by(week, gateway_id, sensor_id, cds_name, sensor_description) |>
         dplyr::summarise(n_days = dplyr::n_distinct(day),
@@ -590,8 +590,15 @@ valuta_utilizzo_settimanale <- function(giornalieri, evaluation_day) {
         dplyr::filter(n == nrow(roster), valid)
       history <- weeks |> dplyr::filter(week < start)
       current <- weeks |> dplyr::filter(week == start)
-      if (nrow(history) < MIN_SETTIMANE_UTILIZZO || !nrow(current)) return(tibble::tibble())
-      limits <- stats::quantile(history$U, c(.05, .95), names = FALSE)
+      if (!nrow(current)) return(tibble::tibble())
+      calendar_start <- as.Date(lubridate::floor_date(start,
+        if (identical(granularita, "Mese")) "month" else "week", week_start = 1))
+      calendar_end <- if (identical(granularita, "Mese"))
+        as.Date(lubridate::ceiling_date(calendar_start, "month") - lubridate::days(1)) else calendar_start + 6L
+      complete <- start == calendar_start && end == calendar_end &&
+        end < as.Date(Sys.time(), tz = "Europe/Rome")
+      limits <- if (nrow(history) >= MIN_SETTIMANE_UTILIZZO && complete)
+        stats::quantile(history$U, c(.05, .95), names = FALSE) else c(NA_real_, NA_real_)
       tibble::tibble(week_start = start, week_end = end, utilization = current$U[[1]],
         lower_limit = limits[1], upper_limit = limits[2], reference_weeks = nrow(history),
         anomalous = current$U[[1]] < limits[1] || current$U[[1]] > limits[2],
@@ -599,4 +606,12 @@ valuta_utilizzo_settimanale <- function(giornalieri, evaluation_day) {
         sensor_ids = paste(sort(unique(roster$sensor_id)), collapse = "; "),
         gateway_ids = paste(sort(unique(roster$gateway_id)), collapse = "; "))
     }) |> dplyr::ungroup()
+}
+
+
+# L'ETL e la dashboard chiamano lo stesso valutatore e gli stessi confini.
+valuta_utilizzo_settimanale <- function(giornalieri, evaluation_day) {
+  end <- as.Date(evaluation_day)
+  if (lubridate::wday(end, week_start = 1) != 7L) return(tibble::tibble())
+  valuta_utilizzo_periodo(giornalieri, end - 6L, end, "Settimana")
 }

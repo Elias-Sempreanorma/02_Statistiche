@@ -246,7 +246,11 @@ tabella_segnalazioni <- function(dati, ordine, righe = 15) {
 alerts_path <- here("02_Output", "alerts.rds")
 leggi_alerts_dashboard <- function(path = alerts_path) {
   if (file.exists(path)) {
-    readRDS(path) |>
+    saved <- readRDS(path)
+    for (column in c("utilization_value", "utilization_lower", "utilization_upper", "utilization_references")) {
+      if (!column %in% names(saved)) saved[[column]] <- NA_real_
+    }
+    saved |>
       filter(!alert_type %in% c("gateway_disconnection", "nok_daily")) |>
       mutate(
         period_start = with_tz(period_start, "Europe/Rome"),
@@ -4132,20 +4136,30 @@ server <- function(input, output, session) {
     )
     valori_u_storici <- valori_u_storici[is.finite(valori_u_storici)]
     
-    p10_u <- if (length(valori_u_storici) > 0) {
-      as.numeric(stats::quantile(valori_u_storici, 0.10, names = FALSE, na.rm = TRUE))
-    } else NA_real_
-    p90_u <- if (length(valori_u_storici) > 0) {
-      as.numeric(stats::quantile(valori_u_storici, 0.90, names = FALSE, na.rm = TRUE))
-    } else NA_real_
-    
+    shared_assessment <- valuta_utilizzo_periodo(
+      prepara_valori_giornalieri_nok_data(dati, macchina), inizio, fine,
+      if (durata > 7L) "Mese" else "Settimana")
+    p10_u <- p90_u <- NA_real_
+    if (nrow(shared_assessment)) {
+      utilizzo_corrente <- shared_assessment$utilization[1]
+      p10_u <- shared_assessment$lower_limit[1]
+      p90_u <- shared_assessment$upper_limit[1]
+    }
+    snapshot <- leggi_alerts_dashboard() |> filter(coupon == macchina,
+      alert_type == "utilization_weekly",
+      as.Date(period_start, tz = "Europe/Rome") == inizio,
+      as.Date(period_end, tz = "Europe/Rome") == fine)
+    if (nrow(snapshot) && is.finite(snapshot$utilization_value[1])) {
+      utilizzo_corrente <- snapshot$utilization_value[1]
+      p10_u <- snapshot$utilization_lower[1]
+      p90_u <- snapshot$utilization_upper[1]
+    }
     utilizzo_stato <- case_when(
+      fine >= as.Date(Sys.time(), tz = "Europe/Rome") ~ "In corso",
       !is.finite(utilizzo_corrente) | !is.finite(p10_u) | !is.finite(p90_u) ~ "N/D",
       utilizzo_corrente < p10_u ~ "Basso",
-      utilizzo_corrente > p90_u ~ "Elevato",
-      TRUE ~ "Normale"
-    )
-    
+      utilizzo_corrente > p90_u ~ "Elevato", TRUE ~ "Normale")
+
     # Anomalie attivazioni nel periodo.
     anomalie_giornaliere <- base_giornaliera |>
       group_by(cds_name, sensor_description) |>
@@ -7042,307 +7056,65 @@ server <- function(input, output, session) {
       NA_real_
     }
     
-    # Soglia P90 su finestre della stessa durata del periodo selezionato.
-    # Le finestre partono ogni 7 giorni.
-    # Normalmente vengono usate solo finestre completamente precedenti
-    # al periodo selezionato. Se il periodo selezionato copre oltre il 50%
-    # dello storico disponibile, oppure non esiste alcuna finestra completa
-    # precedente per mancanza di giorni, vengono usate tutte le finestre
-    # disponibili nello storico, escludendo comunque quella identica
-    # al periodo corrente.
-    prima_data_storica <- min(base_completa$day, na.rm = TRUE)
-    ultima_data_storica <- max(base_completa$day, na.rm = TRUE)
-    
-    durata_giorni <- as.integer(
-      filtri$date[2] - filtri$date[1]
-    ) + 1L
-    
-    giorni_storico_totale <- as.integer(
-      ultima_data_storica - prima_data_storica
-    ) + 1L
-    
-    quota_storico_selezionata <- if (
-      is.finite(giorni_storico_totale) &&
-      giorni_storico_totale > 0
-    ) {
-      durata_giorni / giorni_storico_totale
-    } else {
-      0
-    }
-    
-    manca_finestra_precedente <- (
-      filtri$date[1] - durata_giorni
-    ) < prima_data_storica
-    
-    includi_periodo_nella_soglia <- (
-      quota_storico_selezionata > 0.50 ||
-      manca_finestra_precedente
-    )
-    
-    calcola_u_finestra <- function(inizio_finestra) {
-      fine_finestra <- inizio_finestra + durata_giorni - 1L
-      
-      dati_finestra <- base_completa |>
-        filter(
-          day >= inizio_finestra,
-          day <= fine_finestra
-        ) |>
-        group_by(cds_name, sensor_description) |>
-        summarise(
-          media_nok = mean(NOK_giornaliero, na.rm = TRUE),
-          varianza_nok = if (n() >= 2) {
-            var(NOK_giornaliero, na.rm = TRUE)
-          } else {
-            NA_real_
-          },
-          .groups = "drop"
-        ) |>
-        mutate(
-          U_sensore = sqrt(media_nok^2 + varianza_nok)
-        ) |>
-        filter(is.finite(U_sensore))
-      
-      if (nrow(dati_finestra) == 0) {
-        return(NA_real_)
-      }
-      
-      mean(dati_finestra$U_sensore, na.rm = TRUE)
-    }
-    
-    ultima_partenza_precedente <- filtri$date[1] - durata_giorni
-    ultima_partenza_disponibile <- ultima_data_storica - durata_giorni + 1L
-    
-    ultima_partenza <- if (includi_periodo_nella_soglia) {
-      ultima_partenza_disponibile
-    } else {
-      ultima_partenza_precedente
-    }
-    
-    if (
-      !is.finite(as.numeric(prima_data_storica)) ||
-      !is.finite(as.numeric(ultima_partenza)) ||
-      ultima_partenza < prima_data_storica
-    ) {
-      partenze_storiche <- as.Date(character(0))
-      U_storici <- numeric(0)
-    } else {
-      partenze_storiche <- seq.Date(
-        from = prima_data_storica,
-        to = ultima_partenza,
-        by = "7 days"
-      )
-      
-      if (includi_periodo_nella_soglia) {
-        partenze_storiche <- sort(unique(c(
-          partenze_storiche,
-          filtri$date[1]
-        )))
-      } else {
-        partenze_storiche <- partenze_storiche[
-          partenze_storiche != filtri$date[1]
-        ]
-      }
-      
-      U_storici_raw <- vapply(
-        partenze_storiche,
-        calcola_u_finestra,
-        numeric(1)
-      )
-      
-      storico_utilizzo <- tibble(
-        inizio_finestra = partenze_storiche,
-        U_macchina = U_storici_raw
-      ) |>
-        filter(is.finite(U_macchina))
-      
-      U_storici <- storico_utilizzo$U_macchina
-    }
-    
-    if (!exists("storico_utilizzo")) {
-      storico_utilizzo <- tibble(
-        inizio_finestra = as.Date(character(0)),
-        U_macchina = numeric(0)
-      )
-    }
-    
-    P10_utilizzo <- if (length(U_storici) > 0) {
-      as.numeric(
-        stats::quantile(
-          U_storici,
-          probs = 0.10,
-          na.rm = TRUE,
-          names = FALSE,
-          type = 7
-        )
-      )
-    } else {
-      NA_real_
-    }
-    
-    P90_utilizzo <- if (length(U_storici) > 0) {
-      as.numeric(
-        stats::quantile(
-          U_storici,
-          probs = 0.90,
-          na.rm = TRUE,
-          names = FALSE,
-          type = 7
-        )
-      )
-    } else {
-      NA_real_
-    }
-    
-    stato_utilizzo <- case_when(
-      !is.finite(U_macchina) |
-        !is.finite(P10_utilizzo) |
-        !is.finite(P90_utilizzo) ~ "N/D",
-      U_macchina < P10_utilizzo ~ "Basso",
-      U_macchina > P90_utilizzo ~ "Elevato",
-      TRUE ~ "Normale"
-    )
-    
-    # Dividi settimane e mesi ai confini della selezione prima di aggregare:
-    # ogni giorno contribuisce solo al proprio tratto (precedente, selezionato
-    # o successivo). Il tratto precedente resta disponibile per le soglie.
+    # Identico riferimento di utilizzo in grafici e segnalazioni:
+    # tutti i componenti della macchina, periodi di calendario completi,
+    # solo periodi precedenti e P5-P95 con almeno 7 riferimenti.
     granularita_utilizzo <- granularita_utilizzo_corrente()
-    
-    storico_utilizzo_grafico <- base_completa |>
-      mutate(
-        inizio_calendario = as.Date(
-          if (identical(granularita_utilizzo, "Mese")) {
-            lubridate::floor_date(day, "month")
-          } else {
-            lubridate::floor_date(day, "week", week_start = 1)
-          }
-        ),
-        fine_calendario = if (identical(granularita_utilizzo, "Mese")) {
-          as.Date(
-            lubridate::ceiling_date(inizio_calendario, "month") -
-              lubridate::days(1)
-          )
-        } else {
-          inizio_calendario + 6L
-        },
-        tratto = case_when(
-          day < filtri$date[1] ~ "Precedente",
-          day > filtri$date[2] ~ "Successivo",
-          TRUE ~ "Selezionato"
-        ),
-        inizio_finestra = pmax(
-          inizio_calendario,
-          prima_data_storica,
-          case_when(
-            tratto == "Selezionato" ~ filtri$date[1],
-            tratto == "Successivo" ~ filtri$date[2] + 1L,
-            TRUE ~ inizio_calendario
-          )
-        ),
-        fine_finestra = pmin(
-          fine_calendario,
-          ultima_data_storica,
-          case_when(
-            tratto == "Precedente" ~ filtri$date[1] - 1L,
-            tratto == "Selezionato" ~ filtri$date[2],
-            TRUE ~ fine_calendario
-          )
-        ),
-        tipo = if_else(
-          tratto == "Selezionato",
-          "Periodo selezionato",
-          "Riferimento"
-        )
-      ) |>
-      group_by(
-        inizio_finestra,
-        fine_finestra,
-        tipo,
-        cds_name,
-        sensor_description
-      ) |>
-      summarise(
-        media_nok = mean(NOK_giornaliero, na.rm = TRUE),
-        varianza_nok = if (n() >= 2) {
-          var(NOK_giornaliero, na.rm = TRUE)
-        } else {
-          NA_real_
-        },
-        .groups = "drop"
-      ) |>
-      mutate(
-        U_sensore = sqrt(media_nok^2 + varianza_nok)
-      ) |>
-      filter(is.finite(U_sensore)) |>
-      group_by(inizio_finestra, fine_finestra, tipo) |>
-      summarise(
-        U_macchina = mean(U_sensore, na.rm = TRUE),
-        .groups = "drop"
-      ) |>
-      filter(is.finite(U_macchina)) |>
-      arrange(inizio_finestra)
-    
-    # P10/P90 coerenti con la granularita' scelta.
-    # Si usano i tratti precedenti alla selezione, anche di settimane/mesi spezzati.
-    # Se la selezione copre oltre il 50% dello storico o ci sono meno di due
-    # periodi precedenti, si usa tutto lo storico disponibile.
-    periodi_precedenti <- storico_utilizzo_grafico |>
-      filter(fine_finestra < filtri$date[1])
-    
-    usa_tutti_periodi <- (
-      quota_storico_selezionata > 0.50 ||
-      nrow(periodi_precedenti) < 2
-    )
-    
-    riferimento_periodo <- if (usa_tutti_periodi) {
-      storico_utilizzo_grafico
-    } else {
-      periodi_precedenti
-    }
-    
-    valori_periodo_rif <- riferimento_periodo$U_macchina[
-      is.finite(riferimento_periodo$U_macchina)
-    ]
-    
-    P10_periodo <- if (length(valori_periodo_rif) > 0) {
-      as.numeric(
-        stats::quantile(
-          valori_periodo_rif,
-          probs = 0.10,
-          na.rm = TRUE,
-          names = FALSE,
-          type = 7
-        )
-      )
-    } else {
-      NA_real_
-    }
-    
-    P90_periodo <- if (length(valori_periodo_rif) > 0) {
-      as.numeric(
-        stats::quantile(
-          valori_periodo_rif,
-          probs = 0.90,
-          na.rm = TRUE,
-          names = FALSE,
-          type = 7
-        )
-      )
-    } else {
-      NA_real_
-    }
-    
-    storico_utilizzo_grafico <- storico_utilizzo_grafico |>
-      mutate(
-        stato = case_when(
-          tipo == "Riferimento" ~ "Storico",
-          !is.finite(P10_periodo) |
-            !is.finite(P90_periodo) ~ "N/D",
-          U_macchina < P10_periodo ~ "Basso",
-          U_macchina > P90_periodo ~ "Elevato",
-          TRUE ~ "Normale"
-        )
-      )
-    
+    machine_daily <- prepara_valori_giornalieri_nok_data(dati, filtri$macchina)
+    valid_days <- machine_daily$day[!is.na(machine_daily$day)]
+    starts <- if (length(valid_days)) seq.Date(
+      as.Date(floor_date(min(valid_days), if (granularita_utilizzo == "Mese") "month" else "week", week_start = 1)),
+      as.Date(floor_date(max(valid_days), if (granularita_utilizzo == "Mese") "month" else "week", week_start = 1)),
+      by = if (granularita_utilizzo == "Mese") "month" else "7 days") else as.Date(character())
+    saved <- leggi_alerts_dashboard() |>
+      filter(coupon == filtri$macchina, alert_type == "utilization_weekly")
+    storico_utilizzo_grafico <- lapply(seq_along(starts), function(i) {
+      first <- starts[i]
+      last <- if (granularita_utilizzo == "Mese") first %m+% months(1) - days(1) else first + 6L
+      assessment <- valuta_utilizzo_periodo(machine_daily, first, last, granularita_utilizzo)
+      value <- lower <- upper <- NA_real_
+      references <- 0L
+      if (nrow(assessment)) {
+        value <- assessment$utilization[1]
+        lower <- assessment$lower_limit[1]
+        upper <- assessment$upper_limit[1]
+        references <- assessment$reference_weeks[1]
+      }
+      snapshot <- saved |> filter(
+        as.Date(period_start, tz = "Europe/Rome") == first,
+        as.Date(period_end, tz = "Europe/Rome") == last)
+      if (nrow(snapshot) && is.finite(snapshot$utilization_value[1])) {
+        value <- snapshot$utilization_value[1]
+        lower <- snapshot$utilization_lower[1]
+        upper <- snapshot$utilization_upper[1]
+        references <- snapshot$utilization_references[1]
+      }
+      state <- case_when(
+        last >= as.Date(Sys.time(), tz = "Europe/Rome") ~ "In corso",
+        !is.finite(value) | !is.finite(lower) | !is.finite(upper) ~ "N/D",
+        value < lower ~ "Basso", value > upper ~ "Elevato", TRUE ~ "Normale")
+      tibble(inizio_finestra = first, fine_finestra = last, U_macchina = value,
+        limite_inf = lower, limite_sup = upper, n_riferimenti = references,
+        tipo = if (last >= filtri$date[1] && first <= filtri$date[2]) "Periodo selezionato" else "Riferimento",
+        stato = state)
+    }) |> bind_rows()
+    if (!nrow(storico_utilizzo_grafico)) storico_utilizzo_grafico <- tibble(
+      inizio_finestra = as.Date(character()), fine_finestra = as.Date(character()),
+      U_macchina = double(), limite_inf = double(), limite_sup = double(),
+      n_riferimenti = integer(), tipo = character(), stato = character())
+    selected <- storico_utilizzo_grafico |> filter(tipo == "Periodo selezionato")
+    # Campi legacy: contengono ora esclusivamente limiti P5-P95.
+    P10_periodo <- if (nrow(selected) == 1L) selected$limite_inf[1] else NA_real_
+    P90_periodo <- if (nrow(selected) == 1L) selected$limite_sup[1] else NA_real_
+    P10_utilizzo <- P10_periodo
+    P90_utilizzo <- P90_periodo
+    stato_utilizzo <- if (nrow(selected) == 1L) selected$stato[1] else "N/D"
+    U_macchina <- if (nrow(selected) == 1L) selected$U_macchina[1] else NA_real_
+    U_storici <- storico_utilizzo_grafico$U_macchina[storico_utilizzo_grafico$tipo == "Riferimento"]
+    quota_storico_selezionata <- NA_real_
+    manca_finestra_precedente <- !length(U_storici)
+    includi_periodo_nella_soglia <- FALSE
+
     list(
       per_sensore = per_sensore,
       per_sensore_confronto = per_sensore_confronto,
@@ -7450,12 +7222,8 @@ server <- function(input, output, session) {
           style = "font-size:11px;font-weight:700;color:#4A4A4A;"
         ),
         div(
-          formatC(
-            riga$U_macchina,
-            format = "f",
-            digits = 2,
-            decimal.mark = ","
-          ),
+          if (is.finite(riga$U_macchina)) formatC(
+            riga$U_macchina, format = "f", digits = 2, decimal.mark = ",") else "N/D",
           style = paste0(
             "font-size:22px;",
             "font-weight:800;",
@@ -7464,7 +7232,10 @@ server <- function(input, output, session) {
           )
         ),
         div(
-          riga$stato,
+          paste0(riga$stato,
+            if (is.finite(riga$limite_inf) && is.finite(riga$limite_sup))
+              paste0(" · ", formatC(riga$limite_inf, digits = 2, format = "f"),
+                "–", formatC(riga$limite_sup, digits = 2, format = "f")) else ""),
           style = paste0(
             "font-size:10px;",
             "font-weight:800;",
@@ -7500,14 +7271,13 @@ server <- function(input, output, session) {
       ),
       div(
         paste0(
-          "Intervallo normale ",
+          "Intervallo normale P5–P95 ",
           if (
             identical(granularita, "Mese")
           ) "mensile" else "settimanale",
           ": ",
-          soglia_bassa,
-          " – ",
-          soglia_alta
+          if (nrow(periodi) == 1L) paste0(soglia_bassa, " – ", soglia_alta)
+          else "specifico per ciascun periodo; riportato nelle tessere"
         ),
         style = "margin-top:4px;font-size:12px;color:#718096;"
       )
@@ -7574,8 +7344,8 @@ server <- function(input, output, session) {
           ) "Periodo: " else "Settimana: ",
           etichetta_periodo,
           "<br/>",
-          "Utilizzo macchina: ",
-          round(U_macchina, 3)
+          "Utilizzo componenti di sicurezza: ", round(U_macchina, 3),
+          "<br/>Intervallo normale P5–P95: ", round(limite_inf, 3), "–", round(limite_sup, 3)
         )
       )
     
@@ -7599,23 +7369,11 @@ server <- function(input, output, session) {
         linewidth = 0.9
       ) +
       geom_segment(
-        data = tibble(
-          soglia = c(
-            utilizzo$P10_periodo,
-            utilizzo$P90_periodo
-          )
-        ) |>
-          filter(is.finite(soglia)),
-        aes(
-          x = inizio_area,
-          xend = fine_area,
-          y = soglia,
-          yend = soglia,
-          linetype = "Limiti normali"
-        ),
-        inherit.aes = FALSE,
-        color = "#79A884",
-        linewidth = 0.9
+        data = storico |> filter(tipo == "Periodo selezionato", is.finite(limite_inf)) |>
+          tidyr::pivot_longer(c(limite_inf, limite_sup), values_to = "soglia"),
+        aes(x = inizio_finestra, xend = fine_finestra, y = soglia, yend = soglia,
+          linetype = "Limiti normali"),
+        inherit.aes = FALSE, color = "#79A884", linewidth = 0.9
       ) +
       geom_point_interactive(
         aes(
@@ -7635,7 +7393,7 @@ server <- function(input, output, session) {
           "Normale" = "#19764A",
           "Elevato" = "#A65A52",
           "Basso" = "#58758F",
-          "N/D" = "#6E7781"
+          "N/D" = "#6E7781", "In corso" = "#6E7781"
         ),
         breaks = c(
           "Storico",
@@ -8261,6 +8019,7 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+
 
 
 

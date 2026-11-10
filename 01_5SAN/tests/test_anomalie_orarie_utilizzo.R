@@ -32,9 +32,16 @@ stopifnot(nrow(u)==1, u$anomalous, u$utilization > u$upper_limit,
 future <- mutate(d, day = day + 200, daily_value = 1000)
 stopifnot(identical(u,valuta_utilizzo_settimanale(bind_rows(d,future),as.Date("2026-03-01"))))
 # Prima di 7 settimane di riferimento non viene emesso un allarme.
-stopifnot(nrow(valuta_utilizzo_settimanale(filter(d,day>=as.Date("2026-01-12")),
-  as.Date("2026-03-01")))==0)
+short <- valuta_utilizzo_settimanale(filter(d, day >= as.Date("2026-01-12")),
+  as.Date("2026-03-01"))
+stopifnot(!any(short$anomalous %in% TRUE), all(is.na(short$lower_limit)))
 # Con utilizzo abituale il test non segnala anomalie.
 d$daily_value[50:56] <- c(.9,1.1,.9,1.1,.9,1.1,1)
 stopifnot(!valuta_utilizzo_settimanale(d,as.Date("2026-03-01"))$anomalous)
 cat("OK: doppia conferma oraria, maturita', settimane concluse, riferimenti storici e isolamento futuro.\n")
+
+# Stesso valutatore, stesso risultato in grafici e allarmi.
+stopifnot(identical(valuta_utilizzo_settimanale(d, as.Date("2026-03-01")),
+  valuta_utilizzo_periodo(d, as.Date("2026-02-23"), as.Date("2026-03-01"))))
+partial <- valuta_utilizzo_periodo(d, as.Date("2026-02-23"), as.Date("2026-02-25"))
+stopifnot(!any(partial$anomalous %in% TRUE), all(is.na(partial$lower_limit)))
