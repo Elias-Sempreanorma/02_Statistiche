@@ -241,13 +241,13 @@ guida_online_modal <- function(nested = FALSE) {
   <p class="san-guide-example"><strong>Esempio.</strong> Tre giorni con 8, 10 e 12 manovre danno una media di <strong>10 manovre al giorno</strong>. Nel raggruppamento settimanale il grafico mostra 10, non il totale di 30.</p>
   <p>Il dettaglio al passaggio del puntatore riporta anche le ore macchina: per intervalli maggiori del giorno si tratta di ore medie giornaliere. Se noti un picco, passa a Giorno o Ora e seleziona il componente interessato.</p>
   <p class="san-guide-note">Una manovra non corrisponde necessariamente a un pezzo prodotto. I giorni senza dati non sono automaticamente giorni con zero manovre.</p>
-  <p class="san-guide-note">Gli accumuli alla ripresa di una connessione, se già classificati come anomalie orarie, sono redistribuiti uniformemente soltanto nei grafici. Lo sfondo giallo identifica i periodi interessati; il tooltip identifica l’accumulo orario anomalo. Le esclusioni dalle medie restano quelle dei calcoli originali. La distribuzione temporale è stimata e non modifica i dati originali né gli indicatori.</p>
+  <p class="san-guide-note">Gli accumuli alla ripresa di una connessione, se già classificati come anomalie orarie, sono redistribuiti uniformemente soltanto nei grafici. Lo sfondo giallo identifica i periodi interessati; il dettaglio al passaggio del puntatore identifica l’accumulo orario anomalo. Il grafico mostra una distribuzione temporale stimata; le medie e gli indicatori continuano a usare le misure originali e le esclusioni previste per le anomalie. La distribuzione temporale è stimata e non modifica i dati originali né gli indicatori.</p>
 </section>
 <section id="guida-utilizzo" class="san-guide-section" aria-labelledby="guida-utilizzo-titolo">
   <h3 id="guida-utilizzo-titolo" tabindex="-1">Utilizzo storico</h3>
-  <p>Questa vista confronta il comportamento dei componenti con il loro passato, tenendo conto delle ore di accensione osservate.</p>
-  <h4>Il NOK in parole semplici</h4>
-  <p>Il <strong>NOK</strong> indica quanto il ritmo medio di manovre per ora si discosta dal riferimento storico dello stesso componente.</p>
+  <p>Questa vista confronta il comportamento dei componenti di sicurezza con il loro passato, tenendo conto delle ore di attività giornaliere osservate.</p>
+  <h4>NOK</h4>
+  <p>Il <strong>NOK</strong> è il rapporto tra il numero di manovre medie nel periodo e quello storico dello stesso componente di sicurezza. <strong>Le medie sono rapportate alle ore di attività giornaliere</strong>: per ogni giornata si considera il numero di manovre per ora di attività, poi si confrontano le medie del periodo e dello storico. Lo storico di riferimento esclude le giornate già riconosciute come anomale.</p>
   <table>
     <thead><tr><th scope="col">Valore</th><th scope="col">Significato</th></tr></thead>
     <tbody>
@@ -257,9 +257,9 @@ guida_online_modal <- function(nested = FALSE) {
     </tbody>
   </table>
   <p>Il grafico nel tempo aiuta a capire <strong>quando è cambiato il ritmo</strong>. Un valore maggiore di 1 non indica automaticamente un problema: conta anche quanto il comportamento varia abitualmente.</p>
-  <h4>Profilo e indice di utilizzo</h4>
-  <p>Nel profilo, il punto mostra il livello medio del componente e la fascia attorno al punto mostra quanto variano i giorni. L’indice di utilizzo riassume <strong>intensità e variabilità</strong> dei componenti disponibili.</p>
-  <p>Le tessere <strong>Basso, Normale ed Elevato</strong> confrontano l’indice con il comportamento storico della macchina. Puoi scegliere Settimana o Mese e aprire <strong>Utilizzo storico</strong> per seguirne l’evoluzione. Sono giudizi relativi al passato, non limiti di sicurezza.</p>
+  <h4>Profilo utilizzo componenti di sicurezza</h4>
+  <p>Il profilo mostra il livello medio di ciascun componente di sicurezza e quanto varia tra le giornate. Il riquadro <strong>Utilizzo componenti di sicurezza nel periodo</strong> riassume quanto e con quale regolarità sono stati usati i componenti di sicurezza rispetto al passato. Anche questo confronto parte da medie rapportate alle ore di attività giornaliere.</p>
+  <p>Le tessere <strong>Basso, Normale ed Elevato</strong> confrontano l’indice con il comportamento storico dei componenti di sicurezza monitorati. Puoi scegliere Settimana o Mese e aprire <strong>Storico utilizzo</strong> per seguirne l’evoluzione. Sono giudizi relativi al passato, non limiti di sicurezza.</p>
   <p class="san-guide-note">Il NOK e l’indice non sono percentuali di produzione o di vita residua. Controlla le date riportate: lo storico precedente nei grafici può coprire un intervallo più lungo del periodo scelto.</p>
 </section>
 <section id="guida-disponibilita" class="san-guide-section" aria-labelledby="guida-disponibilita-titolo">
@@ -294,11 +294,12 @@ guida_online_modal <- function(nested = FALSE) {
   <table>
     <thead><tr><th scope="col">Tipo</th><th scope="col">Cosa evidenzia</th></tr></thead>
     <tbody>
-      <tr><td>Manovre anomale</td><td>Ore o giornate con manovre insolite: devono essere confermate sia dal confronto locale LOF sia dai limiti della distribuzione dei conteggi.</td></tr>
-      <tr><td>Utilizzo della macchina</td><td>Settimane concluse, da lunedì a domenica, con utilizzo fuori P5–P95 di almeno 7 settimane precedenti confrontabili. Il NOK rimane un indicatore, senza una segnalazione separata.</td></tr>
-      <tr><td>Componenti aperti o senza contatto elettrico</td><td>Una condizione osservata di oltre un’ora consecutiva, con conteggio invariato.</td></tr>
+      <tr><td>Manovre anomale</td><td>Ore o giornate con un numero di manovre insolitamente alto o basso rispetto al comportamento abituale dello stesso componente di sicurezza. Il controllo valuta sia quanto il dato è diverso dagli altri sia quanto è plausibile rispetto allo storico.</td></tr>
+      <tr><td>Utilizzo componenti di sicurezza</td><td>Settimane concluse, da lunedì a domenica, con un utilizzo complessivo dei componenti di sicurezza insolitamente alto o basso. Il confronto considera sia il livello medio sia la variabilità e richiede almeno 7 settimane precedenti confrontabili.</td></tr>
+      <tr><td>Componenti aperti o senza contatto elettrico</td><td>Componenti di sicurezza rimasti aperti o senza contatto elettrico per oltre un’ora consecutiva, mentre la macchina continuava a inviare dati e il conteggio restava invariato.</td></tr>
     </tbody>
   </table>
+  <p>Il <strong>NOK resta consultabile come indicatore</strong>, ma non genera più una segnalazione separata. Le interruzioni delle comunicazioni non compaiono come righe nell’elenco: quando producono un accumulo orario anomalo, il loro effetto è indicato nei grafici con lo sfondo giallo e una spiegazione al passaggio del puntatore.</p>
   <p><strong>Una riga può coinvolgere più componenti.</strong> I casi dello stesso tipo, nello stesso intervallo e con lo stesso comportamento possono essere riuniti. Il dettaglio permette di riconoscere i singoli componenti.</p>
   <p><strong>L’ID identifica la segnalazione.</strong> Conserva questo codice, il periodo e i componenti interessati quando chiedi una verifica. Le segnalazioni salvate restano nello storico; cambiare filtro non le ricalcola.</p>
   <p class="san-guide-note">Le segnalazioni dei componenti richiedono almeno 7 giornate con dati validi; per alcune analisi serve anche un riferimento sufficiente. Le giornate vengono consolidate dopo la loro conclusione: l’elenco può non includere il giorno in corso.</p>
@@ -310,7 +311,7 @@ guida_online_modal <- function(nested = FALSE) {
     <li>Scegli <strong>Settimana</strong> o <strong>Mese</strong>, poi premi il pulsante dell’intervallo.</li>
     <li>Leggi la sintesi e i dettagli; usa <strong>Scarica PDF</strong> per conservare il rapporto.</li>
   </ol>
-  <p>Il rapporto riepiloga manovre medie giornaliere, utilizzo rispetto allo storico e situazioni insolite. Le variazioni fra parentesi confrontano il periodo con quello immediatamente precedente della stessa durata.</p>
+  <p>Il rapporto riepiloga manovre medie giornaliere, NOK, utilizzo dei componenti di sicurezza e situazioni insolite. Le medie usate per NOK e utilizzo tengono conto delle ore di attività giornaliere; i conteggi delle manovre restano invece espressi come totali o medie giornaliere, secondo il raggruppamento scelto. Le variazioni fra parentesi confrontano il periodo con quello immediatamente precedente della stessa durata.</p>
   <p><strong>Controlla le date.</strong> Nei report le fasce settimanali sono 1–7, 8–14, 15–21 e 22–fine mese. L’ultima può durare più di sette giorni. Se il filtro taglia una fascia, il rapporto considera il tratto selezionato.</p>
   <p>Il rapporto descrive l’intero periodo con i dati disponibili; l’elenco delle segnalazioni conserva invece i singoli eventi consolidati. <strong>I risultati e il numero di casi possono quindi differire.</strong></p>
   <p class="san-guide-note">Quando presenti, i documenti scaricabili nella sezione Documenti accompagnano la verifica delle segnalazioni.</p>
@@ -339,4 +340,5 @@ guida_online_modal <- function(nested = FALSE) {
     )
   }
 }
+
 
