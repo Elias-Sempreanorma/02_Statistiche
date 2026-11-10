@@ -3614,7 +3614,7 @@ server <- function(input, output, session) {
           class = "alarm-section",
           h4("Utilizzo della macchina", class = "titolo-sezione"),
           p(
-            "Settimane concluse con utilizzo complessivo fuori dall’intervallo storico abituale."
+            "Settimane o mesi conclusi con utilizzo complessivo fuori dall’intervallo storico abituale."
           ),
           uiOutput("modal_allarmi_nok_panel")
         ),
@@ -4168,7 +4168,7 @@ server <- function(input, output, session) {
       p90_u <- shared_assessment$upper_limit[1]
     }
     snapshot <- leggi_alerts_dashboard() |> filter(coupon == macchina,
-      alert_type == "utilization_weekly",
+      alert_type %in% c("utilization_weekly", "utilization_monthly"),
       as.Date(period_start, tz = "Europe/Rome") == inizio,
       as.Date(period_end, tz = "Europe/Rome") == fine)
     if (nrow(snapshot) && is.finite(snapshot$utilization_value[1])) {
@@ -4244,7 +4244,7 @@ server <- function(input, output, session) {
     
     tab_nok_anomalo <- tibble()
     tab_utilizzo_anomalo <- leggi_alerts_dashboard() |>
-      filter(coupon == macchina, alert_type == "utilization_weekly",
+      filter(coupon == macchina, alert_type %in% c("utilization_weekly", "utilization_monthly"),
         as.Date(period_start, tz = "Europe/Rome") <= fine,
         as.Date(period_end, tz = "Europe/Rome") >= inizio) |>
       transmute(Macchina = nome_macchina, Coupon = coupon,
@@ -4746,7 +4746,7 @@ server <- function(input, output, session) {
         ),
         div(
           class = "report-kpi-card",
-          div("Settimane con utilizzo insolito", class = "report-kpi-label"),
+          div("Periodi con utilizzo insolito", class = "report-kpi-label"),
           div(nrow(r$utilizzo_anomalo), class = "report-kpi-value"),
           div(
             "Segnalazioni di utilizzo",
@@ -5031,7 +5031,7 @@ server <- function(input, output, session) {
       )
       kpi_card(
         0.865,
-        "SETTIMANE CON USO INSOLITO",
+        "PERIODI CON USO INSOLITO",
         as.character(nrow(r$utilizzo_anomalo)),
         "Segnalazioni di utilizzo",
         if (nrow(r$utilizzo_anomalo) > 0) "bad" else "good"
@@ -5821,10 +5821,11 @@ server <- function(input, output, session) {
 
   allarmi_nok_modal <- reactive({
     alerts_filtrati_modal() |>
-      filter(alert_type == "utilization_weekly") |>
+      filter(alert_type %in% c("utilization_weekly", "utilization_monthly")) |>
       arrange(period_start, alert_id) |>
       transmute(`ID segnalazione` = alert_id,
         Macchina = coalesce(machine_name, coupon),
+        Periodo = if_else(alert_type == "utilization_monthly", "Mese", "Settimana"),
         Inizio = as.Date(period_start, tz = "Europe/Rome"),
         Fine = as.Date(period_end, tz = "Europe/Rome"),
         Descrizione = paste0(signal_description, ". ", signal_data_text))
@@ -5885,7 +5886,7 @@ server <- function(input, output, session) {
       return(
         div(
           class = "alarm-empty",
-          "Nessuna settimana con utilizzo fuori dall’intervallo storico abituale. Il confronto richiede almeno 7 settimane precedenti confrontabili."
+          "Nessuna anomalia di utilizzo nel periodo. Il confronto richiede almeno 7 settimane o 7 mesi precedenti confrontabili, secondo il tipo di segnalazione."
         )
       )
     }
@@ -7101,7 +7102,7 @@ server <- function(input, output, session) {
       as.Date(floor_date(max(valid_days), if (granularita_utilizzo == "Mese") "month" else "week", week_start = 1)),
       by = if (granularita_utilizzo == "Mese") "month" else "7 days") else as.Date(character())
     saved <- leggi_alerts_dashboard() |>
-      filter(coupon == filtri$macchina, alert_type == "utilization_weekly")
+      filter(coupon == filtri$macchina, alert_type %in% c("utilization_weekly", "utilization_monthly"))
     storico_utilizzo_grafico <- lapply(seq_along(starts), function(i) {
       first <- starts[i]
       last <- if (granularita_utilizzo == "Mese") first %m+% months(1) - days(1) else first + 6L
@@ -8053,6 +8054,7 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+
 
 
 

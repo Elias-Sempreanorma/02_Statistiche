@@ -54,3 +54,30 @@ Non si collega al DB operativo e non invia email.
 La migrazione v3 aggiorna anche i gruppi v2 salvati: unisce i comportamenti
 equivalenti senza ricalcolo statistico. Gli identificativi tecnici restano nel
 JSON e nelle colonne interne; la descrizione mostra codice e nome del sensore.
+
+## Ricostruzione storico con le regole correnti
+
+La ricostruzione ricalcola manovre giornaliere/orarie, componenti aperti e utilizzo
+settimanale/mensile dal primo dato disponibile a ieri. Elimina gli allarmi NOK
+obsoleti e ricrea i checkpoint. Non modifica i raw data e non cancella le
+disconnessioni gateway o il loro stato email. Durante la ricostruzione non invia email.
+
+Il lock esistente impedisce ETL concorrenti. Backup di alerts e checkpoint e tutte
+le sostituzioni sono racchiusi in una transazione: un errore conserva lo stato
+precedente. A fine operazione vengono stampati i nomi delle tabelle backup.
+alerts.rds viene sostituito atomicamente solo dopo il completamento.
+
+Eseguire UNA VOLTA dopo il deploy:
+
+```bash
+git pull origin 01_5SAN
+docker compose build shiny
+docker compose run --rm -e ALERT_REBUILD_HISTORY=1 etl
+docker compose up -d shiny shiny_web web_auth
+```
+
+Il parametro vale solo per questa esecuzione; il cron ordinario resta incrementale.
+La ricostruzione puo' richiedere tempo: attendere il messaggio finale prima di
+riavviare Shiny. Ogni domenica si valuta la settimana conclusa; a fine mese anche
+il mese di calendario. Il confronto richiede 7 periodi precedenti dello stesso tipo:
+7 settimane o 7 mesi. Grafici e segnalazioni usano il medesimo valutatore.

@@ -117,9 +117,9 @@ espandi_segnalazioni_salvate <- function(alerts) {
 raggruppa_segnalazioni <- function(alerts) {
   if (!nrow(alerts)) return(alerts)
   sensors <- alerts |> filter(alert_scope %in% c("sensor", "machine"),
-    alert_type != "utilization_weekly")
+    !alert_type %in% c("utilization_weekly", "utilization_monthly"))
   gateways <- alerts |> filter(!alert_scope %in% c("sensor", "machine") |
-    alert_type == "utilization_weekly")
+    alert_type %in% c("utilization_weekly", "utilization_monthly"))
   if (!nrow(sensors)) return(gateways)
   grouped <- sensors |>
     mutate(behavior_code = codice_comportamento(alert_type, signal_description)) |>
@@ -163,7 +163,7 @@ raggruppa_segnalazioni <- function(alerts) {
   bind_rows(select(grouped, -behavior_code), gateways)
 }
 
-calcola_segnalazioni_giorno <- function(evaluation_day, incrementi, dati_raw) {
+calcola_segnalazioni_giorno <- function(evaluation_day, incrementi, dati_raw, include_gateway = TRUE) {
   cutoff <- inizio_giorno(evaluation_day + 1L)
   sensor_count_increment <- incrementi |> filter(timestamp < cutoff)
   raw_data <- dati_raw |> filter(timestamp < cutoff)
@@ -356,7 +356,11 @@ calcola_segnalazioni_giorno <- function(evaluation_day, incrementi, dati_raw) {
 
   # ---------------------------------------------------------------------------
   # 4) Utilizzo macchina: settimana lunedi-domenica, riferimenti P5-P95.
-  utilizzo <- valuta_utilizzo_settimanale(base_giornaliera, evaluation_day)
+  utilizzo <- bind_rows(
+    valuta_utilizzo_settimanale(base_giornaliera, evaluation_day) |>
+      mutate(utilization_type = "utilization_weekly", utilization_label = "settimanale", utilization_code = "UTLW"),
+    valuta_utilizzo_mensile(base_giornaliera, evaluation_day) |>
+      mutate(utilization_type = "utilization_monthly", utilization_label = "mensile", utilization_code = "UTLM"))
   alert_utilizzo <- tibble()
   if (nrow(utilizzo)) {
     meta <- sensor_count_increment |> arrange(timestamp) |>
@@ -366,15 +370,15 @@ calcola_segnalazioni_giorno <- function(evaluation_day, incrementi, dati_raw) {
       mutate(period_start = inizio_giorno(week_start), period_end = fine_giorno(week_end),
         generated_at = period_end, gateway_id = gateway_ids, gateway_name = NA_character_,
         sensor_id = sensor_ids, cds_name = sensor_codes, sensor_description = "Utilizzo macchina",
-        event_key = paste("utilization_weekly", coupon, week_start, sep = "|"),
-        alert_type = "utilization_weekly", type_code = "UTLW", alert_scope = "machine",
+        event_key = paste(utilization_type, coupon, week_start, sep = "|"),
+        alert_type = utilization_type, type_code = utilization_code, alert_scope = "machine",
         functional_unit = "Macchina",
         signal_description = if_else(utilization > upper_limit,
-          "Utilizzo settimanale superiore al riferimento storico",
-          "Utilizzo settimanale inferiore al riferimento storico"),
+          paste("Utilizzo", utilization_label, "superiore al riferimento storico"),
+          paste("Utilizzo", utilization_label, "inferiore al riferimento storico")),
         signal_data_text = paste0("Utilizzo: ", round(utilization, 3),
           ". Intervallo storico abituale: ", round(lower_limit, 3), "–", round(upper_limit, 3),
-          ". Settimane precedenti confrontabili: ", reference_weeks, ".")) |>
+          ". Periodi precedenti confrontabili: ", reference_weeks, ".")) |>
       rowwise() |> mutate(signal_data_json = json_alert(list(
         utilization = utilization, lower_limit_05 = lower_limit, upper_limit_95 = upper_limit,
         reference_weeks = reference_weeks, sensor_codes = sensor_codes))) |> ungroup()
@@ -406,7 +410,7 @@ calcola_segnalazioni_giorno <- function(evaluation_day, incrementi, dati_raw) {
   alert_gateway <- tibble()
 
   if (
-    nrow(disconnect_events) > 0 &&
+    include_gateway && nrow(disconnect_events) > 0 &&
     nrow(disconnect_sensor_events) > 0
   ) {
     evidenze_gateway <- disconnect_sensor_events |>
@@ -813,6 +817,40 @@ for (column in c("gateway_id", "gateway_name", "sensor_id", "sensor_code")) {
     }
   })
 
+  rebuild_history <- tolower(Sys.getenv("ALERT_REBUILD_HISTORY", "false")) %in% c("1", "true", "yes")
+  if (rebuild_history) {
+    days_available <- as.Date(sensor_count_increment$timestamp, tz = "Europe/Rome")
+    days_available <- days_available[!is.na(days_available)]
+    yesterday <- as.Date(Sys.time(), tz = "Europe/Rome") - 1L
+    if (!length(days_available) || min(days_available) > yesterday) {
+      stop("Nessun giorno concluso disponibile: ricostruzione annullata senza eliminare segnalazioni.")
+    }
+    first <- min(days_available)
+    # Backup e ricostruzione condividono una transazione: errore = rollback.
+    stamp <- format(Sys.time(), "%Y%m%d%H%M%S", tz = "UTC")
+    backup_alerts <- paste0("alerts_backup_", stamp)
+    backup_days <- paste0("alert_days_backup_", stamp)
+    dbWithTransaction(con_alerts, {
+      dbExecute(con_alerts, paste0("CREATE TABLE public.", backup_alerts, " AS TABLE public.alerts"))
+      dbExecute(con_alerts, paste0("CREATE TABLE public.", backup_days, " AS TABLE public.alert_evaluation_days"))
+      dbExecute(con_alerts, "DELETE FROM public.alerts WHERE alert_type IN (
+        'activation_daily', 'activation_hourly', 'sensor_open', 'nok_daily',
+        'utilization_weekly', 'utilization_monthly')")
+      dbExecute(con_alerts, "DELETE FROM public.alert_evaluation_days")
+      for (day_number in seq.int(as.integer(first), as.integer(yesterday))) {
+        day <- as.Date(day_number, origin = "1970-01-01")
+        alerts <- calcola_segnalazioni_giorno(day, sensor_count_increment, raw_data,
+          include_gateway = FALSE)
+        inserisci_segnalazioni(con_alerts, alerts)
+        dbExecute(con_alerts,
+          "INSERT INTO public.alert_evaluation_days(evaluation_day) VALUES ($1) ON CONFLICT DO NOTHING",
+          params = list(day))
+        message("Ricostruzione storico ", day, ": ", nrow(alerts), " segnalazioni")
+      }
+    })
+    message("Storico ricostruito. Backup DB: public.", backup_alerts,
+      " e public.", backup_days, ". Disconnessioni e stato email conservati.")
+  } else {
   # La prima esecuzione parte da ieri; poi recupera anche i giorni saltati.
   # Il checkpoint registra anche giornate senza segnalazioni.
   yesterday <- as.Date(Sys.time(), tz = "Europe/Rome") - 1L
@@ -836,6 +874,7 @@ for (column in c("gateway_id", "gateway_name", "sensor_id", "sensor_code")) {
       message("Segnalazioni consolidate per il ", day, ": ", nrow(alerts))
     }
   }
+  }
 # ---------------------------------------------------------------------------
 # Mail per le sole disconnessioni gateway recenti.
 # Gli altri alert sono persistiti e visibili in dashboard, ma per ora non
@@ -848,7 +887,7 @@ if (!is.finite(max_age_hours) || max_age_hours <= 0) {
   max_age_hours <- 24
 }
 
-pending <- dbGetQuery(
+pending <- if (rebuild_history) tibble() else dbGetQuery(
   con_alerts,
   "
   SELECT
@@ -1042,6 +1081,7 @@ message(
 }
 
 aggiorna_segnalazioni()
+
 
 
 

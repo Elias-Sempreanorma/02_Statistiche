@@ -295,7 +295,7 @@ guida_online_modal <- function(nested = FALSE) {
     <thead><tr><th scope="col">Tipo</th><th scope="col">Cosa evidenzia</th></tr></thead>
     <tbody>
       <tr><td>Manovre anomale</td><td>Ore o giornate con un numero di manovre insolitamente alto o basso rispetto al comportamento abituale dello stesso componente di sicurezza. Il controllo valuta sia quanto il dato è diverso dagli altri sia quanto è plausibile rispetto allo storico.</td></tr>
-      <tr><td>Utilizzo componenti di sicurezza</td><td>Settimane concluse, da lunedì a domenica, con un utilizzo complessivo dei componenti di sicurezza insolitamente alto o basso. Il confronto considera sia il livello medio sia la variabilità e richiede almeno 7 settimane precedenti confrontabili.</td></tr>
+      <tr><td>Utilizzo componenti di sicurezza</td><td>Settimane concluse, da lunedì a domenica, oppure mesi di calendario conclusi, con un utilizzo complessivo dei componenti di sicurezza insolitamente alto o basso. Il confronto considera sia il livello medio sia la variabilità e richiede almeno 7 settimane precedenti per le segnalazioni settimanali o 7 mesi precedenti per quelle mensili.</td></tr>
       <tr><td>Componenti aperti o senza contatto elettrico</td><td>Componenti di sicurezza rimasti aperti o senza contatto elettrico per oltre un’ora consecutiva, mentre la macchina continuava a inviare dati e il conteggio restava invariato.</td></tr>
     </tbody>
   </table>
@@ -313,7 +313,7 @@ guida_online_modal <- function(nested = FALSE) {
   </ol>
   <p>Il rapporto riepiloga manovre medie giornaliere, NOK, utilizzo dei componenti di sicurezza e situazioni insolite. Le medie usate per NOK e utilizzo tengono conto delle ore di attività giornaliere; i conteggi delle manovre restano invece espressi come totali o medie giornaliere, secondo il raggruppamento scelto. Le variazioni fra parentesi confrontano il periodo con quello immediatamente precedente della stessa durata.</p>
   <p><strong>Controlla le date.</strong> Nei report le fasce settimanali sono 1–7, 8–14, 15–21 e 22–fine mese. L’ultima può durare più di sette giorni. Se il filtro taglia una fascia, il rapporto considera il tratto selezionato.</p>
-  <p>Il rapporto descrive il periodo scelto; le segnalazioni di utilizzo riguardano settimane concluse da lunedì a domenica. Un intervallo parziale non riceve un nuovo giudizio di anomalia. Per la stessa settimana, grafici e segnalazioni riportano gli stessi limiti e lo stesso esito.</p>
+  <p>Il rapporto descrive il periodo scelto; le segnalazioni di utilizzo riguardano settimane concluse da lunedì a domenica oppure mesi di calendario conclusi. Un intervallo parziale non riceve un nuovo giudizio di anomalia. Per la stessa settimana o lo stesso mese, grafici e segnalazioni riportano gli stessi limiti e lo stesso esito.</p>
   <p class="san-guide-note">Quando presenti, i documenti scaricabili nella sezione Documenti accompagnano la verifica delle segnalazioni.</p>
 </section>
 <section id="guida-dubbi" class="san-guide-section" aria-labelledby="guida-dubbi-titolo">
@@ -340,6 +340,7 @@ guida_online_modal <- function(nested = FALSE) {
     )
   }
 }
+
 
 
 

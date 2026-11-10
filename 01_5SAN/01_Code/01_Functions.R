@@ -615,3 +615,13 @@ valuta_utilizzo_settimanale <- function(giornalieri, evaluation_day) {
   if (lubridate::wday(end, week_start = 1) != 7L) return(tibble::tibble())
   valuta_utilizzo_periodo(giornalieri, end - 6L, end, "Settimana")
 }
+
+
+# Il mese viene valutato soltanto dopo la chiusura del calendario.
+valuta_utilizzo_mensile <- function(giornalieri, evaluation_day) {
+  end <- as.Date(evaluation_day)
+  start <- as.Date(lubridate::floor_date(end, "month"))
+  last <- as.Date(lubridate::ceiling_date(start, "month") - lubridate::days(1))
+  if (end != last) return(tibble::tibble())
+  valuta_utilizzo_periodo(giornalieri, start, end, "Mese")
+}

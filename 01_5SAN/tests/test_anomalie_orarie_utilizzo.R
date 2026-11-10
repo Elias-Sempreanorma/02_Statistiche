@@ -45,3 +45,18 @@ stopifnot(identical(valuta_utilizzo_settimanale(d, as.Date("2026-03-01")),
   valuta_utilizzo_periodo(d, as.Date("2026-02-23"), as.Date("2026-03-01"))))
 partial <- valuta_utilizzo_periodo(d, as.Date("2026-02-23"), as.Date("2026-02-25"))
 stopifnot(!any(partial$anomalous %in% TRUE), all(is.na(partial$lower_limit)))
+
+# Mesi di calendario: solo il mese concluso, stesso valutatore del grafico.
+month_data <- tibble(coupon = "C", gateway_id = "G", sensor_id = "S", cds_name = "NC1",
+  sensor_description = "Test", day = seq(as.Date("2025-01-01"), as.Date("2025-08-31"), by = "day")) |>
+  mutate(daily_value = if_else(format(day, "%m") == "08", 3,
+    if_else(as.integer(day) %% 2L == 0L, .9, 1.1)), outlier_lof = FALSE)
+monthly <- valuta_utilizzo_mensile(month_data, as.Date("2025-08-31"))
+stopifnot(nrow(monthly) == 1, monthly$anomalous,
+  monthly$reference_weeks == 7,
+  identical(monthly, valuta_utilizzo_periodo(month_data,
+    as.Date("2025-08-01"), as.Date("2025-08-31"), "Mese")),
+  nrow(valuta_utilizzo_mensile(month_data, as.Date("2025-08-30"))) == 0)
+short_months <- valuta_utilizzo_mensile(filter(month_data, day >= as.Date("2025-02-01")),
+  as.Date("2025-08-31"))
+stopifnot(!any(short_months$anomalous %in% TRUE), all(is.na(short_months$lower_limit)))
