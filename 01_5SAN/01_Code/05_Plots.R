@@ -247,6 +247,7 @@ alerts_path <- here("02_Output", "alerts.rds")
 leggi_alerts_dashboard <- function(path = alerts_path) {
   if (file.exists(path)) {
     readRDS(path) |>
+      filter(alert_type != "gateway_disconnection") |>
       mutate(
         period_start = with_tz(period_start, "Europe/Rome"),
         period_end = with_tz(period_end, "Europe/Rome"),
@@ -427,7 +428,7 @@ sensori_lookup <- dati |>
   ordina_naturale() |>
   arrange(coupon)
 
-# Stessa regola usata dall'ETL: nessun alert prima di 30 giorni distinti
+# Stessa regola usata dall'ETL: nessun alert prima di 7 giorni distinti
 # con conteggi validi. Qui il lookup resta utile ai report storici.
 sensori_allarmabili <- calcola_sensori_allarmabili(dati)
 
@@ -495,6 +496,63 @@ mediane_attivazioni_orarie <- dati_attivazioni_orarie_base |>
     mediana_oraria = median(attivazioni_orarie, na.rm = TRUE),
     .groups = "drop"
   )
+
+# Copia destinata esclusivamente ai grafici: dati, modelli e medie restano originali.
+# Redistribuisce solo accumuli da disconnessione gia' esclusi come anomalie
+# giornaliere dall'ETL. Le quote sono proporzionali ai secondi in ogni ora.
+redistribuisci_manovre_grafico <- function(dati, giornalieri) {
+  chiavi <- c("coupon", "gateway_id", "sensor_id", "cds_name", "sensor_description")
+  anomali <- giornalieri |>
+    filter(outlier_lof %in% TRUE) |>
+    distinct(across(all_of(c(chiavi, "day")))) |>
+    mutate(.anomalo = TRUE)
+  base <- dati |>
+    ungroup() |>
+    group_by(across(all_of(chiavi))) |>
+    arrange(timestamp, .by_group = TRUE) |>
+    mutate(.precedente = lag(timestamp)) |>
+    ungroup() |>
+    mutate(day = as.Date(timestamp, tz = "Europe/Rome")) |>
+    left_join(anomali, by = c(chiavi, "day")) |>
+    mutate(.spalma = gateway_disconnect_affected %in% TRUE &
+      .anomalo %in% TRUE & is.finite(increment) & increment > 0 &
+      !is.na(.precedente) & timestamp > .precedente)
+  normali <- base |> filter(!.spalma) |>
+    transmute(coupon, cds_name, sensor_description,
+      hour = floor_date(with_tz(timestamp, "Europe/Rome"), "hour"),
+      attivazioni_orarie = increment, redistribuite = FALSE,
+      gateway_disconnect_affected)
+  eventi <- base |> filter(.spalma)
+  quote <- lapply(seq_len(nrow(eventi)), function(i) {
+    ev <- eventi[i, ]
+    inizio <- as.numeric(ev$.precedente)
+    fine <- as.numeric(ev$timestamp)
+    ore <- seq(floor(inizio / 3600) * 3600,
+      (ceiling(fine / 3600) - 1) * 3600, by = 3600)
+    peso <- (pmin(ore + 3600, fine) - pmax(ore, inizio)) / (fine - inizio)
+    tibble(coupon = ev$coupon, cds_name = ev$cds_name,
+      sensor_description = ev$sensor_description,
+      hour = as.POSIXct(ore, origin = "1970-01-01", tz = "Europe/Rome"),
+      attivazioni_orarie = ev$increment * peso,
+      redistribuite = TRUE, gateway_disconnect_affected = TRUE)
+  }) |> bind_rows()
+  bind_rows(normali, quote) |>
+    mutate(day = as.Date(hour, tz = "Europe/Rome")) |>
+    group_by(coupon, day, hour, cds_name, sensor_description) |>
+    summarise(attivazioni_orarie = if (any(is.finite(attivazioni_orarie)))
+        sum(attivazioni_orarie[is.finite(attivazioni_orarie)]) else NA_real_,
+      redistribuite = any(redistribuite),
+      gateway_disconnect_affected = any(gateway_disconnect_affected, na.rm = TRUE),
+      .groups = "drop")
+}
+
+dati_attivazioni_orarie_grafico <- redistribuisci_manovre_grafico(
+  dati, prepara_valori_giornalieri_nok_data(dati))
+
+nota_redistribuzione <- paste0(
+  "<br/><b>Manovre redistribuite graficamente per interruzione della connessione.</b>",
+  "<br/>Escluse dalla media di riferimento perché anomale. ",
+  "La distribuzione temporale è stimata.")
 
 data_min <- min(dati$day, na.rm = TRUE)
 data_max <- max(dati$day, na.rm = TRUE)
@@ -3563,27 +3621,19 @@ server <- function(input, output, session) {
         ),
         div(
           class = "alarm-section",
-          h4("Componenti aperti o senza contatto elettrico", class = "titolo-sezione"),
-          p(
-            "Periodi di oltre un'ora in cui il componente è rimasto aperto o senza contatto elettrico mentre la macchina continuava a inviare dati."
-          ),
-          uiOutput("modal_allarmi_sensori_aperti_panel")
-        ),
-        div(
-          class = "alarm-section",
           h4("NOK", class = "titolo-sezione"),
           p(
             "Giornate con un utilizzo del componente molto più alto o più basso del consueto, tenendo conto delle ore di attività."
           ),
           uiOutput("modal_allarmi_nok_panel")
-        )
-,        div(
+        ),
+        div(
           class = "alarm-section",
-          h4("Interruzioni delle comunicazioni", class = "titolo-sezione"),
+          h4("Componenti aperti o senza contatto elettrico", class = "titolo-sezione"),
           p(
-            "Possibili interruzioni dell’invio dei dati, seguite da nuove manovre registrate alla ripresa delle comunicazioni."
+            "Periodi di oltre un'ora in cui il componente è rimasto aperto o senza contatto elettrico mentre la macchina continuava a inviare dati."
           ),
-          uiOutput("modal_allarmi_gateway_panel")
+          uiOutput("modal_allarmi_sensori_aperti_panel")
         )
       )
     }
@@ -5830,7 +5880,7 @@ server <- function(input, output, session) {
   # ---------------------------------------------------------------------
   # ---------------------------------------------------------------------
   # Gli alert mostrati in dashboard sono gli stessi persistiti nel DB.
-  # In questo modo ID, soglia dei 30 giorni e logica di rilevazione
+  # In questo modo ID, soglia dei 7 giorni e logica di rilevazione
   # hanno un'unica sorgente e non vengono ricalcolati ad ogni apertura.
   # ---------------------------------------------------------------------
   alerts_correnti <- reactiveFileReader(
@@ -6291,13 +6341,20 @@ server <- function(input, output, session) {
     
     validate(
       need(
-        nrow(finestre_periodo) > 0 &&
-          nrow(sensori_selezionati) > 0,
+        nrow(sensori_selezionati) > 0 &&
+          (nrow(finestre_periodo) > 0 || any(
+            dati_attivazioni_orarie_grafico$coupon == filtri$macchina &
+            dati_attivazioni_orarie_grafico$cds_name %in% filtri$sensori &
+            dati_attivazioni_orarie_grafico$day >= filtri$date[1] &
+            dati_attivazioni_orarie_grafico$day <= filtri$date[2])),
         "Nessun dato disponibile per i filtri scelti"
       )
     )
     
-    ore_macchina <- finestre_periodo |>
+    ore_macchina <- if (nrow(finestre_periodo) == 0) {
+      tibble(day = as.Date(character()),
+        hour = as.POSIXct(character(), tz = "Europe/Rome"))
+    } else finestre_periodo |>
       rowwise() |>
       reframe(
         day = day,
@@ -6309,7 +6366,7 @@ server <- function(input, output, session) {
       ) |>
       ungroup()
     
-    conteggi_periodo <- dati_attivazioni_orarie_base |>
+    conteggi_periodo <- dati_attivazioni_orarie_grafico |>
       filter(
         coupon == filtri$macchina,
         day >= filtri$date[1],
@@ -6322,6 +6379,7 @@ server <- function(input, output, session) {
         cds_name,
         sensor_description,
         attivazioni_orarie,
+        redistribuite,
         gateway_disconnect_affected
       )
     
@@ -6329,12 +6387,14 @@ server <- function(input, output, session) {
       ore_macchina,
       sensori_selezionati
     ) |>
-      left_join(
+      mutate(.ora_osservata = TRUE) |>
+      full_join(
         conteggi_periodo,
         by = c("day", "hour", "cds_name", "sensor_description")
       ) |>
       mutate(
         attivazioni_orarie = coalesce(attivazioni_orarie, 0),
+        redistribuite = coalesce(redistribuite, FALSE),
         gateway_disconnect_affected = coalesce(
           gateway_disconnect_affected,
           FALSE
@@ -6375,7 +6435,8 @@ server <- function(input, output, session) {
       group_by(day, cds_name, sensor_description) |>
       summarise(
         attivazioni_giornaliere = sum(attivazioni_orarie, na.rm = TRUE),
-        ore_macchina = n_distinct(hour),
+        ore_macchina = sum(.ora_osservata %in% TRUE),
+        redistribuite = any(redistribuite),
         gateway_disconnect_affected = any(
           gateway_disconnect_affected,
           na.rm = TRUE
@@ -6398,6 +6459,7 @@ server <- function(input, output, session) {
           ore_aperte = ore_macchina,
           anomalia_oraria,
           mediana_oraria,
+          redistribuite,
           gateway_disconnect_affected,
           etichetta_ore_aperte = "Ore macchina del giorno"
         )
@@ -6410,6 +6472,7 @@ server <- function(input, output, session) {
         summarise(
           attivazioni = mean(attivazioni_giornaliere, na.rm = TRUE),
           ore_aperte = mean(ore_macchina, na.rm = TRUE),
+          redistribuite = any(redistribuite),
           gateway_disconnect_affected = any(
             gateway_disconnect_affected,
             na.rm = TRUE
@@ -6493,6 +6556,12 @@ server <- function(input, output, session) {
       grafico,
       aes(x = etichetta, y = attivazioni, fill = etichetta_completa)
     ) +
+      geom_rect(
+        data = grafico |> filter(redistribuite),
+        aes(xmin = as.numeric(etichetta) - 0.5,
+            xmax = as.numeric(etichetta) + 0.5, ymin = -Inf, ymax = Inf),
+        inherit.aes = FALSE, fill = "#EBBD55", alpha = 0.18
+      ) +
       geom_col_interactive(
         aes(
           tooltip = paste0(
@@ -6509,7 +6578,8 @@ server <- function(input, output, session) {
             )(attivazioni),
             "<br/>", etichetta_ore_aperte, ": ",
             scales::label_number(accuracy = 0.1, decimal.mark = ",")(ore_aperte),
-            " h"
+            " h",
+            if_else(redistribuite, nota_redistribuzione, "")
           ),
           data_id = paste(etichetta_completa, periodo_label, sep = "__")
         ),
@@ -6534,7 +6604,9 @@ server <- function(input, output, session) {
         expand = expansion(mult = c(0, 0.04))
       ) +
       scale_fill_manual(values = palette_sensori, name = "Componente") +
-      labs(title = NULL, x = NULL, y = "Manovre") +
+      labs(title = NULL, x = NULL, y = "Manovre",
+        caption = if (any(grafico$redistribuite))
+          "Sfondo giallo: manovre redistribuite per interruzione della connessione; escluse dalla media." else NULL) +
       tema_san(base_size = 13) +
       theme(
         panel.grid.major.x = element_blank(),
@@ -6575,9 +6647,22 @@ server <- function(input, output, session) {
       )(grafico$attivazioni),
       "<br/>", grafico$etichetta_ore_aperte, ": ",
       scales::label_number(accuracy = 0.1, decimal.mark = ",")(grafico$ore_aperte),
-      " h"
+      " h",
+      ifelse(grafico$redistribuite, nota_redistribuzione, "")
     )
     
+    sfondo <- grafico |> filter(redistribuite) |>
+      distinct(periodo) |> mutate(
+        xmin = if (identical(granularita, "Ora")) periodo else periodo - 0.5,
+        xmax = if (identical(granularita, "Ora")) periodo + hours(1) else
+          if (identical(granularita, "Settimana")) periodo + 7 - 0.5 else
+          if (identical(granularita, "Mese")) periodo %m+% months(1) - 0.5 else
+          if (identical(granularita, "Trimestre")) periodo %m+% months(3) - 0.5 else
+          if (identical(granularita, "Anno")) periodo %m+% years(1) - 0.5 else periodo + 0.5)
+    sfondo_layer <- geom_rect(data = sfondo,
+      aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf),
+      inherit.aes = FALSE, fill = "#EBBD55", alpha = 0.18)
+
     if (identical(granularita, "Ora")) {
       return(
         ggplot(
@@ -6598,6 +6683,7 @@ server <- function(input, output, session) {
             )
           )
         ) +
+          sfondo_layer +
           geom_line(linewidth = 0.8) +
           geom_point_interactive(
             aes(
@@ -6630,7 +6716,8 @@ server <- function(input, output, session) {
             values = palette_sensori,
             name = "Componente"
           ) +
-          labs(x = NULL, y = "Manovre") +
+          labs(x = NULL, y = "Manovre", caption = if (any(grafico$redistribuite))
+            "Sfondo giallo: manovre redistribuite per interruzione della connessione; escluse dalla media." else NULL) +
           tema_san(base_size = 13) +
           theme(
             panel.grid.minor = element_blank(),
@@ -6670,6 +6757,7 @@ server <- function(input, output, session) {
       )
     
     ggplot() +
+      sfondo_layer +
       geom_line(
         data = spline_att,
         aes(
@@ -6711,7 +6799,8 @@ server <- function(input, output, session) {
         expand = expansion(mult = c(0, 0.04))
       ) +
       scale_color_manual(values = palette_sensori, name = "Componente") +
-      labs(x = NULL, y = "Manovre") +
+      labs(x = NULL, y = "Manovre", caption = if (any(grafico$redistribuite))
+        "Sfondo giallo: manovre redistribuite per interruzione della connessione; escluse dalla media." else NULL) +
       tema_san(base_size = 13) +
       theme(
         panel.grid.minor = element_blank(),
@@ -8351,6 +8440,7 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+
 
 
 
