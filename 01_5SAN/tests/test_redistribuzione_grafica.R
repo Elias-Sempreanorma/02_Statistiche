@@ -15,7 +15,7 @@ make <- function(start, end) tibble(
 flags <- function(x, abnormal = TRUE) x |>
   slice_tail(n = 1) |>
   transmute(coupon, gateway_id, sensor_id, cds_name, sensor_description,
-    day = as.Date(timestamp, tz = "Europe/Rome"), outlier_lof = abnormal)
+    hour = floor_date(timestamp, "hour"), anomalia_oraria = abnormal)
 x <- make("2026-11-01 22:30:00", "2026-11-02 01:30:00")
 original <- x
 result <- redistribuisci_manovre_grafico(x, flags(x))

@@ -247,7 +247,7 @@ alerts_path <- here("02_Output", "alerts.rds")
 leggi_alerts_dashboard <- function(path = alerts_path) {
   if (file.exists(path)) {
     readRDS(path) |>
-      filter(alert_type != "gateway_disconnection") |>
+      filter(!alert_type %in% c("gateway_disconnection", "nok_daily")) |>
       mutate(
         period_start = with_tz(period_start, "Europe/Rome"),
         period_end = with_tz(period_end, "Europe/Rome"),
@@ -437,33 +437,13 @@ sensori_allarmabili <- calcola_sensori_allarmabili(dati)
 # Le reactive dei grafici filtrano questi oggetti gia' aggregati invece di
 # ricostruire ogni volta tutto lo storico della macchina.
 # ---------------------------------------------------------------------------
-dati_attivazioni_orarie_base <- dati |>
-  mutate(
-    timestamp_local = with_tz(timestamp, "Europe/Rome"),
-    day_oraria = as.Date(timestamp_local, tz = "Europe/Rome"),
-    hour_oraria = floor_date(timestamp_local, "hour")
-  ) |>
-  group_by(
-    coupon,
-    day = day_oraria,
-    hour = hour_oraria,
-    cds_name,
-    sensor_description
-  ) |>
-  summarise(
-    attivazioni_orarie = if (
-      any(is.finite(increment))
-    ) {
-      sum(increment[is.finite(increment)], na.rm = TRUE)
-    } else {
-      NA_real_
-    },
-    gateway_disconnect_affected = any(
-      gateway_disconnect_affected,
-      na.rm = TRUE
-    ),
-    .groups = "drop"
-  )
+dati_attivazioni_orarie_base <- prepara_manovre_orarie(dati) |>
+  group_by(coupon, day, hour, cds_name, sensor_description) |>
+  summarise(attivazioni_orarie = if (any(is.finite(hourly_count)))
+      sum(hourly_count[is.finite(hourly_count)]) else NA_real_,
+    anomalia_oraria = any(anomalia_oraria),
+    gateway_disconnect_affected = any(gateway_disconnect_affected, na.rm = TRUE),
+    .groups = "drop")
 
 finestre_orarie_macchina <- dati |>
   mutate(
@@ -482,29 +462,14 @@ finestre_orarie_macchina <- dati |>
     is.finite(as.numeric(ultima_ora))
   )
 
-mediane_attivazioni_orarie <- dati_attivazioni_orarie_base |>
-  semi_join(
-    sensori_allarmabili,
-    by = c("coupon", "cds_name", "sensor_description")
-  ) |>
-  filter(
-    is.finite(attivazioni_orarie),
-    attivazioni_orarie > 0
-  ) |>
-  group_by(coupon, cds_name, sensor_description) |>
-  summarise(
-    mediana_oraria = median(attivazioni_orarie, na.rm = TRUE),
-    .groups = "drop"
-  )
-
 # Copia destinata esclusivamente ai grafici: dati, modelli e medie restano originali.
-# Redistribuisce solo accumuli da disconnessione gia' esclusi come anomalie
-# giornaliere dall'ETL. Le quote sono proporzionali ai secondi in ogni ora.
-redistribuisci_manovre_grafico <- function(dati, giornalieri) {
+# Redistribuisce solo accumuli da disconnessione classificati come anomalie
+# orarie dall'ETL. Le quote sono proporzionali ai secondi in ogni ora.
+redistribuisci_manovre_grafico <- function(dati, orari) {
   chiavi <- c("coupon", "gateway_id", "sensor_id", "cds_name", "sensor_description")
-  anomali <- giornalieri |>
-    filter(outlier_lof %in% TRUE) |>
-    distinct(across(all_of(c(chiavi, "day")))) |>
+  anomali <- orari |>
+    filter(anomalia_oraria %in% TRUE) |>
+    distinct(across(all_of(c(chiavi, "hour")))) |>
     mutate(.anomalo = TRUE)
   base <- dati |>
     ungroup() |>
@@ -512,8 +477,8 @@ redistribuisci_manovre_grafico <- function(dati, giornalieri) {
     arrange(timestamp, .by_group = TRUE) |>
     mutate(.precedente = lag(timestamp)) |>
     ungroup() |>
-    mutate(day = as.Date(timestamp, tz = "Europe/Rome")) |>
-    left_join(anomali, by = c(chiavi, "day")) |>
+    mutate(hour = floor_date(with_tz(timestamp, "Europe/Rome"), "hour")) |>
+    left_join(anomali, by = c(chiavi, "hour")) |>
     mutate(.spalma = gateway_disconnect_affected %in% TRUE &
       .anomalo %in% TRUE & is.finite(increment) & increment > 0 &
       !is.na(.precedente) & timestamp > .precedente)
@@ -547,11 +512,11 @@ redistribuisci_manovre_grafico <- function(dati, giornalieri) {
 }
 
 dati_attivazioni_orarie_grafico <- redistribuisci_manovre_grafico(
-  dati, prepara_valori_giornalieri_nok_data(dati))
+  dati, prepara_manovre_orarie(dati))
 
 nota_redistribuzione <- paste0(
   "<br/><b>Manovre redistribuite graficamente per interruzione della connessione.</b>",
-  "<br/>Escluse dalla media di riferimento perché anomale. ",
+  "<br/>Accumulo classificato come anomalo nell’ora. ",
   "La distribuzione temporale è stimata.")
 
 data_min <- min(dati$day, na.rm = TRUE)
@@ -3621,9 +3586,9 @@ server <- function(input, output, session) {
         ),
         div(
           class = "alarm-section",
-          h4("NOK", class = "titolo-sezione"),
+          h4("Utilizzo della macchina", class = "titolo-sezione"),
           p(
-            "Giornate con un utilizzo del componente molto più alto o più basso del consueto, tenendo conto delle ore di attività."
+            "Settimane concluse con utilizzo complessivo fuori dall’intervallo storico P5–P95."
           ),
           uiOutput("modal_allarmi_nok_panel")
         ),
@@ -4221,49 +4186,19 @@ server <- function(input, output, session) {
         )
       )
     
-    mediane_macchina <- mediane_attivazioni_orarie |>
-      filter(coupon == macchina)
-    
-    anomalie_orarie <- dati_attivazioni_orarie_base |>
-      semi_join(
-        sensori_allarmabili,
-        by = c("coupon", "cds_name", "sensor_description")
-      ) |>
-      filter(
-        coupon == macchina,
-        cds_name %in% sensori,
-        day >= inizio,
-        day <= fine
-      ) |>
-      left_join(
-        mediane_macchina |>
-          select(cds_name, sensor_description, mediana_oraria),
-        by = c("cds_name", "sensor_description")
-      ) |>
-      filter(
-        is.finite(attivazioni_orarie),
-        attivazioni_orarie > 6,
-        is.finite(mediana_oraria),
-        mediana_oraria > 0,
-        attivazioni_orarie >= 4 * mediana_oraria
-      ) |>
-      transmute(
-        Macchina = nome_macchina,
-        Coupon = macchina,
-        Componente = paste(cds_name, sensor_description, sep = " - "),
-        Data = day,
-        Ora = format(hour, "%H:00", tz = "Europe/Rome"),
-        Conteggio = round(attivazioni_orarie),
-        Descrizione = paste0(
-          "Molte più manovre del solito in un'ora",
-          if_else(
-            gateway_disconnect_affected,
-            nota_disconnessione_gateway,
-            ""
-          )
-        )
-      )
-    
+    anomalie_orarie <- prepara_manovre_orarie(dati) |>
+      semi_join(sensori_allarmabili,
+        by = c("coupon", "gateway_id", "sensor_id", "cds_name", "sensor_description")) |>
+      filter(coupon == macchina, cds_name %in% sensori,
+        day >= inizio, day <= fine, anomalia_oraria) |>
+      transmute(Macchina = nome_macchina, Coupon = macchina,
+        Componente = paste(cds_name, sensor_description, sep = " - "), Data = day,
+        Ora = format(hour, "%H:00", tz = "Europe/Rome"), Conteggio = round(hourly_count),
+        Descrizione = paste0(if_else(hourly_count > limite_orario_sup,
+          "Più manovre del solito in un'ora", "Meno manovre del solito in un'ora"),
+          ". LOF e distribuzione dei conteggi orari.",
+          if_else(gateway_disconnect_affected, nota_disconnessione_gateway, "")))
+
     tab_att_anomale <- bind_rows(
       anomalie_giornaliere,
       anomalie_orarie
@@ -4271,92 +4206,16 @@ server <- function(input, output, session) {
       distinct() |>
       arrange(Data, Ora, Componente)
     
-    tab_nok_anomalo <- confronto |>
-      semi_join(
-        sensori_allarmabili_report,
-        by = c("cds_name", "sensor_description")
-      ) |>
-      filter(nok_fuori_range) |>
-      transmute(
-        Macchina = nome_macchina,
-        Coupon = macchina,
-        Componente = paste(cds_name, sensor_description, sep = " - "),
-        Periodo = paste(
-          format(inizio, "%d/%m/%Y"),
-          format(fine, "%d/%m/%Y"),
-          sep = " - "
-        ),
-        `Utilizzo / storico` = round(NOK, 3),
-        Descrizione = paste0(
-          case_when(
-            NOK < limite_inf ~ "Utilizzo più basso del solito",
-            NOK > limite_sup ~ "Utilizzo più alto del solito",
-            TRUE ~ "Utilizzo diverso dal solito"
-          ),
-          if_else(
-            gateway_disconnect_affected,
-            nota_disconnessione_gateway,
-            ""
-          )
-        )
-      )
-    
-    periodo_affetto_disconnessione <- base_giornaliera |>
-      filter(day >= inizio, day <= fine) |>
-      summarise(
-        flag = any(gateway_disconnect_affected, na.rm = TRUE)
-      ) |>
-      pull(flag)
-    
-    tab_utilizzo_anomalo <- if (
-      identical(utilizzo_stato, "Elevato") ||
-      identical(utilizzo_stato, "Basso")
-    ) {
-      tibble(
-        Macchina = nome_macchina,
-        Coupon = macchina,
-        Periodo = paste(
-          format(inizio, "%d/%m/%Y"),
-          format(fine, "%d/%m/%Y"),
-          sep = " - "
-        ),
-        Utilizzo = round(utilizzo_corrente, 3),
-        Descrizione = if (
-          identical(utilizzo_stato, "Elevato")
-        ) {
-          paste0(
-            "Utilizzo più alto del solito (valore di confronto: ",
-            round(p90_u, 3),
-            ")",
-            if (isTRUE(periodo_affetto_disconnessione)) {
-              nota_disconnessione_gateway
-            } else {
-              ""
-            }
-          )
-        } else {
-          paste0(
-            "Utilizzo più basso del solito (valore di confronto: ",
-            round(p10_u, 3),
-            ")",
-            if (isTRUE(periodo_affetto_disconnessione)) {
-              nota_disconnessione_gateway
-            } else {
-              ""
-            }
-          )
-        }
-      )
-    } else {
-      tibble(
-        Macchina = character(),
-        Coupon = character(),
-        Periodo = character(),
-        Utilizzo = numeric(),
-        Descrizione = character()
-      )
-    }
-    
+    tab_nok_anomalo <- tibble()
+    tab_utilizzo_anomalo <- leggi_alerts_dashboard() |>
+      filter(coupon == macchina, alert_type == "utilization_weekly",
+        as.Date(period_start, tz = "Europe/Rome") <= fine,
+        as.Date(period_end, tz = "Europe/Rome") >= inizio) |>
+      transmute(Macchina = nome_macchina, Coupon = coupon,
+        Inizio = as.Date(period_start, tz = "Europe/Rome"),
+        Fine = as.Date(period_end, tz = "Europe/Rome"),
+        Descrizione = paste0(signal_description, ". ", signal_data_text))
+
     list(
       inizio = inizio,
       fine = fine,
@@ -4515,11 +4374,7 @@ server <- function(input, output, session) {
       stato_nok,
       " (",
       nok_range,
-      "). A livello di dettaglio, ",
-      n_nok_fuori,
-      " componenti su ",
-      n_sensori,
-      " risultano fuori dai rispettivi limiti storici nel periodo considerato."
+      "). Il NOK resta un indicatore descrittivo; le segnalazioni riguardano manovre e utilizzo complessivo della macchina."
     )
     
     p4 <- if (n_att_anomale > 0) {
@@ -4855,10 +4710,10 @@ server <- function(input, output, session) {
         ),
         div(
           class = "report-kpi-card",
-          div("Componenti con utilizzo insolito", class = "report-kpi-label"),
-          div(n_nok, class = "report-kpi-value"),
+          div("Settimane con utilizzo insolito", class = "report-kpi-label"),
+          div(nrow(r$utilizzo_anomalo), class = "report-kpi-value"),
           div(
-            paste0("Su ", nrow(r$confronto), " componenti analizzati"),
+            "Segnalazioni macchina P5–P95",
             class = "report-kpi-note"
           )
         )
@@ -4890,16 +4745,6 @@ server <- function(input, output, session) {
       
       sezione(
         "3",
-        "Componenti con utilizzo insolito",
-        "Componenti usati più o meno del solito, tenendo conto delle ore di attività. Un valore di 1 corrisponde all’utilizzo abituale.",
-        tabella_html(
-          r$nok_anomalo,
-          "Nessun componente con utilizzo insolito nel periodo."
-        )
-      ),
-      
-      sezione(
-        "4",
         "Utilizzo della macchina diverso dal solito",
         "Questa sezione mostra i periodi in cui l’utilizzo complessivo della macchina è più alto o più basso del suo intervallo abituale.",
         tabella_html(
@@ -5150,10 +4995,10 @@ server <- function(input, output, session) {
       )
       kpi_card(
         0.865,
-        "COMPONENTI CON USO INSOLITO",
-        as.character(nrow(r$nok_anomalo)),
-        paste0("Su ", nrow(r$confronto), " componenti"),
-        if (nrow(r$nok_anomalo) > 0) "bad" else "good"
+        "SETTIMANE CON USO INSOLITO",
+        as.character(nrow(r$utilizzo_anomalo)),
+        "Segnalazioni macchina P5–P95",
+        if (nrow(r$utilizzo_anomalo) > 0) "bad" else "good"
       )
       
       grid::grid.text(
@@ -5371,12 +5216,6 @@ server <- function(input, output, session) {
         "Manovre anomale rilevanti",
         att_pdf,
         "Nessuna manovra anomala rilevante nel periodo."
-      )
-      
-      disegna_tabella_paginata(
-        "Componenti con utilizzo insolito",
-        r$nok_anomalo,
-        "Nessun componente con utilizzo insolito nel periodo."
       )
       
       disegna_tabella_paginata(
@@ -5945,22 +5784,14 @@ server <- function(input, output, session) {
   })
 
   allarmi_nok_modal <- reactive({
-    filtri <- filtri_nok_modal()
-
     alerts_filtrati_modal() |>
-      filter(
-        alert_type == "nok_daily",
-        vapply(strsplit(coalesce(sensor_code, ""), "; ", fixed = TRUE),
-          function(codes) any(codes %in% filtri$sensori), logical(1))
-      ) |>
-      arrange(period_start, sensor_code, alert_id) |>
-      transmute(
-        `ID segnalazione` = alert_id,
-        Componente = if_else(alert_scope == "machine", functional_unit,
-          paste(sensor_code, sensor_description, sep = " - ")),
-        Data = as.Date(period_start, tz = "Europe/Rome"),
-        Descrizione = paste0(signal_description, ". ", signal_data_text)
-      )
+      filter(alert_type == "utilization_weekly") |>
+      arrange(period_start, alert_id) |>
+      transmute(`ID segnalazione` = alert_id,
+        Macchina = coalesce(machine_name, coupon),
+        Inizio = as.Date(period_start, tz = "Europe/Rome"),
+        Fine = as.Date(period_end, tz = "Europe/Rome"),
+        Descrizione = paste0(signal_description, ". ", signal_data_text))
   })
 
   allarmi_gateway_modal <- reactive({
@@ -6018,7 +5849,7 @@ server <- function(input, output, session) {
       return(
         div(
           class = "alarm-empty",
-          "Nessun utilizzo insolito nel periodo selezionato."
+          "Nessuna settimana con utilizzo macchina fuori P5–P95. Il confronto richiede almeno 7 settimane precedenti confrontabili."
         )
       )
     }
@@ -6050,7 +5881,7 @@ server <- function(input, output, session) {
   }, server = TRUE)
 
   output$modal_allarmi_nok <- renderDT({
-    tabella_segnalazioni(allarmi_nok_modal(), "Data")
+    tabella_segnalazioni(allarmi_nok_modal(), "Inizio")
   }, server = TRUE)
 
   output$modal_allarmi_gateway <- renderDT({
@@ -6401,19 +6232,11 @@ server <- function(input, output, session) {
         )
       ) |>
       left_join(
-        mediane_attivazioni_orarie |>
-          filter(coupon == filtri$macchina) |>
-          select(-coupon),
-        by = c("cds_name", "sensor_description")
+        dati_attivazioni_orarie_base |> filter(coupon == filtri$macchina) |>
+          select(day, hour, cds_name, sensor_description, anomalia_oraria),
+        by = c("day", "hour", "cds_name", "sensor_description")
       ) |>
-      mutate(
-        anomalia_oraria = (
-          is.finite(attivazioni_orarie) &
-          is.finite(mediana_oraria) &
-          mediana_oraria > 0 &
-          attivazioni_orarie >= 4 * mediana_oraria
-        )
-      ) |>
+      mutate(anomalia_oraria = coalesce(anomalia_oraria, FALSE)) |>
       arrange(hour, cds_name)
   }) |>
     bindCache(
@@ -6458,7 +6281,6 @@ server <- function(input, output, session) {
           attivazioni = attivazioni_orarie,
           ore_aperte = ore_macchina,
           anomalia_oraria,
-          mediana_oraria,
           redistribuite,
           gateway_disconnect_affected,
           etichetta_ore_aperte = "Ore macchina del giorno"
@@ -6481,7 +6303,6 @@ server <- function(input, output, session) {
         ) |>
         mutate(
           anomalia_oraria = FALSE,
-          mediana_oraria = NA_real_,
           etichetta_ore_aperte = if (
             identical(filtri$granularita, "Giorno")
           ) {
@@ -6606,7 +6427,7 @@ server <- function(input, output, session) {
       scale_fill_manual(values = palette_sensori, name = "Componente") +
       labs(title = NULL, x = NULL, y = "Manovre",
         caption = if (any(grafico$redistribuite))
-          "Sfondo giallo: manovre redistribuite per interruzione della connessione; escluse dalla media." else NULL) +
+          "Sfondo giallo: manovre orarie anomale redistribuite per interruzione della connessione." else NULL) +
       tema_san(base_size = 13) +
       theme(
         panel.grid.major.x = element_blank(),
@@ -6717,7 +6538,7 @@ server <- function(input, output, session) {
             name = "Componente"
           ) +
           labs(x = NULL, y = "Manovre", caption = if (any(grafico$redistribuite))
-            "Sfondo giallo: manovre redistribuite per interruzione della connessione; escluse dalla media." else NULL) +
+            "Sfondo giallo: manovre orarie anomale redistribuite per interruzione della connessione." else NULL) +
           tema_san(base_size = 13) +
           theme(
             panel.grid.minor = element_blank(),
@@ -6800,7 +6621,7 @@ server <- function(input, output, session) {
       ) +
       scale_color_manual(values = palette_sensori, name = "Componente") +
       labs(x = NULL, y = "Manovre", caption = if (any(grafico$redistribuite))
-        "Sfondo giallo: manovre redistribuite per interruzione della connessione; escluse dalla media." else NULL) +
+        "Sfondo giallo: manovre orarie anomale redistribuite per interruzione della connessione." else NULL) +
       tema_san(base_size = 13) +
       theme(
         panel.grid.minor = element_blank(),
@@ -8440,6 +8261,7 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+
 
 
 

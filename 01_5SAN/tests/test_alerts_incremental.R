@@ -63,8 +63,10 @@ raw <- tidyr::expand_grid(i = 1:3, d = seq(day - 30L, day, by = "day")) |>
     increment = if_else(d == .env$day, 10, 1), daily_uptime = 1,
     gateway_disconnect_affected = FALSE)
 base <- aggrega_valori_giornalieri_nok_data(raw) |>
-  mutate(rate = 1, size = Inf, train_end = day - 1L)
+  mutate(rate = 1, size = Inf, family = "poisson", train_end = day - 1L)
 attr(raw, "giornalieri_nok") <- base
+hour_models <- base |> distinct(coupon, gateway_id, sensor_id, family, rate, size, train_end)
+attr(raw, "orari_manovre") <- classifica_manovre_orarie(aggrega_manovre_orarie(raw), hour_models)
 result <- calcola_segnalazioni_giorno(day, raw, raw)
 hourly <- filter(result, alert_type == "activation_hourly")
 stopifnot(nrow(hourly) == 2L, filter(hourly, coupon == "A")$alert_scope == "machine",
@@ -72,6 +74,7 @@ stopifnot(nrow(hourly) == 2L, filter(hourly, coupon == "A")$alert_scope == "mach
 # Un giorno futuro estremo non cambia classificazione o chiave del giorno valutato.
 future <- mutate(filter(raw, day == .env$day), timestamp = timestamp + days(1), day = day + 1L, increment = 1e8)
 combined <- bind_rows(raw, future)
+attr(combined, "orari_manovre") <- attr(raw, "orari_manovre")
 attr(combined, "giornalieri_nok") <- bind_rows(base, mutate(filter(base, day == .env$day), day = day + 1L, daily_count = 1e8))
 again <- calcola_segnalazioni_giorno(day, combined, combined)
 stopifnot(identical(sort(result$event_key), sort(again$event_key)),

@@ -318,6 +318,11 @@ message("Modelli manovre: ", sum(is.finite(modelli_manovre$rate)),
         " validi, ", sum(!is.finite(modelli_manovre$rate)),
         " senza modello valido (nessuna esclusione automatica).")
 # Stesso file degli incrementi: impossibile leggere flag di un altro run.
+orari_manovre <- aggrega_manovre_orarie(sensor_count_increment)
+modelli_orari <- aggiorna_modelli_manovre(
+  orari_manovre, here("02_Output", "modelli_manovre_orarie.rds"))
+orari_manovre <- classifica_manovre_orarie(orari_manovre, modelli_orari)
+attr(sensor_count_increment, "orari_manovre") <- orari_manovre
 attr(sensor_count_increment, "giornalieri_nok") <- giornalieri_nok
 saveRDS(sensor_count_increment, here("02_Output", "sensor_count_increment.rds"))
 # saveRDS(sensor_hour_average, here("02_Output", "sensor_hour_average.rds"))
@@ -325,4 +330,5 @@ saveRDS(sensor_count_increment, here("02_Output", "sensor_count_increment.rds"))
 # write.xlsx(sensor_hour_average, here("02_Output", "Attivazioni_Sensori.xlsx"))
 # write.xlsx(sensor_day_average, here("02_Output", "Attivazioni_Sensori_giorno.xlsx"))
 # write.xlsx(sensor_count_increment, here("02_Output", "Conteggio_Attivazioni_Sensori.xlsx"))
+
 

@@ -62,9 +62,9 @@ codice_comportamento <- function(type, description) {
   text <- tolower(description)
   case_when(
     type == "sensor_open" ~ "open",
-    type %in% c("activation_daily", "activation_hourly", "nok_daily") &
+    type %in% c("activation_daily", "activation_hourly", "nok_daily", "utilization_weekly") &
       grepl("meno|inferior|sotto|dimin", text) ~ "decrease",
-    type %in% c("activation_daily", "activation_hourly", "nok_daily") &
+    type %in% c("activation_daily", "activation_hourly", "nok_daily", "utilization_weekly") &
       grepl("più|piu|superior|sopra|aument", text) ~ "increase",
     TRUE ~ paste0("other:", description)
   )
@@ -116,8 +116,10 @@ espandi_segnalazioni_salvate <- function(alerts) {
 # Gateway e sensori restano distinti nel JSON, anche con codici ripetuti.
 raggruppa_segnalazioni <- function(alerts) {
   if (!nrow(alerts)) return(alerts)
-  sensors <- alerts |> filter(alert_scope %in% c("sensor", "machine"))
-  gateways <- alerts |> filter(!alert_scope %in% c("sensor", "machine"))
+  sensors <- alerts |> filter(alert_scope %in% c("sensor", "machine"),
+    alert_type != "utilization_weekly")
+  gateways <- alerts |> filter(!alert_scope %in% c("sensor", "machine") |
+    alert_type == "utilization_weekly")
   if (!nrow(sensors)) return(gateways)
   grouped <- sensors |>
     mutate(behavior_code = codice_comportamento(alert_type, signal_description)) |>
@@ -271,88 +273,44 @@ calcola_segnalazioni_giorno <- function(evaluation_day, incrementi, dati_raw) {
     ungroup()
 
   # ---------------------------------------------------------------------------
-  # 2) Anomalie orarie: >= 4 x mediana oraria positiva del sensore.
-  # ---------------------------------------------------------------------------
-  base_oraria <- dati_allarmabili |>
-    mutate(hour_alert = floor_date(timestamp, "hour")) |>
-    group_by(
-      company, field, project, coupon, machine_name,
-      machine_serial_number, gateway_id, gateway_name,
-      sensor_id, cds_name, sensor_description, hour_alert
-    ) |>
-    summarise(
-      hourly_count = if (any(is.finite(increment))) {
-        sum(increment[is.finite(increment)], na.rm = TRUE)
-      } else {
-        NA_real_
-      },
-      gateway_disconnect_affected = any(
-        gateway_disconnect_affected,
-        na.rm = TRUE
-      ),
-      .groups = "drop"
-    )
-
-  mediane_orarie <- base_oraria |>
-    filter(is.finite(hourly_count), hourly_count > 0) |>
-    group_by(coupon, gateway_id, sensor_id, cds_name, sensor_description) |>
-    summarise(
-      hourly_median = median(hourly_count, na.rm = TRUE),
-      .groups = "drop"
-    )
-
+  # 2) Anomalie orarie: LOF > 2 E limiti predittivi al 95%.
+  orari <- aggrega_manovre_orarie(sensor_count_increment)
+  cached <- prepara_manovre_orarie(incrementi)
+  models <- cached |>
+    distinct(coupon, gateway_id, sensor_id, family, rate, size, train_end)
+  # Nel recupero di giorni arretrati il modello non vede giorni successivi.
+  if (nrow(orari)) models <- orari |> group_by(coupon, gateway_id, sensor_id) |>
+    group_modify(function(.x, .y) {
+      old <- models |> semi_join(.y, by = c("coupon", "gateway_id", "sensor_id"))
+      if (nrow(old) && !any(old$train_end > evaluation_day, na.rm = TRUE)) {
+        return(select(old, family, rate, size, train_end))
+      }
+      fit <- stima_modello_manovre(.x)
+      if (is.null(fit)) return(tibble(family = NA_character_, rate = NA_real_,
+        size = NA_real_, train_end = evaluation_day))
+      select(fit, family, rate, size, train_end)
+    }) |> ungroup()
+  base_oraria <- classifica_manovre_orarie(orari, models) |>
+    semi_join(sensori_allarmabili,
+      by = c("coupon", "gateway_id", "sensor_id", "cds_name", "sensor_description"))
   alert_attivazioni_orarie <- base_oraria |>
-    left_join(
-      mediane_orarie,
-      by = c(
-        "coupon", "gateway_id", "sensor_id",
-        "cds_name", "sensor_description"
-      )
-    ) |>
-    filter(
-      is.finite(hourly_count),
-      is.finite(hourly_median),
-      hourly_median > 0,
-      hourly_count >= 4 * hourly_median
-    ) |>
-    mutate(
-      period_start = hour_alert,
-      period_end = hour_alert + hours(1),
+    filter(anomalia_oraria) |>
+    mutate(period_start = hour, period_end = hour + hours(1),
       generated_at = period_end,
-      event_key = paste(
-        "activation_hourly",
-        coupon,
-        sensor_id,
-        fmt_iso_utc(hour_alert),
-        sep = "|"
-      ),
-      alert_type = "activation_hourly",
-      type_code = "ACTH",
-      alert_scope = "sensor",
+      event_key = paste("activation_hourly", coupon, gateway_id, sensor_id,
+        fmt_iso_utc(hour), sep = "|"),
+      alert_type = "activation_hourly", type_code = "ACTH", alert_scope = "sensor",
       functional_unit = paste(cds_name, sensor_description, sep = " - "),
-      signal_description =
-        "Molte più manovre del solito in un'ora",
-      signal_data_text = paste0(
-        round(hourly_count), " manovre in un'ora. Nelle ore con attività, il valore abituale è ",
-        formatC(hourly_median, format = "f", digits = 1, decimal.mark = ","),
-        " manovre.",
-        if_else(
-          gateway_disconnect_affected,
-          " Il momento di registrazione delle manovre può risentire di un'interruzione delle comunicazioni.",
-          ""
-        )
-      )
-    ) |>
-    rowwise() |>
-    mutate(
-      signal_data_json = json_alert(list(
-        hourly_count = hourly_count,
-        hourly_median = hourly_median,
-        ratio_to_median = hourly_count / hourly_median,
-        gateway_disconnect_affected = gateway_disconnect_affected
-      ))
-    ) |>
-    ungroup()
+      signal_description = if_else(hourly_count > limite_orario_sup,
+        "Più manovre del solito in un'ora", "Meno manovre del solito in un'ora"),
+      signal_data_text = paste0(round(hourly_count), " manovre nell'ora. In base allo storico ci si aspetta da ",
+        round(limite_orario_inf), " a ", round(limite_orario_sup), " manovre.",
+        if_else(gateway_disconnect_affected,
+          " Il momento di registrazione può risentire di un'interruzione delle comunicazioni.", ""))) |>
+    rowwise() |> mutate(signal_data_json = json_alert(list(
+      hourly_count = hourly_count, lof_score = lof_score, probability_model = family,
+      lower_limit_95 = limite_orario_inf, upper_limit_95 = limite_orario_sup,
+      gateway_disconnect_affected = gateway_disconnect_affected))) |> ungroup()
 
   # ---------------------------------------------------------------------------
   # 3) Componente aperto / assenza di contatto elettrico per oltre 1 ora.
@@ -397,131 +355,30 @@ calcola_segnalazioni_giorno <- function(evaluation_day, incrementi, dati_raw) {
     ungroup()
 
   # ---------------------------------------------------------------------------
-  # 4) NOK giornaliero fuori da media storica +/- 3 sigma.
-  #
-  # Per rendere l'alert persistente e indipendente dal periodo scelto in UI,
-  # ogni giornata viene confrontata con lo storico pulito dello stesso sensore
-  # escludendo la giornata candidata dal proprio riferimento.
-  # ---------------------------------------------------------------------------
-  base_nok <- base_giornaliera |>
-    group_by(coupon, gateway_id, sensor_id, cds_name, sensor_description) |>
-    mutate(
-      clean_for_history = !outlier_lof & is.finite(daily_value),
-      n_clean = sum(clean_for_history),
-      sum_clean = sum(
-        if_else(clean_for_history, daily_value, 0),
-        na.rm = TRUE
-      ),
-      sumsq_clean = sum(
-        if_else(clean_for_history, daily_value^2, 0),
-        na.rm = TRUE
-      ),
-      exclude_self = clean_for_history,
-      n_hist = n_clean - as.integer(exclude_self),
-      sum_hist = sum_clean - if_else(exclude_self, daily_value, 0),
-      sumsq_hist =
-        sumsq_clean - if_else(exclude_self, daily_value^2, 0),
-      NMN = if_else(
-        n_hist > 0,
-        sum_hist / n_hist,
-        NA_real_
-      ),
-      var_daily_value = if_else(
-        n_hist >= 2,
-        pmax(
-          (
-            sumsq_hist - (sum_hist^2 / n_hist)
-          ) / (n_hist - 1),
-          0
-        ),
-        NA_real_
-      ),
-      NOK_giornaliero = if_else(
-        is.finite(daily_value) &
-          is.finite(NMN) &
-          NMN > 0,
-        daily_value / NMN,
-        NA_real_
-      ),
-      sigma_nok = if_else(
-        is.finite(var_daily_value) &
-          is.finite(NMN) &
-          NMN > 0,
-        sqrt(var_daily_value) / NMN,
-        NA_real_
-      ),
-      limite_nok_inf = pmax(0, 1 - 3 * sigma_nok),
-      limite_nok_sup = 1 + 3 * sigma_nok,
-      nok_fuori_range = (
-        is.finite(NOK_giornaliero) &
-        is.finite(limite_nok_inf) &
-        is.finite(limite_nok_sup) &
-        (
-          NOK_giornaliero < limite_nok_inf |
-          NOK_giornaliero > limite_nok_sup
-        )
-      )
-    ) |>
-    ungroup()
-
-  alert_nok <- base_nok |>
-    filter(nok_fuori_range) |>
-    mutate(
-      period_start = inizio_giorno(day),
-      period_end = fine_giorno(day),
-      generated_at = period_end,
-      event_key = paste(
-        "nok_daily",
-        coupon,
-        sensor_id,
-        format(day, "%Y-%m-%d"),
-        sep = "|"
-      ),
-      alert_type = "nok_daily",
-      type_code = "NOK",
-      alert_scope = "sensor",
-      functional_unit = paste(cds_name, sensor_description, sep = " - "),
-      direction = if_else(
-        NOK_giornaliero < limite_nok_inf,
-        "sotto limite",
-        "sopra limite"
-      ),
-      signal_description = if_else(
-        NOK_giornaliero < limite_nok_inf,
-        "NOK giornaliero inferiore al valore atteso",
-        "NOK giornaliero superiore al valore atteso"
-      ),
-      signal_data_text = paste0(
-        if_else(
-          NOK_giornaliero == 0,
-          "Nessuna manovra registrata nelle ore di attività, a fronte di un valore atteso maggiore di zero.",
-          paste0(
-            "Il numero di manovre per ora di attività è pari a circa ",
-            trimws(formatC(NOK_giornaliero, format = "fg", digits = 2,
-              decimal.mark = ",")),
-            " volte il valore atteso in base allo storico del componente."
-          )
-        ),
-        if_else(
-          gateway_disconnect_affected,
-          " Il momento di registrazione delle manovre può risentire di un'interruzione delle comunicazioni.",
-          ""
-        )
-      )
-    ) |>
-    rowwise() |>
-    mutate(
-      signal_data_json = json_alert(list(
-        nok = NOK_giornaliero,
-        nmn = NMN,
-        daily_value = daily_value,
-        lower_limit = limite_nok_inf,
-        upper_limit = limite_nok_sup,
-        direction = direction,
-        gateway_disconnect_affected = gateway_disconnect_affected
-      ))
-    ) |>
-    ungroup()
+  # 4) Utilizzo macchina: settimana lunedi-domenica, riferimenti P5-P95.
+  utilizzo <- valuta_utilizzo_settimanale(base_giornaliera, evaluation_day)
+  alert_utilizzo <- tibble()
+  if (nrow(utilizzo)) {
+    meta <- sensor_count_increment |> arrange(timestamp) |>
+      group_by(coupon) |> slice_tail(n = 1) |> ungroup() |>
+      select(company, field, project, coupon, machine_name, machine_serial_number)
+    alert_utilizzo <- utilizzo |> filter(anomalous) |> left_join(meta, by = "coupon") |>
+      mutate(period_start = inizio_giorno(week_start), period_end = fine_giorno(week_end),
+        generated_at = period_end, gateway_id = gateway_ids, gateway_name = NA_character_,
+        sensor_id = sensor_ids, cds_name = sensor_codes, sensor_description = "Utilizzo macchina",
+        event_key = paste("utilization_weekly", coupon, week_start, sep = "|"),
+        alert_type = "utilization_weekly", type_code = "UTLW", alert_scope = "machine",
+        functional_unit = "Macchina",
+        signal_description = if_else(utilization > upper_limit,
+          "Utilizzo settimanale superiore al riferimento storico",
+          "Utilizzo settimanale inferiore al riferimento storico"),
+        signal_data_text = paste0("Utilizzo: ", round(utilization, 3),
+          ". Intervallo storico P5-P95: ", round(lower_limit, 3), "–", round(upper_limit, 3),
+          ". Settimane precedenti confrontabili: ", reference_weeks, ".")) |>
+      rowwise() |> mutate(signal_data_json = json_alert(list(
+        utilization = utilization, lower_limit_05 = lower_limit, upper_limit_95 = upper_limit,
+        reference_weeks = reference_weeks, sensor_codes = sensor_codes))) |> ungroup()
+  }
 
   # ---------------------------------------------------------------------------
   # 5) Disconnessioni gateway.
@@ -737,7 +594,7 @@ calcola_segnalazioni_giorno <- function(evaluation_day, incrementi, dati_raw) {
     normalizza_alert(alert_attivazioni_giornaliere),
     normalizza_alert(alert_attivazioni_orarie),
     normalizza_alert(alert_sensori_aperti),
-    normalizza_alert(alert_nok),
+    normalizza_alert(alert_utilizzo),
     normalizza_alert(alert_gateway)
   ) |>
     filter(
@@ -1181,3 +1038,4 @@ message(
 }
 
 aggiorna_segnalazioni()
+

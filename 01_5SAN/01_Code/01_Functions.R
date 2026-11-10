@@ -21,9 +21,9 @@ calcola_sensori_allarmabili <- function(dati) {
     dplyr::filter(n_giorni_conteggio >= MIN_GIORNI_ALLARME)
 }
 
-# Parametri della sola classificazione giornaliera; stima eseguita dall'ETL.
+# Parametri condivisi dalle classificazioni giornaliera e oraria; stime separate in ETL.
 MANOVRE_MODEL_DAYS <- 7L
-MANOVRE_MODEL_VERSION <- 2L
+MANOVRE_MODEL_VERSION <- 3L
 MANOVRE_ALPHA <- .05
 
 stima_modello_manovre <- function(df) {
@@ -31,7 +31,8 @@ stima_modello_manovre <- function(df) {
   df <- df[is.finite(df$daily_count) & df$daily_count >= 0 &
     abs(df$daily_count - round(df$daily_count)) < 1e-6 &
     is.finite(df$daily_uptime) & df$daily_uptime > 0, ]
-  if (nrow(df) < MIN_GIORNI_ALLARME) return(NULL)
+  if (nrow(df) < MIN_GIORNI_ALLARME ||
+      dplyr::n_distinct(df$day) < MIN_GIORNI_ALLARME) return(NULL)
   df$daily_count <- round(df$daily_count)
   # Verifica temporale: il modello non vede le giornate di verifica.
   # Con storici brevi riserva almeno 5 giorni alla stima e 2 alla verifica.
@@ -112,7 +113,8 @@ aggiorna_modelli_manovre <- function(giornalieri, path) {
       unchanged <- nrow(old) > 0 && nrow(history) == old$n_history[1] &&
         isTRUE(all.equal(sum(history$daily_count, na.rm = TRUE), old$sum_count[1])) &&
         isTRUE(all.equal(sum(history$daily_uptime, na.rm = TRUE), old$sum_hours[1]))
-      if (unchanged && (old$n_days[1] >= MIN_GIORNI_ALLARME || nrow(.x) < MIN_GIORNI_ALLARME) &&
+      if (unchanged && (old$n_distinct_days[1] >= MIN_GIORNI_ALLARME ||
+          dplyr::n_distinct(.x$day) < MIN_GIORNI_ALLARME) &&
           as.numeric(difftime(Sys.time(), old$fitted_at[1], units = "days")) < MANOVRE_MODEL_DAYS) {
         return(dplyr::select(old, -coupon, -gateway_id, -sensor_id))
       }
@@ -122,12 +124,17 @@ aggiorna_modelli_manovre <- function(giornalieri, path) {
         coverage = NA_real_, fitted_at = Sys.time(),
         train_end = if (nrow(.x)) max(.x$day) else as.Date(NA), n_days = nrow(.x)
       )
-      model <- dplyr::mutate(model, n_history = nrow(.x),
+      model <- dplyr::mutate(model, n_distinct_days = dplyr::n_distinct(.x$day), n_history = nrow(.x),
         sum_count = sum(.x$daily_count, na.rm = TRUE),
         sum_hours = sum(.x$daily_uptime, na.rm = TRUE))
       if (nrow(.x) == 0) model[FALSE, ] else model
     }) |>
     dplyr::ungroup()
+  if (nrow(models) == 0) models <- tibble::tibble(
+    coupon = character(), gateway_id = character(), sensor_id = character(),
+    family = character(), rate = double(), size = double(), coverage = double(),
+    fitted_at = as.POSIXct(character()), train_end = as.Date(character()),
+    n_days = integer(), n_distinct_days = integer(), n_history = integer(), sum_count = double(), sum_hours = double())
   cache$models <- models
   saveRDS(cache, path)
   models
@@ -503,4 +510,93 @@ testo_manovre_giornaliere <- function(conteggio, ore, minimo, massimo) {
   paste0(round(conteggio), " manovre in ", durata_in_testo(ore),
     " di attività. Per una durata simile, in base allo storico ci si aspetta da ",
     minimo, " a ", massimo, " manovre.")
+}
+
+
+# Base oraria originale: una riga per componente e ora osservata.
+# Le ore senza dati non diventano zeri; nessuna redistribuzione entra nei modelli.
+aggrega_manovre_orarie <- function(dati) {
+  dati |> dplyr::ungroup() |>
+    dplyr::mutate(hour = lubridate::floor_date(
+      lubridate::with_tz(timestamp, "Europe/Rome"), "hour")) |>
+    dplyr::group_by(company, field, project, coupon, machine_name,
+      machine_serial_number, gateway_id, gateway_name, sensor_id,
+      cds_name, sensor_description, hour) |>
+    dplyr::summarise(hourly_count = if (any(is.finite(increment)))
+        sum(increment[is.finite(increment)]) else NA_real_,
+      gateway_disconnect_affected = any(gateway_disconnect_affected, na.rm = TRUE),
+      .groups = "drop") |>
+    dplyr::mutate(day = as.Date(hour, tz = "Europe/Rome"),
+      daily_count = hourly_count, daily_uptime = 1, daily_value = hourly_count)
+}
+
+# Stesso stimatore robusto Poisson/NB e stesso LOF k=4 della base giornaliera,
+# ma stima separata sui conteggi orari (esposizione: un bucket di un'ora).
+classifica_manovre_orarie <- function(orari, modelli) {
+  if (!nrow(orari)) return(dplyr::mutate(orari, family = character(),
+    rate = double(), size = double(), train_end = as.Date(character()),
+    lof_score = double(), anomalia_oraria = logical(),
+    limite_orario_inf = double(), limite_orario_sup = double()))
+  orari |>
+    dplyr::left_join(modelli, by = c("coupon", "gateway_id", "sensor_id")) |>
+    dplyr::group_by(coupon, gateway_id, sensor_id, cds_name, sensor_description) |>
+    dplyr::group_modify(function(.x, .y) {
+      if (dplyr::n_distinct(.x$day[is.finite(.x$hourly_count)]) < MIN_GIORNI_ALLARME) {
+        .x$rate <- NA_real_
+      }
+      classifica_anomalie_giornaliere(.x)
+    }) |>
+    dplyr::ungroup() |>
+    dplyr::rename(anomalia_oraria = outlier_lof,
+      limite_orario_inf = limite_manovre_inf, limite_orario_sup = limite_manovre_sup)
+}
+
+prepara_manovre_orarie <- function(dati) {
+  orari <- attr(dati, "orari_manovre")
+  if (is.null(orari)) stop("Eseguire l'ETL aggiornato per generare le anomalie orarie.")
+  orari
+}
+
+# Utilizzo: RMS per componente e media macchina. Solo settimane complete;
+# stesso insieme di componenti e stesso NMN per candidato e riferimenti.
+MIN_SETTIMANE_UTILIZZO <- 7L
+valuta_utilizzo_settimanale <- function(giornalieri, evaluation_day) {
+  end <- as.Date(evaluation_day)
+  if (lubridate::wday(end, week_start = 1) != 7L) return(tibble::tibble())
+  start <- end - 6L
+  ids <- c("coupon", "gateway_id", "sensor_id", "cds_name", "sensor_description")
+  base <- giornalieri |> dplyr::filter(day <= end, is.finite(daily_value))
+  if (!nrow(base)) return(tibble::tibble())
+  base |>
+    dplyr::group_by(coupon) |>
+    dplyr::group_modify(function(x, key) {
+      clean <- x |> dplyr::filter(day < start, !outlier_lof)
+      nmn <- clean |> dplyr::group_by(dplyr::across(dplyr::all_of(setdiff(ids, "coupon")))) |>
+        dplyr::summarise(NMN = mean(daily_value), n_days = dplyr::n_distinct(day), .groups = "drop") |>
+        dplyr::filter(n_days >= MIN_GIORNI_ALLARME, is.finite(NMN), NMN > 0)
+      y <- x |> dplyr::inner_join(nmn, by = setdiff(ids, "coupon")) |>
+        dplyr::mutate(week = as.Date(lubridate::floor_date(day, "week", week_start = 1)),
+          NOK = daily_value / NMN)
+      per_sensor <- y |> dplyr::group_by(week, gateway_id, sensor_id, cds_name, sensor_description) |>
+        dplyr::summarise(n_days = dplyr::n_distinct(day),
+          U = if (n_days >= 2L) sqrt(mean(NOK)^2 + stats::var(NOK)) else NA_real_, .groups = "drop")
+      roster <- per_sensor |> dplyr::filter(week == start, is.finite(U)) |>
+        dplyr::distinct(gateway_id, sensor_id, cds_name, sensor_description)
+      if (!nrow(roster)) return(tibble::tibble())
+      weeks <- per_sensor |>
+        dplyr::semi_join(roster, by = c("gateway_id", "sensor_id", "cds_name", "sensor_description")) |>
+        dplyr::group_by(week) |>
+        dplyr::summarise(n = dplyr::n(), valid = all(is.finite(U)), U = mean(U), .groups = "drop") |>
+        dplyr::filter(n == nrow(roster), valid)
+      history <- weeks |> dplyr::filter(week < start)
+      current <- weeks |> dplyr::filter(week == start)
+      if (nrow(history) < MIN_SETTIMANE_UTILIZZO || !nrow(current)) return(tibble::tibble())
+      limits <- stats::quantile(history$U, c(.05, .95), names = FALSE)
+      tibble::tibble(week_start = start, week_end = end, utilization = current$U[[1]],
+        lower_limit = limits[1], upper_limit = limits[2], reference_weeks = nrow(history),
+        anomalous = current$U[[1]] < limits[1] || current$U[[1]] > limits[2],
+        sensor_codes = paste(sort(unique(roster$cds_name)), collapse = "; "),
+        sensor_ids = paste(sort(unique(roster$sensor_id)), collapse = "; "),
+        gateway_ids = paste(sort(unique(roster$gateway_id)), collapse = "; "))
+    }) |> dplyr::ungroup()
 }

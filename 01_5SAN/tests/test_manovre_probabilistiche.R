@@ -41,7 +41,7 @@ set.seed(2026)
 m_nb <- stima_modello_manovre(make(rnbinom(100, mu = 2*h, size = 2)))
 stopifnot(!is.null(m_nb), m_nb$family == "negative_binomial", is.finite(m_nb$size))
 stopifnot(is.null(stima_modello_manovre(make(rep(0,100)))),
-          is.null(stima_modello_manovre(make(y)[1:20, ])))
+          is.null(stima_modello_manovre(make(y)[1:6, ])))
 
 # Cache: nessun refit a ogni ETL, refit dopo 7 giorni o correzione storico.
 real_fit <- stima_modello_manovre
@@ -93,6 +93,9 @@ sensor_count_increment <- tibble(
   sensor_description="Component", day=as.Date("2026-01-01")+0:59,
   count=cumsum(rpois(60,.24*h)),increment=c(2,rpois(59,.24*h)),daily_uptime=h,
   gateway_disconnect_affected=FALSE)
+sensor_count_increment <- sensor_count_increment |>
+  mutate(timestamp = as.POSIXct(day, tz = "Europe/Rome") + hours(12),
+    machine_serial_number = "Test")
 test_root <- tempfile(); dir.create(file.path(test_root,"02_Output"),recursive=TRUE)
 here <- function(...) file.path(test_root,...)
 code <- readLines("01_Code/04_Counter_Analysis.R")
@@ -107,7 +110,7 @@ eval(parse(text=code[a:b]))
 stopifnot(identical(stamp,readRDS(here("02_Output","modelli_manovre.rds"))$models$fitted_at))
 cat("OK: aggregazione ETL, join modelli, salvataggio attributo giornaliero, lettura e riuso cache.\n")
 # Sensore senza un modello valido: nessuna esclusione automatica.
-short <- sensor_count_increment[1:10,]
+short <- sensor_count_increment[1:6,]
 models <- aggiorna_modelli_manovre(aggrega_valori_giornalieri_nok_data(short),tempfile())
 stopifnot(nrow(models)==1, is.na(models$rate))
 d <- aggrega_valori_giornalieri_nok_data(short) |>
@@ -137,8 +140,8 @@ inizio_giorno <- function(x) as.POSIXct(as.Date(x),tz="Europe/Rome")
 fine_giorno <- function(x) inizio_giorno(x)+days(1)-seconds(1)
 json_alert <- function(x) "{}"
 alerts_code <- readLines("01_Code/07_Alerts.R")
-a <- grep("^base_giornaliera <-",alerts_code)
-b <- grep("^# 2\\) Anomalie orarie",alerts_code)-2L
+a <- grep("^[[:space:]]*base_giornaliera <-",alerts_code)
+b <- grep("^[[:space:]]*# 2\\) Anomalie orarie",alerts_code)-2L
 eval(parse(text=alerts_code[a:b]))
 stopifnot(nrow(alert_attivazioni_giornaliere)==1,
   grepl("400 manovre in 14 ore e 13 minuti di attività",alert_attivazioni_giornaliere$signal_data_text),
