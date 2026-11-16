@@ -6533,7 +6533,7 @@ server <- function(input, output, session) {
     sfondo$tooltip_area <- rep(
       "Interruzione delle comunicazioni: origine e redistribuzione grafica delle manovre.",
       nrow(sfondo))
-    sfondo$area_id <- paste0("disconnect_area_", seq_len(nrow(sfondo)))
+    sfondo$area_id <- if (nrow(sfondo)) paste0("disconnect_area_", seq_len(nrow(sfondo))) else character()
     sfondo_layer <- geom_rect_interactive(data = sfondo,
       aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,
         tooltip = tooltip_area, data_id = area_id,
