@@ -7562,9 +7562,15 @@ server <- function(input, output, session) {
     
     ggplot(profilo, aes(x = x)) +
       geom_hline(yintercept = 1, colour = "#A9B2BA", linetype = "dashed", linewidth = 0.5) +
-      geom_errorbar(
+      geom_ribbon(
         aes(ymin = banda_min, ymax = banda_max),
-        width = 0.20, color = "#5F748C", linewidth = 1.2
+        fill = "#5F748C",
+        alpha = 0.22
+      ) +
+      geom_line(
+        aes(y = media_nok),
+        color = "#234A66",
+        linewidth = 1
       ) +
       geom_point_interactive(
         aes(
@@ -7595,7 +7601,7 @@ server <- function(input, output, session) {
       labs(
         x = NULL,
         y = "NOK",
-        caption = "Punto: media · Segmento: variabilità giornaliera · Linea tratteggiata: riferimento storico (NOK = 1)"
+        caption = "Punto e linea: media · Area: variabilità giornaliera · Linea tratteggiata: riferimento storico (NOK = 1)"
       ) +
       tema_san(base_size = 13) +
       theme(
