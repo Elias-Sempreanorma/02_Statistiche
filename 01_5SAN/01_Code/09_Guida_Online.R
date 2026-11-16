@@ -241,7 +241,7 @@ guida_online_modal <- function(nested = FALSE) {
   <p class="san-guide-example"><strong>Esempio.</strong> Tre giorni con 8, 10 e 12 manovre danno una media di <strong>10 manovre al giorno</strong>. Nel raggruppamento settimanale il grafico mostra 10, non il totale di 30.</p>
   <p>Il dettaglio al passaggio del puntatore riporta anche le ore macchina: per intervalli maggiori del giorno si tratta di ore medie giornaliere. Se noti un picco, passa a Giorno o Ora e seleziona il componente interessato.</p>
   <p class="san-guide-note">Una manovra non corrisponde necessariamente a un pezzo prodotto. I giorni senza dati non sono automaticamente giorni con zero manovre.</p>
-  <p class="san-guide-note">Gli accumuli alla ripresa di una connessione, se già classificati come anomalie orarie, sono redistribuiti uniformemente soltanto nei grafici. Un unico sfondo giallo, descritto nella legenda, comprende sia le barre ricostruite sia quella da cui è stato tolto l’accumulo, anche se il valore rimasto è zero; il dettaglio al passaggio del puntatore identifica l’accumulo orario anomalo. Il grafico mostra una distribuzione temporale stimata; le medie e gli indicatori continuano a usare le misure originali e le esclusioni previste per le anomalie. La distribuzione temporale è stimata e non modifica i dati originali né gli indicatori.</p>
+  <p class="san-guide-note">Gli accumuli alla ripresa di una connessione, se già classificati come anomalie orarie, sono redistribuiti uniformemente soltanto nei grafici. La redistribuzione è indicata nel dettaglio al passaggio del puntatore; il dettaglio al passaggio del puntatore identifica l’accumulo orario anomalo. Il grafico mostra una distribuzione temporale stimata; le medie e gli indicatori continuano a usare le misure originali e le esclusioni previste per le anomalie. La distribuzione temporale è stimata e non modifica i dati originali né gli indicatori.</p>
 </section>
 <section id="guida-utilizzo" class="san-guide-section" aria-labelledby="guida-utilizzo-titolo">
   <h3 id="guida-utilizzo-titolo" tabindex="-1">Utilizzo storico</h3>
@@ -299,7 +299,7 @@ guida_online_modal <- function(nested = FALSE) {
       <tr><td>Componenti aperti o senza contatto elettrico</td><td>Componenti di sicurezza rimasti aperti o senza contatto elettrico per oltre un’ora consecutiva, mentre la macchina continuava a inviare dati e il conteggio restava invariato.</td></tr>
     </tbody>
   </table>
-  <p>Il <strong>NOK resta consultabile come indicatore</strong>, ma non genera più una segnalazione separata. Le interruzioni delle comunicazioni non compaiono come righe nell’elenco: quando producono un accumulo orario anomalo, il loro effetto è indicato nei grafici con lo sfondo giallo e una spiegazione al passaggio del puntatore.</p>
+  <p>Il <strong>NOK resta consultabile come indicatore</strong>, ma non genera più una segnalazione separata. Le interruzioni delle comunicazioni non compaiono come righe nell’elenco: quando producono un accumulo orario anomalo, il loro effetto è indicato nei grafici con una spiegazione al passaggio del puntatore.</p>
   <p><strong>Una riga può coinvolgere più componenti.</strong> I casi dello stesso tipo, nello stesso intervallo e con lo stesso comportamento possono essere riuniti. Il dettaglio permette di riconoscere i singoli componenti.</p>
   <p><strong>L’ID identifica la segnalazione.</strong> Conserva questo codice, il periodo e i componenti interessati quando chiedi una verifica. Le segnalazioni salvate restano nello storico; cambiare filtro non le ricalcola.</p>
   <p class="san-guide-note">Le segnalazioni dei componenti richiedono almeno 7 giornate con dati validi; per alcune analisi serve anche un riferimento sufficiente. Le giornate vengono consolidate dopo la loro conclusione: l’elenco può non includere il giorno in corso.</p>
@@ -323,7 +323,7 @@ guida_online_modal <- function(nested = FALSE) {
   <h4>Perché non vedo dati o segnalazioni?</h4>
   <p>Controlla periodo e componenti selezionati. Un grafico vuoto può dipendere da dati mancanti; nessuna segnalazione può anche dipendere da uno storico ancora insufficiente. Se la pagina indica che non ci sono dati associati alla macchina, rivolgiti al referente del servizio.</p>
   <h4>Molte manovre significano un’anomalia?</h4>
-  <p>Non necessariamente: possono essere abituali. Leggi anche NOK e vita accumulata. Dopo un’interruzione delle comunicazioni, alcune manovre possono comparire insieme alla ripresa: nei grafici gli accumuli classificati come anomalie orarie sono distribuiti sul periodo tra la lettura precedente e quella alla ripresa, con sfondo giallo e dettaglio nel tooltip.</p>
+  <p>Non necessariamente: possono essere abituali. Leggi anche NOK e vita accumulata. Dopo un’interruzione delle comunicazioni, alcune manovre possono comparire insieme alla ripresa: nei grafici gli accumuli classificati come anomalie orarie sono distribuiti sul periodo tra la lettura precedente e quella alla ripresa, con dettaglio al passaggio del puntatore.</p>
   <h4>Una segnalazione conferma un guasto?</h4>
   <p>No: individua una situazione da approfondire nel contesto operativo. Allo stesso modo, l’assenza di segnalazioni non certifica la sicurezza della macchina. Per la verifica, coinvolgi il referente della tua azienda indicando macchina, periodo e ID della segnalazione.</p>
 </section>
