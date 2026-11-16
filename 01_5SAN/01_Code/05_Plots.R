@@ -363,6 +363,22 @@ palette_sensori_alternata <- function(n) {
 }
 
 
+# Unica scala per barre e andamento: solo valori della copia grafica redistribuita.
+scala_y_manovre_visualizzate <- function(valori) {
+  finiti <- valori[is.finite(valori)]
+  minimo <- min(c(0, finiti))
+  massimo <- max(c(0, finiti))
+  ampiezza <- massimo - minimo
+  limiti <- if (ampiezza > 0) c(minimo, massimo + ampiezza * 0.06) else c(0, 1)
+  scale_y_continuous(
+    limits = limiti,
+    breaks = scales::pretty_breaks(n = 7),
+    labels = scales::label_number(decimal.mark = ",", big.mark = "."),
+    oob = scales::squish,
+    expand = expansion(mult = c(0, 0))
+  )
+}
+
 legenda_redistribuzione <- function() {
   scale_alpha_manual(name = NULL,
     values = c("Interruzione: origine e redistribuzione delle manovre" = 0.18),
@@ -6395,10 +6411,11 @@ server <- function(input, output, session) {
   # grafico principale sia dal modal
   render_activation_bar_gg <- function() {
     
-    grafico <- dati_grafico_modal()
+    grafico <- dati_grafico_modal() |>
+      filter(is.finite(attivazioni), attivazioni != 0)
     
     validate(
-      need(nrow(grafico) > 0, "Nessun dato disponibile per i filtri scelti")
+      need(nrow(grafico) > 0, "Nessuna manovra diversa da zero nel periodo selezionato")
     )
     
     n_sensori <- dplyr::n_distinct(grafico$etichetta_completa)
@@ -6454,15 +6471,7 @@ server <- function(input, output, session) {
         space = "free_x",
         switch = "x"
       ) +
-      scale_y_continuous(
-        breaks = function(limits) {
-          b <- unique(round(scales::pretty_breaks(n = 8)(limits)))
-          max_y <- round(max(grafico$attivazioni, na.rm = TRUE))
-          sort(unique(c(b, max_y)))
-        },
-        labels = scales::label_number(accuracy = 1),
-        expand = expansion(mult = c(0, 0.04))
-      ) +
+      scala_y_manovre_visualizzate(grafico$attivazioni) +
       scale_fill_manual(values = palette_sensori, name = "Componente") +
       labs(title = NULL, x = NULL, y = "Manovre",
         caption = if (any(grafico$redistribuite))
@@ -6487,7 +6496,10 @@ server <- function(input, output, session) {
   # I punti reali sono interattivi con tooltip.
   render_activation_trend_gg <- function() {
     
-    grafico <- dati_grafico_modal()
+    grafico <- dati_grafico_modal() |>
+      group_by(cds_name, sensor_description) |>
+      filter(any(is.finite(attivazioni) & attivazioni != 0)) |>
+      ungroup()
     granularita <- filtri_attivazioni_modal()$granularita
     
     validate(
@@ -6581,10 +6593,7 @@ server <- function(input, output, session) {
             minor_breaks = NULL,
             timezone = "Europe/Rome"
           ) +
-          scale_y_continuous(
-            breaks = scales::pretty_breaks(n = 8),
-            expand = expansion(mult = c(0, 0.04))
-          ) +
+          scala_y_manovre_visualizzate(grafico$attivazioni) +
           scale_color_manual(
             values = palette_sensori,
             name = "Componente"
@@ -6664,14 +6673,7 @@ server <- function(input, output, session) {
           granularita
         )
       ) +
-      scale_y_continuous(
-        breaks = function(limits) {
-          b <- scales::pretty_breaks(n = 8)(limits)
-          max_y <- max(grafico$attivazioni, na.rm = TRUE)
-          sort(unique(c(b, max_y)))
-        },
-        expand = expansion(mult = c(0, 0.04))
-      ) +
+      scala_y_manovre_visualizzate(grafico$attivazioni) +
       scale_color_manual(values = palette_sensori, name = "Componente") +
       labs(x = NULL, y = "Manovre", caption = if (any(grafico$redistribuite))
         "Sfondo giallo: manovre orarie anomale redistribuite per interruzione della connessione." else NULL) +
