@@ -6526,10 +6526,27 @@ server <- function(input, output, session) {
       sfondo <- sfondo |> group_by(.gruppo) |>
         summarise(xmin = min(xmin), xmax = max(xmax), .groups = "drop")
     }
-    sfondo_layer <- geom_rect(data = sfondo,
-      aes(xmin = xmin, xmax = xmax, ymin = -Inf, ymax = Inf,
+    # Limiti finiti per un'area SVG esplicita anche nel grafico temporale.
+    valori_finiti <- grafico$attivazioni[is.finite(grafico$attivazioni)]
+    sfondo$ymin <- rep(min(c(0, valori_finiti)), nrow(sfondo))
+    sfondo$ymax <- rep(max(c(1, valori_finiti)) * 1.04, nrow(sfondo))
+    sfondo$tooltip_area <- rep(
+      "Interruzione delle comunicazioni: origine e redistribuzione grafica delle manovre.",
+      nrow(sfondo))
+    sfondo$area_id <- paste0("disconnect_area_", seq_len(nrow(sfondo)))
+    sfondo_layer <- geom_rect_interactive(data = sfondo,
+      aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,
+        tooltip = tooltip_area, data_id = area_id,
         alpha = "Interruzione: origine e redistribuzione delle manovre"),
-      inherit.aes = FALSE, fill = "#EBBD55", show.legend = TRUE)
+      inherit.aes = FALSE, fill = "#EBBD55", colour = NA, show.legend = TRUE)
+
+    punti_interruzione <- geom_point_interactive(
+      data = grafico |> filter(redistribuite),
+      aes(x = periodo, y = attivazioni,
+        tooltip = paste0("<b>", etichetta_completa, "</b>", nota_redistribuzione),
+        data_id = paste0("disconnect_point_", etichetta_completa, "_", periodo)),
+      inherit.aes = FALSE, shape = 21, fill = "#EBBD55", colour = "#9A6B00",
+      size = 2.8, stroke = 0.7, show.legend = FALSE)
 
     if (identical(granularita, "Ora")) {
       return(
@@ -6565,6 +6582,7 @@ server <- function(input, output, session) {
             ),
             size = 1.8
           ) +
+          punti_interruzione +
           scale_x_datetime(
             breaks = sort(unique(grafico$periodo)),
             labels = function(x) {
@@ -6653,6 +6671,7 @@ server <- function(input, output, session) {
         ),
         size = 1.8
       ) +
+      punti_interruzione +
       scale_x_date(
         breaks = breaks_periodo,
         labels = formatta_periodo_label(
