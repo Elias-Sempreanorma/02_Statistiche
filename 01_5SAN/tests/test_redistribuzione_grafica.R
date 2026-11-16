@@ -38,7 +38,8 @@ y <- make("2026-11-01 22:00:00", "2026-11-02 01:00:00")
 r <- redistribuisci_manovre_grafico(y, flags(y))
 stopifnot(sum(r$attivazioni_orarie) == 24,
   all(r$redistribuite),
-  max(r$hour) < y$timestamp[2])
+  r$attivazioni_orarie[r$hour == y$timestamp[2]] == 0,
+  r$redistribuite[r$hour == y$timestamp[2]])
 # Ora legale: conserva il totale e distingue le due ore locali ripetute.
 y <- make("2026-10-25 00:30:00", "2026-10-25 04:30:00")
 r <- redistribuisci_manovre_grafico(y, flags(y))

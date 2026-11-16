@@ -363,6 +363,13 @@ palette_sensori_alternata <- function(n) {
 }
 
 
+legenda_redistribuzione <- function() {
+  scale_alpha_manual(name = NULL,
+    values = c("Interruzione: origine e redistribuzione delle manovre" = 0.18),
+    guide = guide_legend(override.aes = list(fill = "#EBBD55", colour = NA, alpha = 0.3)))
+}
+
+
 # ---------------------------------------------------------------------------
 # Lookup precalcolati per i filtri a cascata: tabelle piccole, distinct
 # su poche colonne, cosi' gli observeEvent non devono piu' scandire
@@ -517,7 +524,11 @@ redistribuisci_manovre_grafico <- function(dati, orari) {
       attivazioni_orarie = ev$increment * peso,
       redistribuite = TRUE, gateway_disconnect_affected = TRUE)
   }) |> bind_rows()
-  bind_rows(normali, quote) |>
+  # Solo nella copia grafica: evidenzia anche l'ora da cui si toglie l'accumulo.
+  origini <- eventi |> transmute(coupon, cds_name, sensor_description,
+    hour = floor_date(with_tz(timestamp, "Europe/Rome"), "hour"),
+    attivazioni_orarie = 0, redistribuite = TRUE, gateway_disconnect_affected = TRUE)
+  bind_rows(normali, quote, origini) |>
     mutate(day = as.Date(hour, tz = "Europe/Rome")) |>
     group_by(coupon, day, hour, cds_name, sensor_description) |>
     summarise(attivazioni_orarie = if (any(is.finite(attivazioni_orarie)))
@@ -5876,7 +5887,7 @@ server <- function(input, output, session) {
       return(
         div(
           class = "alarm-empty",
-          "Nessuna anomalia di utilizzo nel periodo. Il confronto richiede almeno 7 settimane o 7 mesi precedenti confrontabili, secondo il tipo di segnalazione."
+          "Nessuna anomalia di utilizzo nel periodo. Il confronto richiede almeno 7 giornate storiche valide e non anomale e un periodo precedente confrontabile."
         )
       )
     }
@@ -6404,6 +6415,13 @@ server <- function(input, output, session) {
       grafico,
       aes(x = etichetta, y = attivazioni, fill = etichetta_completa)
     ) +
+      geom_rect(
+        data = grafico |> filter(redistribuite) |> distinct(periodo_label),
+        aes(xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf,
+          alpha = "Interruzione: origine e redistribuzione delle manovre"),
+        inherit.aes = FALSE, fill = "#EBBD55", show.legend = TRUE
+      ) +
+      legenda_redistribuzione() +
       geom_col_interactive(
         aes(
           tooltip = paste0(
@@ -6446,11 +6464,13 @@ server <- function(input, output, session) {
         expand = expansion(mult = c(0, 0.04))
       ) +
       scale_fill_manual(values = palette_sensori, name = "Componente") +
-      labs(title = NULL, x = NULL, y = "Manovre") +
+      labs(title = NULL, x = NULL, y = "Manovre",
+        caption = if (any(grafico$redistribuite))
+          "Sfondo giallo: manovre orarie anomale redistribuite per interruzione della connessione." else NULL) +
       tema_san(base_size = 13) +
       theme(
         panel.grid.major.x = element_blank(),
-        panel.spacing.x = grid::unit(10, "pt"),
+        panel.spacing.x = grid::unit(0, "pt"),
         strip.placement = "outside",
         strip.background = element_blank(),
         axis.text.x = element_text(size = 13, angle = 90),
@@ -6491,6 +6511,30 @@ server <- function(input, output, session) {
       ifelse(grafico$redistribuite, nota_redistribuzione, "")
     )
     
+    sfondo <- grafico |> filter(redistribuite) |>
+      distinct(periodo) |> mutate(
+        xmin = if (identical(granularita, "Ora")) periodo else periodo - 0.5,
+        xmax = if (identical(granularita, "Ora")) periodo + hours(1) else
+          if (identical(granularita, "Settimana")) periodo + 7 - 0.5 else
+          if (identical(granularita, "Mese")) periodo %m+% months(1) - 0.5 else
+          if (identical(granularita, "Trimestre")) periodo %m+% months(3) - 0.5 else
+          if (identical(granularita, "Anno")) periodo %m+% years(1) - 0.5 else periodo + 0.5)
+    # Unisce intervalli adiacenti: un solo sfondo per ciascuna interruzione.
+    if (nrow(sfondo) > 1L) {
+      sfondo <- sfondo |> arrange(xmin)
+      sfondo$.gruppo <- cumsum(c(TRUE,
+        as.numeric(sfondo$xmin[-1]) > head(cummax(as.numeric(sfondo$xmax)), -1)))
+      sfondo <- sfondo |> group_by(.gruppo) |>
+        summarise(xmin = min(xmin), xmax = max(xmax), .groups = "drop")
+    }
+    valori_finiti <- grafico$attivazioni[is.finite(grafico$attivazioni)]
+    sfondo$ymin <- rep(min(c(0, valori_finiti)), nrow(sfondo))
+    sfondo$ymax <- rep(max(c(1, valori_finiti)) * 1.04, nrow(sfondo))
+    sfondo_layer <- geom_rect(data = sfondo,
+      aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax,
+        alpha = "Interruzione: origine e redistribuzione delle manovre"),
+      inherit.aes = FALSE, fill = "#EBBD55", show.legend = TRUE)
+
     if (identical(granularita, "Ora")) {
       return(
         ggplot(
@@ -6511,8 +6555,8 @@ server <- function(input, output, session) {
             )
           )
         ) +
-
-
+          sfondo_layer +
+          legenda_redistribuzione() +
           geom_line(linewidth = 0.8) +
           geom_point_interactive(
             aes(
@@ -6525,7 +6569,6 @@ server <- function(input, output, session) {
             ),
             size = 1.8
           ) +
-
           scale_x_datetime(
             breaks = sort(unique(grafico$periodo)),
             labels = function(x) {
@@ -6546,7 +6589,8 @@ server <- function(input, output, session) {
             values = palette_sensori,
             name = "Componente"
           ) +
-          labs(x = NULL, y = "Manovre") +
+          labs(x = NULL, y = "Manovre", caption = if (any(grafico$redistribuite))
+            "Sfondo giallo: manovre orarie anomale redistribuite per interruzione della connessione." else NULL) +
           tema_san(base_size = 13) +
           theme(
             panel.grid.minor = element_blank(),
@@ -6586,8 +6630,8 @@ server <- function(input, output, session) {
       )
     
     ggplot() +
-
-
+      sfondo_layer +
+      legenda_redistribuzione() +
       geom_line(
         data = spline_att,
         aes(
@@ -6613,7 +6657,6 @@ server <- function(input, output, session) {
         ),
         size = 1.8
       ) +
-
       scale_x_date(
         breaks = breaks_periodo,
         labels = formatta_periodo_label(
@@ -6630,7 +6673,8 @@ server <- function(input, output, session) {
         expand = expansion(mult = c(0, 0.04))
       ) +
       scale_color_manual(values = palette_sensori, name = "Componente") +
-      labs(x = NULL, y = "Manovre") +
+      labs(x = NULL, y = "Manovre", caption = if (any(grafico$redistribuite))
+        "Sfondo giallo: manovre orarie anomale redistribuite per interruzione della connessione." else NULL) +
       tema_san(base_size = 13) +
       theme(
         panel.grid.minor = element_blank(),

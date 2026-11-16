@@ -31,10 +31,10 @@ stopifnot(nrow(u)==1, u$anomalous, u$utilization > u$upper_limit,
 # Giorni futuri non influenzano soglie e risultato.
 future <- mutate(d, day = day + 200, daily_value = 1000)
 stopifnot(identical(u,valuta_utilizzo_settimanale(bind_rows(d,future),as.Date("2026-03-01"))))
-# Prima di 7 settimane di riferimento non viene emesso un allarme.
+# Non servono 7 settimane: basta uno storico di 7 giornate valide.
 short <- valuta_utilizzo_settimanale(filter(d, day >= as.Date("2026-01-12")),
   as.Date("2026-03-01"))
-stopifnot(!any(short$anomalous %in% TRUE), all(is.na(short$lower_limit)))
+stopifnot(nrow(short) == 1L, is.finite(short$lower_limit), short$anomalous)
 # Con utilizzo abituale il test non segnala anomalie.
 d$daily_value[50:56] <- c(.9,1.1,.9,1.1,.9,1.1,1)
 stopifnot(!valuta_utilizzo_settimanale(d,as.Date("2026-03-01"))$anomalous)
@@ -59,4 +59,21 @@ stopifnot(nrow(monthly) == 1, monthly$anomalous,
   nrow(valuta_utilizzo_mensile(month_data, as.Date("2025-08-30"))) == 0)
 short_months <- valuta_utilizzo_mensile(filter(month_data, day >= as.Date("2025-02-01")),
   as.Date("2025-08-31"))
-stopifnot(!any(short_months$anomalous %in% TRUE), all(is.na(short_months$lower_limit)))
+stopifnot(nrow(short_months) == 1L, is.finite(short_months$lower_limit), short_months$anomalous)
+
+# Una sola settimana precedente di dati permette il confronto.
+one_week <- original |> filter(day >= as.Date("2026-02-16"))
+one_result <- valuta_utilizzo_settimanale(one_week, as.Date("2026-03-01"))
+stopifnot(nrow(one_result) == 1L, one_result$reference_weeks == 1L,
+  is.finite(one_result$lower_limit), one_result$anomalous)
+# Il flag di disconnessione NON esclude giornate non anomale dal riferimento.
+stopifnot(identical(one_result, valuta_utilizzo_settimanale(
+  mutate(one_week, gateway_disconnect_affected = TRUE), as.Date("2026-03-01"))))
+# Sei giorni storici non sono ancora sufficienti.
+too_short <- one_week |> filter(day != as.Date("2026-02-16"))
+stopifnot(nrow(valuta_utilizzo_settimanale(too_short, as.Date("2026-03-01"))) == 0L)
+# Anche un mese precedente con soli 7 giorni validi permette il confronto mensile.
+one_month <- month_data |> filter(day >= as.Date("2025-07-25"))
+month_result <- valuta_utilizzo_mensile(one_month, as.Date("2025-08-31"))
+stopifnot(nrow(month_result) == 1L, month_result$reference_weeks == 1L,
+  is.finite(month_result$lower_limit), month_result$anomalous)

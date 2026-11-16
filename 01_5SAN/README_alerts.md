@@ -79,5 +79,5 @@ docker compose up -d shiny shiny_web web_auth
 Il parametro vale solo per questa esecuzione; il cron ordinario resta incrementale.
 La ricostruzione puo' richiedere tempo: attendere il messaggio finale prima di
 riavviare Shiny. Ogni domenica si valuta la settimana conclusa; a fine mese anche
-il mese di calendario. Il confronto richiede 7 periodi precedenti dello stesso tipo:
-7 settimane o 7 mesi. Grafici e segnalazioni usano il medesimo valutatore.
+il mese di calendario. Il confronto richiede 7 giornate storiche valide e non anomale per componente,
+e almeno un periodo precedente confrontabile: non servono 7 settimane o 7 mesi. Grafici e segnalazioni usano il medesimo valutatore.

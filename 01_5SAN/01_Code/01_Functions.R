@@ -559,7 +559,7 @@ prepara_manovre_orarie <- function(dati) {
 
 # Utilizzo: RMS per componente e media macchina. Solo settimane complete;
 # stesso insieme di componenti e stesso NMN per candidato e riferimenti.
-MIN_SETTIMANE_UTILIZZO <- 7L
+MIN_PERIODI_UTILIZZO <- 1L
 valuta_utilizzo_periodo <- function(giornalieri, start, end, granularita = "Settimana") {
   start <- as.Date(start)
   end <- as.Date(end)
@@ -597,7 +597,7 @@ valuta_utilizzo_periodo <- function(giornalieri, start, end, granularita = "Sett
         as.Date(lubridate::ceiling_date(calendar_start, "month") - lubridate::days(1)) else calendar_start + 6L
       complete <- start == calendar_start && end == calendar_end &&
         end < as.Date(Sys.time(), tz = "Europe/Rome")
-      limits <- if (nrow(history) >= MIN_SETTIMANE_UTILIZZO && complete)
+      limits <- if (nrow(history) >= MIN_PERIODI_UTILIZZO && complete)
         stats::quantile(history$U, c(.05, .95), names = FALSE) else c(NA_real_, NA_real_)
       tibble::tibble(week_start = start, week_end = end, utilization = current$U[[1]],
         lower_limit = limits[1], upper_limit = limits[2], reference_weeks = nrow(history),
