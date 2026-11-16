@@ -7536,6 +7536,18 @@ server <- function(input, output, session) {
       ordina_naturale() |>
       pull(etichetta_sensore)
     
+    etichette_asse <- profilo |>
+      distinct(cds_name, etichetta_sensore) |>
+      arrange(match(etichetta_sensore, sensori_ordinati)) |>
+      pull(cds_name)
+    # Stessa scala nei due pannelli; spazio minimo anche se la variabilita' e' nulla.
+    valori_asse <- c(1, profilo$media_nok, profilo$banda_min, profilo$banda_max)
+    valori_asse <- valori_asse[is.finite(valori_asse)]
+    estremi <- range(valori_asse)
+    centro <- mean(estremi)
+    ampiezza <- max(diff(estremi), 0.5, abs(centro) * 0.20)
+    limiti_y <- c(max(0, centro - ampiezza * 0.60), centro + ampiezza * 0.60)
+
     profilo <- profilo |>
       mutate(
         x = match(etichetta_sensore, sensori_ordinati),
@@ -7549,15 +7561,10 @@ server <- function(input, output, session) {
       )
     
     ggplot(profilo, aes(x = x)) +
-      geom_ribbon(
+      geom_hline(yintercept = 1, colour = "#A9B2BA", linetype = "dashed", linewidth = 0.5) +
+      geom_errorbar(
         aes(ymin = banda_min, ymax = banda_max),
-        fill = "#5F748C",
-        alpha = 0.22
-      ) +
-      geom_line(
-        aes(y = media_nok),
-        color = "#234A66",
-        linewidth = 1
+        width = 0.20, color = "#5F748C", linewidth = 1.2
       ) +
       geom_point_interactive(
         aes(
@@ -7566,7 +7573,7 @@ server <- function(input, output, session) {
           data_id = paste(confronto, etichetta_sensore, sep = "__")
         ),
         color = "#234A66",
-        size = 2.6
+        size = 3.4
       ) +
       facet_grid(
         cols = vars(confronto),
@@ -7576,14 +7583,19 @@ server <- function(input, output, session) {
       ) +
       scale_x_continuous(
         breaks = seq_along(sensori_ordinati),
-        labels = sensori_ordinati
+        labels = stringr::str_wrap(etichette_asse, width = 12),
+        limits = c(0.4, length(sensori_ordinati) + 0.6)
       ) +
       scale_y_continuous(
-        expand = expansion(mult = c(0.02, 0.06))
+        limits = limiti_y,
+        breaks = scales::pretty_breaks(n = 6),
+        labels = scales::label_number(decimal.mark = ",", big.mark = "."),
+        expand = expansion(mult = c(0.02, 0.04))
       ) +
       labs(
         x = NULL,
-        y = "NOK"
+        y = "NOK",
+        caption = "Punto: media · Segmento: variabilità giornaliera · Linea tratteggiata: riferimento storico (NOK = 1)"
       ) +
       tema_san(base_size = 13) +
       theme(
@@ -7599,12 +7611,13 @@ server <- function(input, output, session) {
           color = "#234A66"
         ),
         axis.text.x = element_text(
-          size = 10,
-          angle = 90,
-          hjust = 1,
-          vjust = 0.5
+          size = 11,
+          angle = 0,
+          hjust = 0.5,
+          vjust = 1
         ),
-        axis.text.y = element_text(size = 11)
+        axis.text.y = element_text(size = 11),
+        plot.caption = element_text(size = 10, colour = "#66717A", hjust = 0)
       )
   }
   
