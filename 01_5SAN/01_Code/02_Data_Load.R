@@ -202,8 +202,8 @@ dup_coupon_cds <- progetti_componenti_b10d_san |>
   filter(n > 1)
 
 if (nrow(dup_coupon_cds) > 0) {
-  warning(sprintf(
-    "Trovate %d combinazioni duplicate di (coupon, cds) in progetti_componenti_b10d_san: il join può moltiplicare righe.",
+  stop(sprintf(
+    "Trovate %d combinazioni duplicate di (coupon, cds) in progetti_componenti_b10d_san: impossibile riallineare le anagrafiche senza ambiguita'.",
     nrow(dup_coupon_cds)
   ))
 }
@@ -326,6 +326,32 @@ if (!is.null(existing_raw_data)) {
 } else {
   raw_data <- new_raw_data
 }
+
+# Riallineo azienda e stabilimento anche sullo storico, incluso l'overlap
+# conservato da distinct(). Le misure e le altre anagrafiche restano invariate.
+# Una chiave non piu' presente nel DB mantiene i valori storici; per una
+# chiave presente applico anche valori NULL/vuoti, con il consueto fallback
+# dello stabilimento. L'univocita' coupon + cds e' verificata sopra.
+anagrafica_corrente <- progetti_componenti_b10d_san |>
+  transmute(
+    coupon,
+    cds_name = cds,
+    .company_current = azienda,
+    .field_current = if_else(
+      is.na(stabilimento) | trimws(stabilimento) == "",
+      "(Non specificato)", stabilimento
+    ),
+    .anagrafica_found = TRUE
+  )
+
+raw_data <- raw_data |>
+  left_join(anagrafica_corrente, by = c("coupon", "cds_name"), na_matches = "never") |>
+  mutate(
+    company = if_else(!is.na(.anagrafica_found), .company_current, company),
+    field = if_else(!is.na(.anagrafica_found), .field_current, field)
+  ) |>
+  select(-.company_current, -.field_current, -.anagrafica_found)
+rm(anagrafica_corrente)
 
 # Correzione puntuale: per questo sensore il valore count = 462 e' noto
 # come record non valido e viene rimosso a monte da tutto lo storico.
@@ -498,4 +524,4 @@ dbDisconnect(con_stats)
 # saveRDS(NULL, raw_data_path)
 # saveRDS(NULL, system_info_path)
 
-# 
+#
