@@ -3,7 +3,7 @@
 library(dplyr)
 library(lubridate)
 # Carica solo la funzione pura: nessun avvio Shiny, DB o ricalcolo anomalie.
-exprs <- parse("01_Code/05_Plots.R")
+exprs <- c(parse("01_Code/dashboard/02_dati.R"), parse("01_Code/dashboard/03_grafica.R"))
 for (expr in exprs) {
   if (is.call(expr) && identical(expr[[1]], as.name("<-")) &&
       identical(expr[[2]], as.name("redistribuisci_manovre_grafico"))) eval(expr)

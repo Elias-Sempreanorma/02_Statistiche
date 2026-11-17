@@ -111,7 +111,7 @@ stopifnot(remigrated$alert_id == "OLD-GROUP-ID",
           !grepl("Sensor|G1/|G2/", remigrated$signal_data_text),
           grepl("10 manovre", remigrated$signal_data_text), grepl("20 manovre", remigrated$signal_data_text))
 # Anche il lettore Shiny pulisce i vecchi testi prima del prossimo ETL.
-for (expr in parse("01_Code/05_Plots.R")) {
+for (expr in c(parse("01_Code/dashboard/02_dati.R"), parse("01_Code/dashboard/03_grafica.R"))) {
   if (is.call(expr) && identical(expr[[1]], as.name("<-")) &&
       identical(as.character(expr[[2]]), "leggi_alerts_dashboard")) eval(expr)
 }

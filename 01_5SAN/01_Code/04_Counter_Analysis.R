@@ -48,78 +48,19 @@ disconnect_flags <- gateway_disconnect_sensor_events |>
     .keep_all = TRUE
   )
 
-# ---------------------------------------------------------------------------
-# Rilevo i periodi in cui un sensore risulta aperto mentre la macchina
-# risulta accesa.
-#
-# Il calcolo viene fatto SEMPRE per singolo giorno e singolo sensore:
-# non vengono mai collegati timestamp appartenenti a giornate diverse.
-#
-# All'interno della giornata un intervallo tra due misure consecutive e'
-# considerato "sensore aperto" quando:
-# - status = 0 in entrambe le misure;
-# - count non aumenta (rimane identico).
-#
-# Eventi consecutivi vengono uniti fino a quando una delle due condizioni
-# viene meno. La durata osservata e' compresa tra il primo e l'ultimo
-# timestamp dell'evento nella stessa giornata.
-# ---------------------------------------------------------------------------
+# Chiavi condivise per la stima giornaliera delle ore aperte.
 gruppi_sensore <- c(
   "company", "field", "project", "coupon", "machine_name",
   "gateway_id", "gateway_name", "cds_name", "cds_description",
   "cds_brand", "cds_use", "cds_vds", "sensor_description"
 )
 
-open_intervals <- raw_data |>
-  mutate(
-    field = if_else(
-      is.na(field) | trimws(field) == "",
-      "(Non specificato)",
-      field
-    ),
-    timestamp_local = with_tz(timestamp, "Europe/Rome"),
-    day = as.Date(timestamp_local, tz = "Europe/Rome")
-  ) |>
-  group_by(
-    across(all_of(gruppi_sensore)),
-    day
-  ) |>
-  arrange(timestamp_local, .by_group = TRUE) |>
-  mutate(
-    previous_timestamp = lag(timestamp_local),
-    previous_status = lag(status),
-    previous_raw_count = lag(count),
-    sensore_aperto_intervallo = (
-      !is.na(previous_timestamp) &
-      is.finite(status) &
-      is.finite(previous_status) &
-      status == 0 &
-      previous_status == 0 &
-      is.finite(count) &
-      is.finite(previous_raw_count) &
-      count == previous_raw_count
-    ),
-    nuovo_evento_aperto = (
-      sensore_aperto_intervallo &
-      !lag(sensore_aperto_intervallo, default = FALSE)
-    ),
-    open_event_id = cumsum(nuovo_evento_aperto)
-  ) |>
-  filter(sensore_aperto_intervallo) |>
-  ungroup() |>
-  transmute(
-    across(all_of(gruppi_sensore)),
-    day,
-    open_event_id,
-    interval_start = previous_timestamp,
-    interval_end = timestamp_local
-  )
-
 # ---------------------------------------------------------------------------
 # Stima delle ore aperte giornaliere.
 #
-# Questa stima e' distinta dalla logica degli ALLARMI consecutivi sopra:
-# gli allarmi restano basati esclusivamente su status 0 + count invariato.
+# Questa stima e' distinta dalla logica degli ALLARMI consecutivi:
+# gli allarmi restano basati esclusivamente su status 0 + count invariato
+# nella funzione calcola_eventi_sensore_aperto() di 01_Functions.R.
 #
 # Per daily_open_hours considero ogni intervallo tra due misure consecutive
 # dello stesso sensore e della stessa giornata:
