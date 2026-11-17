@@ -676,13 +676,19 @@ insert_alert_sql <- "
 
 inserisci_segnalazioni <- function(con_alerts, alerts_all) {
   if (nrow(alerts_all) > 0) {
-    for (i in seq_len(nrow(alerts_all))) {
-      a <- alerts_all[i, ]
-
-      dbExecute(
-        con_alerts,
-        insert_alert_sql,
-        params = list(
+    # 500 righe = 11000 parametri, sotto il limite PostgreSQL.
+    prefix <- strsplit(insert_alert_sql, "  VALUES (", fixed = TRUE)[[1]][1]
+    values <- strsplit(insert_alert_sql, "  VALUES ", fixed = TRUE)[[1]][2]
+    values <- strsplit(values, "  ON CONFLICT", fixed = TRUE)[[1]][1]
+    refs <- gregexpr("\\$[0-9]+", values)
+    numbers <- as.integer(sub("$", "", regmatches(values, refs)[[1]], fixed = TRUE))
+    for (first in seq.int(1L, nrow(alerts_all), by = 500L)) {
+      rows <- seq.int(first, min(first + 499L, nrow(alerts_all)))
+      params <- vector("list", 22L * length(rows))
+      clauses <- character(length(rows))
+      for (j in seq_along(rows)) {
+        a <- alerts_all[rows[j], ]
+        row_params <- list(
           a$type_code,
           a$generated_at,
           a$event_key,
@@ -706,7 +712,14 @@ inserisci_segnalazioni <- function(con_alerts, alerts_all) {
           if ("alert_id" %in% names(a)) a$alert_id else NA_character_,
           if ("created_at" %in% names(a)) a$created_at else as.POSIXct(NA)
         )
-      )
+        offset <- 22L * (j - 1L)
+        clause <- values
+        regmatches(clause, refs) <- list(paste0("$", numbers + offset))
+        clauses[j] <- clause
+        params[offset + seq_len(22L)] <- row_params
+      }
+      dbExecute(con_alerts, paste0(prefix, " VALUES ", paste(clauses, collapse = ","),
+        " ON CONFLICT (event_key) DO NOTHING"), params = params)
     }
   }
 

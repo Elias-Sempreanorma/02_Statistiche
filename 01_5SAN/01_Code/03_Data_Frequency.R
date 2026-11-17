@@ -26,8 +26,15 @@ library(here)
 #   SystemInfo giornaliero e viene unito agli intervalli osservati.
 # ---------------------------------------------------------------------------
 
-raw_data <- readRDS(here("02_Output", "raw_data.rds"))
-system_info <- readRDS(here("02_Output", "system_info.rds"))
+# Il runner passa gli output del run corrente; l'esecuzione singola legge da disco.
+.read_input <- if (exists(".etl_read_input", inherits = FALSE)) {
+  .etl_read_input
+} else {
+  function(name, path) readRDS(path)
+}
+
+raw_data <- .read_input("raw_data", here("02_Output", "raw_data.rds"))
+system_info <- .read_input("system_info", here("02_Output", "system_info.rds"))
 
 # Serie count con incremento per sensore, usata solo per classificare i reset.
 count_events <- raw_data |>
@@ -168,40 +175,32 @@ empty_reset_result <- function() {
   list(event = NULL, sensor_events = NULL)
 }
 
+# Le serie sono gia' ordinate per gateway, sensore e timestamp.
+# Indici preparati una volta; findInterval cerca il primo timestamp > soglia.
+count_series <- lapply(split(seq_len(nrow(count_events)), count_events$gateway_id), function(rows) {
+  ids <- count_events$sensor_id[rows]
+  lapply(split(rows, factor(ids, levels = unique(ids))), function(idx) {
+    list(rows = idx, times = as.numeric(count_events$timestamp[idx]))
+  })
+})
+
 reset_results <- lapply(seq_len(nrow(reset_candidates)), function(i) {
   reset_row <- reset_candidates[i, ]
 
-  gateway_counts <- count_events |>
-    filter(gateway_id == reset_row$gateway_id)
+  gateway_series <- count_series[[reset_row$gateway_id]]
+  if (!length(gateway_series)) return(empty_reset_result())
 
-  sensor_ids <- gateway_counts |>
-    distinct(sensor_id) |>
-    pull(sensor_id)
-
-  if (length(sensor_ids) == 0) return(empty_reset_result())
-
-  # I conteggi possono arrivare prima del riavvio stimato dall'uptime.
-  # Cerco la ripresa oltre l'ora coperta dall'ultimo SystemInfo precedente.
   count_search_start <- reset_row$previous_timestamp + hours(1)
-
-  first_after_by_sensor <- lapply(sensor_ids, function(sid) {
-    sensor_data <- gateway_counts |>
-      filter(sensor_id == sid) |>
-      arrange(timestamp)
-
-    after <- sensor_data |>
-      filter(timestamp > count_search_start) |>
-      slice_head(n = 1)
-
-    if (nrow(after) == 0) return(NULL)
-
+  first_after_by_sensor <- lapply(gateway_series, function(series) {
+    idx <- findInterval(as.numeric(count_search_start), series$times) + 1L
+    if (idx > length(series$rows)) return(NULL)
+    after <- count_events[series$rows[idx], ]
     tibble(
-      sensor_id = sid,
+      sensor_id = after$sensor_id,
       first_timestamp = after$timestamp,
       first_increment = after$increment
     )
-  }) |>
-    bind_rows()
+  }) |> bind_rows()
 
   # Se nessun sensore ha letture successive alla soglia del reset,
   # bind_rows() restituisce una tabella vuota senza colonne.

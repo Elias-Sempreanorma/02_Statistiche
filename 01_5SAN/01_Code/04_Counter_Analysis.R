@@ -3,9 +3,16 @@ library(lubridate)
 library(here)
 
 # carica i dati 
-raw_data <- readRDS(here("02_Output", "raw_data.rds")) |>
+# Il runner passa gli output del run corrente; l'esecuzione singola legge da disco.
+.read_input <- if (exists(".etl_read_input", inherits = FALSE)) {
+  .etl_read_input
+} else {
+  function(name, path) readRDS(path)
+}
+
+raw_data <- .read_input("raw_data", here("02_Output", "raw_data.rds")) |>
   mutate(field = if_else(is.na(field) | trimws(field) == "", "(Non specificato)", field))
-uptime <- readRDS(here("02_Output", "uptime.rds"))
+uptime <- .read_input("uptime", here("02_Output", "uptime.rds"))
 
 disconnect_sensor_events_path <- here(
   "02_Output",
@@ -15,7 +22,7 @@ disconnect_sensor_events_path <- here(
 gateway_disconnect_sensor_events <- if (
   file.exists(disconnect_sensor_events_path)
 ) {
-  readRDS(disconnect_sensor_events_path)
+  .read_input("gateway_disconnect_sensor_events", disconnect_sensor_events_path)
 } else {
   tibble(
     coupon = character(),

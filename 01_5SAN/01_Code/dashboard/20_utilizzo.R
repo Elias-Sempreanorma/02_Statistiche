@@ -5,6 +5,61 @@
   # U_sensore  = sqrt(media(NOK)^2 + varianza(NOK))
   # U_macchina = media(U_sensore)
   # ---------------------------------------------------------------------
+  giorno_utilizzo <- reactive({
+    invalidateLater(60000, session)
+    as.Date(Sys.time(), tz = "Europe/Rome")
+  })
+
+  storico_utilizzo_macchina <- reactive({
+    granularita_utilizzo <- granularita_utilizzo_corrente()
+    machine_daily <- prepara_valori_giornalieri_nok_data(dati, macchina_attiva())
+    valid_days <- machine_daily$day[!is.na(machine_daily$day)]
+    starts <- if (length(valid_days)) seq.Date(
+      as.Date(floor_date(min(valid_days), if (granularita_utilizzo == "Mese") "month" else "week", week_start = 1)),
+      as.Date(floor_date(max(valid_days), if (granularita_utilizzo == "Mese") "month" else "week", week_start = 1)),
+      by = if (granularita_utilizzo == "Mese") "month" else "7 days") else as.Date(character())
+    saved <- alerts_correnti() |>
+      filter(coupon == macchina_attiva(), alert_type %in% c("utilization_weekly", "utilization_monthly"))
+    storico_utilizzo_grafico <- lapply(seq_along(starts), function(i) {
+      first <- starts[i]
+      last <- if (granularita_utilizzo == "Mese") first %m+% months(1) - days(1) else first + 6L
+      assessment <- valuta_utilizzo_periodo(machine_daily, first, last, granularita_utilizzo)
+      value <- lower <- upper <- NA_real_
+      references <- 0L
+      if (nrow(assessment)) {
+        value <- assessment$utilization[1]
+        lower <- assessment$lower_limit[1]
+        upper <- assessment$upper_limit[1]
+        references <- assessment$reference_weeks[1]
+      }
+      snapshot <- saved |> filter(
+        as.Date(period_start, tz = "Europe/Rome") == first,
+        as.Date(period_end, tz = "Europe/Rome") == last)
+      if (nrow(snapshot) && is.finite(snapshot$utilization_value[1])) {
+        value <- snapshot$utilization_value[1]
+        lower <- snapshot$utilization_lower[1]
+        upper <- snapshot$utilization_upper[1]
+        references <- snapshot$utilization_references[1]
+      }
+      state <- case_when(
+        last >= as.Date(Sys.time(), tz = "Europe/Rome") ~ "In corso",
+        !is.finite(value) | !is.finite(lower) | !is.finite(upper) ~ "N/D",
+        value < lower ~ "Basso", value > upper ~ "Elevato", TRUE ~ "Normale")
+      tibble(inizio_finestra = first, fine_finestra = last, U_macchina = value,
+        limite_inf = lower, limite_sup = upper, n_riferimenti = references,
+        tipo = "Riferimento",
+        stato = state)
+    }) |> bind_rows()
+    if (!nrow(storico_utilizzo_grafico)) storico_utilizzo_grafico <- tibble(
+      inizio_finestra = as.Date(character()), fine_finestra = as.Date(character()),
+      U_macchina = double(), limite_inf = double(), limite_sup = double(),
+      n_riferimenti = integer(), tipo = character(), stato = character())
+    storico_utilizzo_grafico
+  }) |> bindCache(
+    macchina_attiva(), granularita_utilizzo_corrente(), alerts_correnti(),
+    giorno_utilizzo(), cache = "session"
+  )
+
   utilizzo_nok_modal <- reactive({
     
     filtri <- filtri_nok_modal()
@@ -114,50 +169,12 @@
     
     # Identico riferimento di utilizzo in grafici e segnalazioni:
     # tutti i componenti della macchina, periodi di calendario completi,
-    # solo periodi precedenti e P5-P95 con almeno 7 riferimenti.
+    # solo periodi precedenti e P5-P95 secondo la soglia configurata.
     granularita_utilizzo <- granularita_utilizzo_corrente()
-    machine_daily <- prepara_valori_giornalieri_nok_data(dati, filtri$macchina)
-    valid_days <- machine_daily$day[!is.na(machine_daily$day)]
-    starts <- if (length(valid_days)) seq.Date(
-      as.Date(floor_date(min(valid_days), if (granularita_utilizzo == "Mese") "month" else "week", week_start = 1)),
-      as.Date(floor_date(max(valid_days), if (granularita_utilizzo == "Mese") "month" else "week", week_start = 1)),
-      by = if (granularita_utilizzo == "Mese") "month" else "7 days") else as.Date(character())
-    saved <- leggi_alerts_dashboard() |>
-      filter(coupon == filtri$macchina, alert_type %in% c("utilization_weekly", "utilization_monthly"))
-    storico_utilizzo_grafico <- lapply(seq_along(starts), function(i) {
-      first <- starts[i]
-      last <- if (granularita_utilizzo == "Mese") first %m+% months(1) - days(1) else first + 6L
-      assessment <- valuta_utilizzo_periodo(machine_daily, first, last, granularita_utilizzo)
-      value <- lower <- upper <- NA_real_
-      references <- 0L
-      if (nrow(assessment)) {
-        value <- assessment$utilization[1]
-        lower <- assessment$lower_limit[1]
-        upper <- assessment$upper_limit[1]
-        references <- assessment$reference_weeks[1]
-      }
-      snapshot <- saved |> filter(
-        as.Date(period_start, tz = "Europe/Rome") == first,
-        as.Date(period_end, tz = "Europe/Rome") == last)
-      if (nrow(snapshot) && is.finite(snapshot$utilization_value[1])) {
-        value <- snapshot$utilization_value[1]
-        lower <- snapshot$utilization_lower[1]
-        upper <- snapshot$utilization_upper[1]
-        references <- snapshot$utilization_references[1]
-      }
-      state <- case_when(
-        last >= as.Date(Sys.time(), tz = "Europe/Rome") ~ "In corso",
-        !is.finite(value) | !is.finite(lower) | !is.finite(upper) ~ "N/D",
-        value < lower ~ "Basso", value > upper ~ "Elevato", TRUE ~ "Normale")
-      tibble(inizio_finestra = first, fine_finestra = last, U_macchina = value,
-        limite_inf = lower, limite_sup = upper, n_riferimenti = references,
-        tipo = if (last >= filtri$date[1] && first <= filtri$date[2]) "Periodo selezionato" else "Riferimento",
-        stato = state)
-    }) |> bind_rows()
-    if (!nrow(storico_utilizzo_grafico)) storico_utilizzo_grafico <- tibble(
-      inizio_finestra = as.Date(character()), fine_finestra = as.Date(character()),
-      U_macchina = double(), limite_inf = double(), limite_sup = double(),
-      n_riferimenti = integer(), tipo = character(), stato = character())
+    storico_utilizzo_grafico <- storico_utilizzo_macchina() |>
+      mutate(tipo = if_else(
+        fine_finestra >= filtri$date[1] & inizio_finestra <= filtri$date[2],
+        "Periodo selezionato", "Riferimento"))
     selected <- storico_utilizzo_grafico |> filter(tipo == "Periodo selezionato")
     # Campi legacy: contengono ora esclusivamente limiti P5-P95.
     P10_periodo <- if (nrow(selected) == 1L) selected$limite_inf[1] else NA_real_
@@ -197,7 +214,8 @@
       filtri_nok_modal()$macchina,
       filtri_nok_modal()$date,
       filtri_nok_modal()$sensori,
-      granularita_utilizzo_corrente()
+      granularita_utilizzo_corrente(),
+      storico_utilizzo_macchina(), cache = "session"
     )
   
   output$modal_utilizzo_macchina <- renderUI({

@@ -25,9 +25,6 @@ if (!"gateway_disconnect_affected" %in% names(dati)) {
 nota_disconnessione_gateway <-
   ". Il momento di registrazione delle manovre può risentire di un’interruzione delle comunicazioni."
 
-raw_life_data <- readRDS(here("02_Output", "raw_data.rds")) |>
-  mutate(timestamp = with_tz(timestamp, "Europe/Rome"))
-
 # Uniforma anche i testi degli alert gia' salvati, senza attendere il prossimo ETL.
 testo_manovre <- function(x) {
   # Uniforma anche i testi storici gia' persistiti, senza riscrivere il DB.
@@ -118,31 +115,13 @@ leggi_alerts_dashboard <- function(path = alerts_path) {
 # L'eta' mostrata nella barra T10d e' quella calcolata dall'ETL,
 # identica al denominatore del nop usato per il B10dSAN da PFH.
 # Dataset precedenti richiedono un'esecuzione dell'ETL: fino ad allora N/D.
-if (!"cds_elapsed_years" %in% names(raw_life_data)) {
-  raw_life_data$cds_elapsed_years <- NA_real_
+life_path <- here("02_Output", "life_data.rds")
+life_data <- if (file.exists(life_path)) {
+  readRDS(life_path)
+} else {
+  source(here("01_Code", "dashboard_life.R"), local = TRUE)
+  prepara_vita_dashboard(readRDS(here("02_Output", "raw_data.rds")))
 }
-
-life_data <- raw_life_data |>
-  filter(
-    !is.na(coupon),
-    !is.na(cds_name),
-    !is.na(timestamp)
-  ) |>
-  arrange(timestamp) |>
-  group_by(coupon, cds_name) |>
-  summarise(
-    cds_vds = last(cds_vds[!is.na(cds_vds)], default = NA_real_),
-    cds_t10d = last(cds_t10d[!is.na(cds_t10d)], default = NA_real_),
-    count = if (all(is.na(count))) NA_real_ else max(count, na.rm = TRUE),
-    offset = if (all(is.na(offset))) NA_real_ else max(offset, na.rm = TRUE),
-    lifetime = last(
-      cds_elapsed_years[is.finite(cds_elapsed_years) & cds_elapsed_years >= 0],
-      default = NA_real_
-    ),
-    .groups = "drop"
-  ) |>
-  mutate(count = count + offset) |>
-  select(coupon, cds_name, cds_vds, cds_t10d, count, lifetime)
 
 # Anagrafica sensori (coupon + cds_name -> descrizione), usata per
 # arricchire le etichette dei serbatoi

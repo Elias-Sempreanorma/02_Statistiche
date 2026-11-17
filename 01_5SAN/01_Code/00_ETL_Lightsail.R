@@ -14,9 +14,20 @@ scripts <- c(
   "07_Alerts.R"
 )
 
-for (script in scripts) {
-  message("Eseguo: ", script)
-  source(here("01_Code", script), local = .GlobalEnv)
-}
+# Ambiente nuovo per ogni esecuzione: nessun riuso di oggetti di ETL precedenti.
+local({
+  etl_env <- new.env(parent = globalenv())
+  etl_env$.etl_read_input <- function(name, path) {
+    if (exists(name, envir = etl_env, inherits = FALSE)) {
+      get(name, envir = etl_env, inherits = FALSE)
+    } else {
+      readRDS(path)
+    }
+  }
+  for (script in scripts) {
+    message("Eseguo: ", script)
+    source(here("01_Code", script), local = etl_env)
+  }
+})
 
 message("ETL completato correttamente")

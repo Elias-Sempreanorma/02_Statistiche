@@ -511,6 +511,9 @@ raw_data <- raw_data |>
 
 saveRDS(raw_data, raw_data_path)
 
+source(here("01_Code", "dashboard_life.R"), local = TRUE)
+saveRDS(prepara_vita_dashboard(raw_data), here("02_Output", "life_data.rds"))
+
 # ---------------------------------------------------------------------------
 # Disconnetto i DB
 # ---------------------------------------------------------------------------

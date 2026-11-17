@@ -68,3 +68,23 @@ Due test falliscono anche sul commit originale, nello stesso ambiente:
 `Test/test_machine_availability.R` per l'anagrafica
 `progetti_componenti_b10d_san` non definita. Questi problemi preesistenti
 restano separati dalla riorganizzazione.
+
+### Ottimizzazioni ETL e caricamento
+
+- `00_ETL_Lightsail.R` usa un ambiente nuovo per ogni run: `03` e `04`
+  ricevono gli output gia' in memoria. Eseguiti singolarmente continuano a
+  leggere gli RDS. Tutti i salvataggi sono conservati.
+- `03_Data_Frequency.R` indicizza le serie una volta e cerca la prima lettura
+  strettamente successiva alla soglia del reset, senza riordinamenti ripetuti.
+- `dashboard_life.R` contiene l'aggregazione vita condivisa. `02_Data_Load.R`
+  salva `life_data.rds`; la dashboard usa questo riepilogo, con fallback al
+  vecchio raw solo quando il riepilogo non esiste.
+- Lo storico Utilizzo ha una cache per sessione, macchina, granularita',
+  snapshot degli alert e giorno. I filtri date/sensori cambiano la selezione,
+  senza ricostruire lo storico. I dati principali restano caricati all'avvio.
+- Gli alert usano INSERT parametrizzati da massimo 500 righe, mantenendo
+  generazione ID, JSON, ON CONFLICT e transazioni del chiamante.
+
+Verifica aggiuntiva: `Rscript tests/test_optimizations.R`.
+Deploy: build immagine, ETL completato, poi ricreazione di `shiny` e
+`shiny_web`. Non occorre azzerare i dati o modificare lo schema DB.

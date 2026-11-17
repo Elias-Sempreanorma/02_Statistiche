@@ -146,13 +146,16 @@ dbGetQuery <- function(con, sql, params = NULL) {
 }
 dbExecute <- function(con, sql, params = NULL) {
   stopifnot(!grepl("DROP TABLE", sql, fixed = TRUE))
-  if (identical(sql, insert_alert_sql)) {
+  if (grepl("INSERT INTO public.alerts (", sql, fixed = TRUE)) {
     stopifnot(grepl("ON CONFLICT (event_key) DO NOTHING", sql, fixed = TRUE))
-    key <- params[[3]]
-    if (is.null(state$rows[[key]])) state$rows[[key]] <- tibble(
-      event_key = key, alert_id = if (is.na(params[[21]])) paste0("NEW", length(state$rows)) else params[[21]],
-      generated_at = params[[2]], signal_data_text = params[[19]],
-      period_start = params[[6]], period_end = params[[7]])
+    for (start in seq.int(1L, length(params), by = 22L)) {
+      row_params <- params[start:(start + 21L)]
+      key <- row_params[[3]]
+      if (is.null(state$rows[[key]])) state$rows[[key]] <- tibble(
+        event_key = key, alert_id = if (is.na(row_params[[21]])) paste0("NEW", length(state$rows)) else row_params[[21]],
+        generated_at = row_params[[2]], signal_data_text = row_params[[19]],
+        period_start = row_params[[6]], period_end = row_params[[7]])
+    }
   } else if (grepl("INSERT INTO public.alert_evaluation_days", sql, fixed = TRUE)) {
     state$days <- sort(unique(c(state$days, params[[1]])))
   } else if (grepl("INSERT INTO public.alert_migrations", sql, fixed = TRUE)) {
