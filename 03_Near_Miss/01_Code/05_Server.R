@@ -82,7 +82,7 @@ server <- function(input, output, session) {
   })
   output$percorso <- shiny::renderUI({
     req(selezionata())
-    interfaccia_percorso(input$esito,numero_azioni())
+    interfaccia_percorso(input$esito,numero_azioni(),precedente())
   })
   output$altra_criticita <- shiny::renderUI({
     if ("CR25" %in% input$criticita)
@@ -95,9 +95,9 @@ server <- function(input, output, session) {
   output$domande_episodio <- shiny::renderUI({
     if (identical(input$episodio,"YES"))
       shiny::tagList(
-        scelta("danno","Dall'episodio è derivato un danno fisico a una persona?",si_no_ignoto),
+        scelta("danno","Dall'episodio è derivato un danno fisico a una persona?",si_no_ignoto,valore=vecchio_campo(precedente(),"danno","4")),
         if (identical(input$danno,"NO"))
-          scelta("potenziale","L'episodio avrebbe potuto causare un danno fisico?",si_no_ignoto))
+          scelta("potenziale","L'episodio avrebbe potuto causare un danno fisico?",si_no_ignoto,valore=vecchio_campo(precedente(),"potenziale","4")))
   })
   output$proposta_qualificazione <- shiny::renderUI({
     if (is.null(input$episodio) || !nzchar(input$episodio)) return(NULL)
@@ -113,16 +113,16 @@ server <- function(input, output, session) {
                    if(is.null(input$danno)) "" else input$danno,
                    if(is.null(input$potenziale)) "" else input$potenziale)
     if(q %in% c("UNDETERMINED","REVIEW_NEEDED"))
-      shiny::textAreaInput("chiarimenti","Limite della ricostruzione / chiarimento necessario *",rows=2,width="100%")
+      shiny::textAreaInput("chiarimenti","Limite della ricostruzione / chiarimento necessario *",rows=2,width="100%",value=vecchio_campo(precedente(),"chiarimenti","4"))
   })
   output$misure_ui <- shiny::renderUI({
     if (identical(input$misure,"YES"))
       shiny::tagList(
-        lapply(seq_len(numero_azioni()),azione_ui),
+        lapply(seq_len(numero_azioni()),function(i) azione_ui(i,precedente())),
         shiny::actionButton("aggiungi_misura","+ Aggiungi una misura"),
         if(numero_azioni()>1L) shiny::actionButton("togli_misura","Rimuovi l'ultima misura"))
     else if (input$misure %in% c("NONE","UNKNOWN"))
-      shiny::textAreaInput("nota_misure","Spiegazione / limite delle informazioni *",rows=2,width="100%")
+      shiny::textAreaInput("nota_misure","Spiegazione / limite delle informazioni *",rows=2,width="100%",value=vecchio_campo(precedente(),"nota_misure","4"))
   })
   shiny::observeEvent(input$aggiungi_misura,numero_azioni(min(20L,numero_azioni()+1L)))
   shiny::observeEvent(input$togli_misura,numero_azioni(max(1L,numero_azioni()-1L)))
