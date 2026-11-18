@@ -122,11 +122,15 @@ interfaccia_percorso <- function(esito, n_azioni=1L, ultima=NULL) {
   )
 }
 
-azione_ui <- function(i) shiny::div(class="azione",
+azione_ui <- function(i, ultima=NULL) {
+  az <- tryCatch(decodifica_json(ultima$azioni[[1]])[[i]],error=function(e) NULL)
+  v <- function(k) if(is.null(az) || is.null(az[[k]])) "" else as.character(az[[k]])
+  shiny::div(class="azione",
   shiny::h4(paste("Misura",i)),
-  shiny::selectInput(paste0("azione_tipo_",i),"Tipo di misura *",choices=c("Seleziona"="",tipi_misura)),
-  shiny::selectInput(paste0("azione_stato_",i),"Stato dichiarato *",choices=c("Seleziona"="",stati_misura)),
-  shiny::textAreaInput(paste0("azione_descrizione_",i),"Descrizione concreta *",rows=2,width="100%"))
+  shiny::selectInput(paste0("azione_tipo_",i),"Tipo di misura *",choices=c("Seleziona"="",tipi_misura),selected=v("tipo")),
+  shiny::selectInput(paste0("azione_stato_",i),"Stato dichiarato *",choices=c("Seleziona"="",stati_misura),selected=v("stato")),
+  shiny::textAreaInput(paste0("azione_descrizione_",i),"Descrizione concreta *",rows=2,width="100%",value=v("descrizione")))
+}
 
 # Un valore precedentemente registrato si ripropone soltanto per lo stesso ramo.
 vecchio_campo <- function(ultima, nome, esito=NULL) {
