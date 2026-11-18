@@ -11,7 +11,7 @@ stopifnot(
   identical(qualifica("YES","NO","NO"),"REVIEW_NEEDED")
 )
 base <- list(
-  responsabile_nome="Mario Rossi",responsabile_ruolo="Manutentore",
+  compilatore_nome="Lucia Bianchi", responsabile_nome="Mario Rossi",responsabile_ruolo="Manutentore",
   responsabile_funzione="MAINTENANCE",esito="1",
   motivazione="Anomalia giustificata e verificata.",indagine="",
   indagine_richiesta=FALSE,criticita=list(),pericoli=list(),fonti=list(),
