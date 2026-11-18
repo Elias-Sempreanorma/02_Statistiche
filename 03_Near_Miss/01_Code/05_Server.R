@@ -9,46 +9,90 @@ server <- function(input, output, session) {
   errore <- shiny::reactiveVal(NULL)
   numero_azioni <- shiny::reactiveVal(1L)
   lista <- shiny::reactiveVal(data.frame())
+  errore_lista <- shiny::reactiveVal(NULL)
   con <- tryCatch(connessione_db(),error=function(e) {
     warning(conditionMessage(e)); NULL
   })
   session$onSessionEnded(function() {
     if (!is.null(con) && DBI::dbIsValid(con)) DBI::dbDisconnect(con)
   })
-  coupon_interni <- if (identical(modalita, "internal") && !is.null(con)) {
-    tryCatch(DBI::dbGetQuery(con,
-      "SELECT DISTINCT coupon FROM public.alerts WHERE coupon IS NOT NULL")$coupon,
-      error=function(e) {warning(conditionMessage(e));character()})
-  } else character()
+  anagrafica <- if (identical(modalita, "internal") && !is.null(con)) {
+    tryCatch(anagrafica_macchine(con), error=function(e) {
+      warning(conditionMessage(e)); data.frame()
+    })
+  } else data.frame()
+  coupon_interni <- if (nrow(anagrafica)) as.character(anagrafica$coupon) else character()
   utente <- shiny::reactiveVal(if (identical(modalita, "internal") &&
-                                !is.null(con) && length(coupon_interni)) {
-    list(account="accesso_interno", coupon=as.character(coupon_interni))
+                                 !is.null(con) && length(coupon_interni)) {
+    list(account="accesso_interno",coupon=coupon_interni)
   } else NULL)
+  intervallo <- if (!is.null(con) && length(coupon_interni))
+    tryCatch(intervallo_segnalazioni(con),error=function(e) Sys.Date()+c(-30,0))
+  else Sys.Date()+c(-30,0)
   output$schermata <- shiny::renderUI({
-    if (is.null(utente())) {
-      return(shiny::div(class="pannello",
-        shiny::h3("Applicazione non disponibile"),
-        shiny::p("Connessione al database assente o accesso web non ancora integrato.")))
-    }
-    interfaccia_lavoro()
+    if (is.null(utente())) return(shiny::div(class="pannello",
+      shiny::h3("Applicazione non disponibile"),
+      shiny::p("Connessione assente o accesso web non autorizzato.")))
+    interfaccia_lavoro(modalita,intervallo)
   })
   output$utente_attivo <- shiny::renderText({
-    req(utente()); paste0("Accesso interno · ",length(utente()$coupon),
-                         " macchine disponibili")
+    req(utente())
+    paste0("Accesso interno · ",length(utente()$coupon)," macchine disponibili")
   })
-
-  carica_lista <- function() {
-    req(utente(),con)
-    tryCatch(lista(elenco_segnalazioni(con,utente()$coupon,
-                                     if(is.null(input$ricerca)) "" else input$ricerca)),
-      error=function(e) shiny::showNotification("Impossibile caricare le segnalazioni.",type="error"))
-  }
-  shiny::observeEvent(utente(),{if(!is.null(utente())) carica_lista()})
-  shiny::observeEvent(input$cerca,carica_lista())
+  shiny::observeEvent(input$azienda, {
+    req(nrow(anagrafica),input$azienda)
+    stabilimenti <- sort(unique(anagrafica$stabilimento[anagrafica$azienda==input$azienda]))
+    shiny::updateSelectInput(session,"stabilimento",choices=stabilimenti,
+      selected=if(input$stabilimento %in% stabilimenti) input$stabilimento else stabilimenti[1])
+  })
+  shiny::observeEvent(list(input$azienda,input$stabilimento),{
+    req(nrow(anagrafica),input$azienda,input$stabilimento)
+    d <- anagrafica[anagrafica$azienda==input$azienda &
+                    anagrafica$stabilimento==input$stabilimento,,drop=FALSE]
+    choices <- stats::setNames(d$coupon,paste(d$progetto,d$nome_macchina,sep=" - "))
+    shiny::updateSelectInput(session,"macchina",choices=choices,
+      selected=if(input$macchina %in% d$coupon) input$macchina else d$coupon[1])
+  })
+  shiny::observeEvent(utente(),{
+    if (!is.null(utente()) && nrow(anagrafica)) {
+      shiny::updateSelectInput(session,"azienda",
+        choices=sort(unique(anagrafica$azienda)))
+    }
+  })
+  filtri_correnti <- shiny::reactive({
+    req(utente(),input$date)
+    if (modalita=="internal") {
+      req(input$azienda,input$stabilimento,input$macchina)
+      req(nrow(anagrafica)>0)
+      req(any(anagrafica$coupon==input$macchina &
+              anagrafica$azienda==input$azienda &
+              anagrafica$stabilimento==input$stabilimento))
+      coupon <- input$macchina
+    } else {
+      req(FALSE) # Modalità web disabilitata finché il portale non autentica il coupon
+    }
+    list(coupon=coupon,date=input$date)
+  })
+  shiny::observeEvent(filtri_correnti(),{
+    f <- filtri_correnti()
+    tryCatch({
+      d <- elenco_segnalazioni(con,f$coupon,f$date)
+      lista(d)
+      errore_lista(NULL)
+    }, error=function(e) {
+      errore_lista(conditionMessage(e))
+      lista(data.frame())
+      warning(conditionMessage(e))
+    })
+  })
+  output$messaggio_elenco <- shiny::renderUI({
+    if (!is.null(errore_lista()))
+      shiny::div(class="avviso",paste("Errore nel caricamento:",errore_lista()))
+  })
 
   output$elenco <- DT::renderDT({
     d <- lista()
-    if (!nrow(d)) return(DT::datatable(data.frame(Messaggio="Nessuna segnalazione disponibile")))
+    if (!nrow(d)) return(DT::datatable(data.frame(Messaggio="Nessuna segnalazione nel periodo selezionato"),rownames=FALSE,options=list(dom="t")))
     v <- d[,c("alert_id","coupon","machine_name","generated_at",
              "alert_type","signal_description","ultima_revisione")]
     names(v) <- c("ID segnalazione","Coupon","Macchina","Generata",
