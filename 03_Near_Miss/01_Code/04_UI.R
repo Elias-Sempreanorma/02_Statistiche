@@ -131,7 +131,7 @@ azione_ui <- function(i, ultima=NULL, correnti=list()) {
     if (!is.null(correnti[[id]]) && nzchar(as.character(correnti[[id]]))) return(as.character(correnti[[id]]))
     if(is.null(az) || is.null(az[[k]])) "" else as.character(az[[k]])
   }
-  shiny::div(class="azione",
+  shiny::div(class="azione",id=paste0("misura_",i),
   shiny::h4(paste("Misura",i)),
   shiny::selectInput(paste0("azione_tipo_",i),"Tipo di misura *",choices=c("Seleziona"="",opzioni_menu(tipi_misura)),selected=v("tipo")),
   shiny::selectInput(paste0("azione_stato_",i),"Stato dichiarato *",choices=c("Seleziona"="",opzioni_menu(stati_misura)),selected=v("stato")),
