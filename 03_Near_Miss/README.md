@@ -5,17 +5,13 @@ Lettura diretta da public.alerts; nessun ETL ulteriore.
 00_Data: cataloghi; 01_Code: codice R; 02_Output: nessun file necessario; app.R: avvio.
 
 ## Prima installazione
-Configurare fuori da Git PG_HOST, PG_PORT, PG_DB_STATS, PG_USER, PG_PASSWORD,
-ACCESSI_NEAR_MISS_JSON. Il valore ACCESSI_NEAR_MISS_JSON è un array di oggetti:
-{"account":"operatore","hash_password":"hash-sodium","coupon":["coupon-autorizzato"]}.
-Creare l'hash con sodium::password_store("password-complessa") in R.
-La mancata configurazione disabilita il login.
+Configurare fuori da Git PG_HOST, PG_PORT, PG_DB_STATS, PG_USER e PG_PASSWORD.\nAPP_MODE=internal non presenta un secondo login: consentire accesso soltanto da rete/IP autorizzati.\nAPP_MODE=web resta bloccata fino all’integrazione con autenticazione e permessi del portale.\nIl nome dell’operatore è dichiarato nel modulo e NON è un’identità autenticata.
 Creare la tabella una sola volta, in ambiente di staging, con:
 Rscript -e 'library(DBI);library(RPostgres);library(jsonlite);source("00_Data/cataloghi.R");source("01_Code/02_Regole.R");source("01_Code/01_Database.R");inizializza_database()'
 La tabella è public.verifiche_near_miss, con una riga per revisione e unico
 ID segnalazione/revisione. Non vengono create tabelle aggiuntive.
 Avvio container: docker compose up -d --build.
-Applicare HTTPS, limiti ai tentativi di login e permessi di rete al reverse proxy:
+Applicare HTTPS, IP allowlist e permessi di rete al reverse proxy:
 la porta locale è 127.0.0.1:3842. Non esporre il container direttamente.
 
 ## Regole
