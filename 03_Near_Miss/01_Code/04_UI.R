@@ -1,7 +1,7 @@
 # Interfaccia operativa: tutti i campi del preliminare, con rami condizionali.
-scelta <- function(id, titolo, opzioni, obbligatorio=TRUE) {
+scelta <- function(id, titolo, opzioni, obbligatorio=TRUE, valore=character(0)) {
   shiny::radioButtons(id, paste0(titolo, if(obbligatorio) " *" else ""),
-                      choices=opzioni, selected=character(0))
+                      choices=opzioni, selected=valore)
 }
 
 interfaccia <- shiny::fluidPage(
@@ -68,13 +68,13 @@ modulo_ui <- function(segnalazione, ultima) {
       shiny::selectInput("responsabile_funzione","Funzione aziendale *",
                          c("Seleziona"="", "RSPP / HSE"="RSPP_HSE",
                            "Responsabile della manutenzione"="MAINTENANCE",
-                           "Altro"="OTHER")),
+                           "Altro"="OTHER"),selected=vecchio_campo(ultima,"responsabile_funzione")),
       shiny::textInput("responsabile_nome","Nome e cognome *",value=vecchio_campo(ultima,"responsabile_nome")),
       shiny::textInput("responsabile_ruolo","Ruolo aziendale *",value=vecchio_campo(ultima,"responsabile_ruolo")),
       shiny::p("Il responsabile dichiarato può essere diverso dall'account che registra la verifica.")),
     shiny::div(class="pannello",
       shiny::h3("A10 · Esito della verifica preliminare"),
-      scelta("esito","Seleziona un solo percorso",setNames(names(esiti),paste0(names(esiti),". ",unname(esiti)))),
+      scelta("esito","Seleziona un solo percorso",setNames(names(esiti),paste0(names(esiti),". ",unname(esiti))),valore=vecchio_campo(ultima,"esito")),
       shiny::uiOutput("percorso")),
     shiny::div(class="pannello",
       shiny::h3("Riepilogo e invio"),
@@ -90,14 +90,14 @@ interfaccia_percorso <- function(esito, n_azioni=1L, ultima=NULL) {
     shiny::textAreaInput("motivazione","Riscontro e motivazione *",rows=4,width="100%",value=vecchio_campo(ultima,"motivazione",esito)),
     if (esito=="4") shiny::tagList(
       shiny::h3("Condizioni critiche, pericoli e fonti"),
-      shiny::checkboxGroupInput("criticita","Condizioni critiche riscontrate *",choices=criticita),
+      shiny::checkboxGroupInput("criticita","Condizioni critiche riscontrate *",choices=criticita,selected=vecchia_lista(ultima,"criticita",esito)),
       shiny::uiOutput("altra_criticita"),
-      shiny::checkboxGroupInput("pericoli","Pericoli individuati *",choices=pericoli),
+      shiny::checkboxGroupInput("pericoli","Pericoli individuati *",choices=pericoli,selected=vecchia_lista(ultima,"pericoli",esito)),
       shiny::uiOutput("altro_pericolo"),
-      shiny::checkboxGroupInput("fonti","Elementi utilizzati per la verifica *",choices=fonti),
-      shiny::textAreaInput("fonti_nota","Riferimento al riscontro",rows=2,width="100%"),
+      shiny::checkboxGroupInput("fonti","Elementi utilizzati per la verifica *",choices=fonti,selected=vecchia_lista(ultima,"fonti",esito)),
+      shiny::textAreaInput("fonti_nota","Riferimento al riscontro",rows=2,width="100%",value=vecchio_campo(ultima,"fonti_nota",esito)),
       shiny::h3("Qualificazione dell'accaduto"),
-      scelta("episodio","È stato verificato anche un episodio effettivamente accaduto?",si_no_ignoto),
+      scelta("episodio","È stato verificato anche un episodio effettivamente accaduto?",si_no_ignoto,valore=vecchio_campo(ultima,"episodio",esito)),
       shiny::uiOutput("domande_episodio"),
       shiny::uiOutput("proposta_qualificazione"),
       shiny::uiOutput("chiarimenti_ui"),
@@ -106,16 +106,16 @@ interfaccia_percorso <- function(esito, n_azioni=1L, ultima=NULL) {
              c("Sì"="YES","Nessuna misura dichiarata"="NONE","Informazione non disponibile"="UNKNOWN")),
       shiny::uiOutput("misure_ui"),
       shiny::selectInput("comunicazioni","Comunicazioni / escalation *",
-                        choices=c("Seleziona"="",comunicazioni)),
-      shiny::textAreaInput("nota_comunicazioni","Comunicazioni e riferimenti *",rows=2,width="100%"),
+                        choices=c("Seleziona"="",comunicazioni),selected=vecchio_campo(ultima,"comunicazioni",esito)),
+      shiny::textAreaInput("nota_comunicazioni","Comunicazioni e riferimenti *",rows=2,width="100%",value=vecchio_campo(ultima,"nota_comunicazioni",esito)),
       shiny::selectInput("stato_gestione","Stato dichiarato della gestione aziendale *",
                         choices=c("Seleziona"="",stati_gestione))),
     if(esito!="4") shiny::tagList(
       shiny::checkboxGroupInput("evidenze","Riferimenti ed evidenze aziendali (facoltativi)",
-                                 choices=evidenze),
-      shiny::textAreaInput("azione_immediata","Eventuale azione immediata già adottata",rows=2,width="100%")),
+                                 choices=evidenze,selected=vecchia_lista(ultima,"evidenze",esito)),
+      shiny::textAreaInput("azione_immediata","Eventuale azione immediata già adottata",rows=2,width="100%",value=vecchio_campo(ultima,"azione_immediata",esito))),
     shiny::textAreaInput("riferimento","Riferimento aziendale libero (facoltativo)",rows=2,width="100%",value=vecchio_campo(ultima,"riferimento",esito)),
-    if(esito %in% c("2","4")) scelta("indagine","Richiedere un'indagine 5SAN?",si_no),
+    if(esito %in% c("2","4")) scelta("indagine","Richiedere un'indagine 5SAN?",si_no,valore=if(!is.null(ultima) && as.character(ultima$esito[[1]])==esito) if(isTRUE(ultima$indagine_richiesta[[1]])) "YES" else "NO" else character(0)),
     if(esito=="3") shiny::div(class="info","Indagine richiesta dal percorso A10.3. La richiesta sarà salvata; l'apertura effettiva non è ancora integrata."),
     if(esito=="5") shiny::div(class="info","Percorso tecnico 5SAN. Non viene creato alcun ticket."),
     if(esito=="1") shiny::div(class="info","Chiusura motivata della segnalazione senza indagine ordinaria.")
@@ -134,4 +134,11 @@ vecchio_campo <- function(ultima, nome, esito=NULL) {
   if (!is.null(esito) && as.character(ultima$esito[[1]])!=esito) return("")
   val <- ultima[[nome]][[1]]
   if (is.null(val) || length(val)==0 || is.na(val)) "" else as.character(val)
+}
+
+vecchia_lista <- function(ultima, nome, esito=NULL) {
+  if (is.null(ultima) || !nome %in% names(ultima) ||
+      (!is.null(esito) && as.character(ultima$esito[[1]])!=esito)) return(character())
+  tryCatch(unlist(decodifica_json(ultima[[nome]][[1]]),use.names=FALSE),
+           error=function(e) character())
 }
