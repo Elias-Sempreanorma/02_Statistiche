@@ -103,7 +103,7 @@ interfaccia_percorso <- function(esito, n_azioni=1L, ultima=NULL) {
       shiny::uiOutput("chiarimenti_ui"),
       shiny::h3("Risposta aziendale dichiarata"),
       scelta("misure","Sono state adottate o disposte misure?",
-             c("Sì"="YES","Nessuna misura dichiarata"="NONE","Informazione non disponibile"="UNKNOWN")),
+             c("Sì"="YES","Nessuna misura dichiarata"="NONE","Informazione non disponibile"="UNKNOWN"),valore=vecchio_campo(ultima,"misure",esito)),
       shiny::uiOutput("misure_ui"),
       shiny::selectInput("comunicazioni","Comunicazioni / escalation *",
                         choices=c("Seleziona"="",comunicazioni),selected=vecchio_campo(ultima,"comunicazioni",esito)),
