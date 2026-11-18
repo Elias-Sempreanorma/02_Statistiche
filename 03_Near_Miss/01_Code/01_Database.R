@@ -72,34 +72,91 @@ inizializza_database <- function() {
   invisible(TRUE)
 }
 
-# Autorizzazione server, mai dal coupon in un URL.
-elenco_segnalazioni <- function(con, coupon_autorizzati, ricerca = "") {
-  if (!length(coupon_autorizzati)) return(data.frame())
+# Anagrafica reale che usa anche la dashboard: una sola riga per coupon.
+# Non si creano copie in 02_Output e non si aggiungono tabelle.
+anagrafica_macchine <- function(con) {
+  DBI::dbGetQuery(con, "
+    SELECT a.coupon,
+      COALESCE(NULLIF(BTRIM(p.azienda), ''), '(Non specificata)') AS azienda,
+      COALESCE(NULLIF(BTRIM(p.stabilimento), ''), '(Non specificato)') AS stabilimento,
+      COALESCE(NULLIF(BTRIM(p.progetto), ''), '(Non specificato)') AS progetto,
+      COALESCE(NULLIF(BTRIM(a.machine_name), ''), a.coupon) AS nome_macchina
+    FROM (
+      SELECT coupon, MAX(machine_name) AS machine_name
+      FROM public.alerts
+      WHERE coupon IS NOT NULL
+      GROUP BY coupon
+    ) a
+    LEFT JOIN (
+      SELECT coupon,
+             MAX(azienda) AS azienda,
+             MAX(stabilimento) AS stabilimento,
+             MAX(progetto) AS progetto
+      FROM public.progetti_componenti_b10d_san
+      GROUP BY coupon
+    ) p ON p.coupon = a.coupon
+    ORDER BY azienda, stabilimento, progetto, nome_macchina
+  ")
+}
+
+intervallo_segnalazioni <- function(con, coupon = NULL) {
+  if (is.null(coupon)) {
+    r <- DBI::dbGetQuery(con, "
+      SELECT MIN(period_start) AS inizio, MAX(period_end) AS fine
+      FROM public.alerts")
+  } else {
+    r <- DBI::dbGetQuery(con, "
+      SELECT MIN(period_start) AS inizio, MAX(period_end) AS fine
+      FROM public.alerts WHERE coupon = $1", params = list(as.character(coupon)))
+  }
+  if (is.na(r$inizio[1]) || is.na(r$fine[1])) {
+    oggi <- as.Date(Sys.time(), tz = "Europe/Rome")
+    return(c(oggi, oggi))
+  }
+  c(as.Date(r$inizio[1], tz="Europe/Rome"),
+    as.Date(r$fine[1], tz="Europe/Rome"))
+}
+
+# Parametri scalari e filtri sul periodo effettivo della segnalazione;
+# estremi inclusivi nel fuso Europe/Rome, come nella dashboard.
+elenco_segnalazioni <- function(con, coupon, date) {
+  if (length(coupon) != 1L || !nzchar(coupon) ||
+      length(date) != 2L || anyNA(date)) {
+    return(data.frame())
+  }
   DBI::dbGetQuery(con, "
     SELECT a.alert_id, a.coupon, a.machine_code, a.machine_name,
            a.period_start, a.period_end, a.generated_at,
            a.alert_type, a.signal_description, a.sensor_description,
-           a.sensor_code, COALESCE(v.revisione,0) AS ultima_revisione
+           a.sensor_code, COALESCE(v.revisione, 0) AS ultima_revisione
     FROM public.alerts a
     LEFT JOIN LATERAL (
       SELECT revisione FROM public.verifiche_near_miss
-      WHERE id_segnalazione = a.alert_id ORDER BY revisione DESC LIMIT 1
+      WHERE id_segnalazione = a.alert_id
+      ORDER BY revisione DESC LIMIT 1
     ) v ON TRUE
-    WHERE a.coupon = ANY($1::text[])
-      AND ($2::text = '' OR a.alert_id ILIKE '%' || $2 || '%'
-           OR a.machine_name ILIKE '%' || $2 || '%')
-    ORDER BY a.generated_at DESC
-    LIMIT 500
-  ", params = list(as.character(coupon_autorizzati), as.character(ricerca)))
+    WHERE a.coupon = $1
+      AND (a.period_end AT TIME ZONE 'Europe/Rome')::date >= $2::date
+      AND (a.period_start AT TIME ZONE 'Europe/Rome')::date <= $3::date
+    ORDER BY a.period_start DESC, a.alert_id DESC
+  ", params=list(as.character(coupon),
+                 format(as.Date(date[1]), "%Y-%m-%d"),
+                 format(as.Date(date[2]), "%Y-%m-%d")))
 }
 
+# La verifica del coupon è sempre sul server. Mai fidarsi del solo URL.
 leggi_segnalazione <- function(con, id_segnalazione, coupon_autorizzati) {
+  if (!length(coupon_autorizzati)) stop("Nessuna macchina autorizzata.")
   d <- DBI::dbGetQuery(con, "
     SELECT * FROM public.alerts
-    WHERE alert_id = $1 AND coupon = ANY($2::text[])",
-    params = list(id_segnalazione, as.character(coupon_autorizzati)))
-  if (nrow(d) != 1L) stop("Segnalazione non disponibile per questo account.")
-  d[1, , drop = FALSE]
+    WHERE alert_id = $1 AND coupon = ANY(
+      SELECT jsonb_array_elements_text($2::jsonb)
+    )",
+    params=list(as.character(id_segnalazione),
+      as.character(jsonlite::toJSON(as.character(coupon_autorizzati),
+                                   auto_unbox=FALSE))))
+  if (nrow(d) != 1L) stop("Segnalazione non disponibile per questo accesso.")
+  d[1, , drop=FALSE]
 }
 
 ultima_verifica <- function(con, id_segnalazione) {
@@ -152,7 +209,13 @@ salva_verifica <- function(con, segnalazione, operatore, coupon_autorizzati,
       indagine_richiesta=isTRUE(dati$indagine_richiesta),
       snapshot_segnalazione=codifica_json(as.list(seg[1, , drop=FALSE]))
     )
-    # Parametri SQL scalari: NULL R non equivale a SQL NULL nel binding.\n    valori <- lapply(valori, function(v) {\n      if (is.null(v) || length(v) == 0L) return(NA_character_)\n      if (length(v) == 1L && is.character(v) && !nzchar(v)) return(NA_character_)\n      v\n    })\n    campi <- names(valori)
+    # Parametri SQL scalari: NULL R non equivale a SQL NULL nel binding.
+    valori <- lapply(valori, function(v) {
+      if (is.null(v) || length(v) == 0L) return(NA_character_)
+      if (length(v) == 1L && is.character(v) && !nzchar(v)) return(NA_character_)
+      v
+    })
+    campi <- names(valori)
     # DBI parametrizzato, nessun dato dell'utente interpolato nella query.
     json <- c("criticita","pericoli","fonti","evidenze","azioni","snapshot_segnalazione")
     placeholder <- paste0("$",seq_along(campi),ifelse(campi %in% json,"::jsonb",""))
