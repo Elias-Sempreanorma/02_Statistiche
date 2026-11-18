@@ -126,7 +126,7 @@ server <- function(input, output, session) {
         lapply(seq_len(numero_azioni()),function(i) azione_ui(i,precedente(),shiny::isolate(shiny::reactiveValuesToList(input)))),
         shiny::actionButton("aggiungi_misura","+ Aggiungi una misura"),
         if(numero_azioni()>1L) shiny::actionButton("togli_misura","Rimuovi l'ultima misura"))
-    else if (input$misure %in% c("NONE","UNKNOWN"))
+    else if (isTRUE(input$misure %in% c("NONE","UNKNOWN")))
       shiny::textAreaInput("nota_misure","Spiegazione / limite delle informazioni *",rows=2,width="100%",value=vecchio_campo(precedente(),"nota_misure","4"))
   })
   shiny::observeEvent(input$aggiungi_misura,numero_azioni(min(20L,numero_azioni()+1L)))
