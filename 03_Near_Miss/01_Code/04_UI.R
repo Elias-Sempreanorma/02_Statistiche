@@ -69,8 +69,8 @@ modulo_ui <- function(segnalazione, ultima) {
                          c("Seleziona"="", "RSPP / HSE"="RSPP_HSE",
                            "Responsabile della manutenzione"="MAINTENANCE",
                            "Altro"="OTHER")),
-      shiny::textInput("responsabile_nome","Nome e cognome *"),
-      shiny::textInput("responsabile_ruolo","Ruolo aziendale *"),
+      shiny::textInput("responsabile_nome","Nome e cognome *",value=vecchio_campo(ultima,"responsabile_nome")),
+      shiny::textInput("responsabile_ruolo","Ruolo aziendale *",value=vecchio_campo(ultima,"responsabile_ruolo")),
       shiny::p("Il responsabile dichiarato può essere diverso dall'account che registra la verifica.")),
     shiny::div(class="pannello",
       shiny::h3("A10 · Esito della verifica preliminare"),
@@ -83,11 +83,11 @@ modulo_ui <- function(segnalazione, ultima) {
       shiny::p("L'invio salva una nuova revisione nel database. Non invia notifiche, non apre automaticamente un'indagine e non certifica l'efficacia delle misure.")))
 }
 
-interfaccia_percorso <- function(esito, n_azioni=1L) {
+interfaccia_percorso <- function(esito, n_azioni=1L, ultima=NULL) {
   if (is.null(esito) || !esito %in% names(esiti)) return(NULL)
   shiny::tagList(
     shiny::h3(paste0("A11 · ",domande_a11[[esito]])),
-    shiny::textAreaInput("motivazione","Riscontro e motivazione *",rows=4,width="100%"),
+    shiny::textAreaInput("motivazione","Riscontro e motivazione *",rows=4,width="100%",value=vecchio_campo(ultima,"motivazione",esito)),
     if (esito=="4") shiny::tagList(
       shiny::h3("Condizioni critiche, pericoli e fonti"),
       shiny::checkboxGroupInput("criticita","Condizioni critiche riscontrate *",choices=criticita),
@@ -114,7 +114,7 @@ interfaccia_percorso <- function(esito, n_azioni=1L) {
       shiny::checkboxGroupInput("evidenze","Riferimenti ed evidenze aziendali (facoltativi)",
                                  choices=evidenze),
       shiny::textAreaInput("azione_immediata","Eventuale azione immediata già adottata",rows=2,width="100%")),
-    shiny::textAreaInput("riferimento","Riferimento aziendale libero (facoltativo)",rows=2,width="100%"),
+    shiny::textAreaInput("riferimento","Riferimento aziendale libero (facoltativo)",rows=2,width="100%",value=vecchio_campo(ultima,"riferimento",esito)),
     if(esito %in% c("2","4")) scelta("indagine","Richiedere un'indagine 5SAN?",si_no),
     if(esito=="3") shiny::div(class="info","Indagine richiesta dal percorso A10.3. La richiesta sarà salvata; l'apertura effettiva non è ancora integrata."),
     if(esito=="5") shiny::div(class="info","Percorso tecnico 5SAN. Non viene creato alcun ticket."),
@@ -127,3 +127,11 @@ azione_ui <- function(i) shiny::div(class="azione",
   shiny::selectInput(paste0("azione_tipo_",i),"Tipo di misura *",choices=c("Seleziona"="",tipi_misura)),
   shiny::selectInput(paste0("azione_stato_",i),"Stato dichiarato *",choices=c("Seleziona"="",stati_misura)),
   shiny::textAreaInput(paste0("azione_descrizione_",i),"Descrizione concreta *",rows=2,width="100%"))
+
+# Un valore precedentemente registrato si ripropone soltanto per lo stesso ramo.
+vecchio_campo <- function(ultima, nome, esito=NULL) {
+  if (is.null(ultima) || !nome %in% names(ultima)) return("")
+  if (!is.null(esito) && as.character(ultima$esito[[1]])!=esito) return("")
+  val <- ultima[[nome]][[1]]
+  if (is.null(val) || length(val)==0 || is.na(val)) "" else as.character(val)
+}
