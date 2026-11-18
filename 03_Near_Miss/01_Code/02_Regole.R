@@ -83,7 +83,9 @@ ripulisci_percorso <- function(x) {
     if (!"CR25" %in% x$criticita) x$criticita_altro <- NULL
     if (!"OTHER" %in% x$pericoli) x$pericolo_altro <- NULL
   }
-  if (e!="2") x$evidenze <- list()
+  # Le evidenze facoltative dell\x27HTML sono ammesse in tutti i percorsi non critici.
+  # Non eliminarle: sono dichiarazioni utili per future analisi.
+  if (e=="4") x$evidenze <- list()
   if (e %in% c("1","3","5")) x$indagine <- NULL
   x
 }
