@@ -95,9 +95,14 @@ server <- function(input, output, session) {
   output$domande_episodio <- shiny::renderUI({
     if (identical(input$episodio,"YES"))
       shiny::tagList(
-        scelta("danno","Dall'episodio è derivato un danno fisico a una persona?",si_no_ignoto,valore=vecchio_campo(precedente(),"danno","4")),
-        if (identical(input$danno,"NO"))
-          scelta("potenziale","L'episodio avrebbe potuto causare un danno fisico?",si_no_ignoto,valore=vecchio_campo(precedente(),"potenziale","4")))
+        scelta("danno","Dall'episodio è derivato un danno fisico a una persona?",
+               si_no_ignoto,valore=vecchio_campo(precedente(),"danno","4")),
+        shiny::uiOutput("potenziale_ui"))
+  })
+  output$potenziale_ui <- shiny::renderUI({
+    if (identical(input$episodio,"YES") && identical(input$danno,"NO"))
+      scelta("potenziale","L'episodio avrebbe potuto causare un danno fisico?",
+             si_no_ignoto,valore=vecchio_campo(precedente(),"potenziale","4"))
   })
   output$proposta_qualificazione <- shiny::renderUI({
     if (is.null(input$episodio) || !nzchar(input$episodio)) return(NULL)
