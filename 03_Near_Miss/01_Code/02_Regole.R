@@ -21,6 +21,7 @@ valida_modulo <- function(x) {
   obbligo <- function(valore, etichetta) {
     if (!nzchar(testo(valore))) errori <<- c(errori, paste0("Compila: ", etichetta))
   }
+  obbligo(x$compilatore_nome, "A08 · Nome compilatore")
   obbligo(x$responsabile_nome, "A08 · Nome responsabile")
   obbligo(x$responsabile_ruolo, "A08 · Ruolo responsabile")
   obbligo(x$responsabile_funzione, "A08 · Funzione scelta")
