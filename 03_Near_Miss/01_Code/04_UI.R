@@ -122,9 +122,13 @@ interfaccia_percorso <- function(esito, n_azioni=1L, ultima=NULL) {
   )
 }
 
-azione_ui <- function(i, ultima=NULL) {
+azione_ui <- function(i, ultima=NULL, correnti=list()) {
   az <- tryCatch(decodifica_json(ultima$azioni[[1]])[[i]],error=function(e) NULL)
-  v <- function(k) if(is.null(az) || is.null(az[[k]])) "" else as.character(az[[k]])
+  v <- function(k) {
+    id <- paste0("azione_",if(k=="descrizione") "descrizione" else k,"_",i)
+    if (!is.null(correnti[[id]]) && nzchar(as.character(correnti[[id]]))) return(as.character(correnti[[id]]))
+    if(is.null(az) || is.null(az[[k]])) "" else as.character(az[[k]])
+  }
   shiny::div(class="azione",
   shiny::h4(paste("Misura",i)),
   shiny::selectInput(paste0("azione_tipo_",i),"Tipo di misura *",choices=c("Seleziona"="",tipi_misura),selected=v("tipo")),
