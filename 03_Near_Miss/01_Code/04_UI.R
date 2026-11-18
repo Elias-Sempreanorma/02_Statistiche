@@ -1,7 +1,9 @@
 # Interfaccia operativa: tutti i campi del preliminare, con rami condizionali.
+opzioni_menu <- function(catalogo) setNames(names(catalogo), unname(catalogo))
+
 scelta <- function(id, titolo, opzioni, obbligatorio=TRUE, valore=character(0)) {
   shiny::radioButtons(id, paste0(titolo, if(obbligatorio) " *" else ""),
-                      choices=opzioni, selected=valore)
+                      choices=opzioni_menu(opzioni), selected=valore)
 }
 
 interfaccia <- shiny::fluidPage(
@@ -74,7 +76,7 @@ modulo_ui <- function(segnalazione, ultima) {
       shiny::p("Il responsabile dichiarato può essere diverso dall'account che registra la verifica.")),
     shiny::div(class="pannello",
       shiny::h3("A10 · Esito della verifica preliminare"),
-      scelta("esito","Seleziona un solo percorso",setNames(names(esiti),paste0(names(esiti),". ",unname(esiti))),valore=vecchio_campo(ultima,"esito")),
+      scelta("esito","Seleziona un solo percorso",setNames(paste0(names(esiti),". ",unname(esiti)),names(esiti)),valore=vecchio_campo(ultima,"esito")),
       shiny::uiOutput("percorso")),
     shiny::div(class="pannello",
       shiny::h3("Riepilogo e invio"),
@@ -90,11 +92,11 @@ interfaccia_percorso <- function(esito, n_azioni=1L, ultima=NULL) {
     shiny::textAreaInput("motivazione","Riscontro e motivazione *",rows=4,width="100%",value=vecchio_campo(ultima,"motivazione",esito)),
     if (esito=="4") shiny::tagList(
       shiny::h3("Condizioni critiche, pericoli e fonti"),
-      shiny::checkboxGroupInput("criticita","Condizioni critiche riscontrate *",choices=criticita,selected=vecchia_lista(ultima,"criticita",esito)),
+      shiny::checkboxGroupInput("criticita","Condizioni critiche riscontrate *",choices=opzioni_menu(criticita),selected=vecchia_lista(ultima,"criticita",esito)),
       shiny::uiOutput("altra_criticita"),
-      shiny::checkboxGroupInput("pericoli","Pericoli individuati *",choices=pericoli,selected=vecchia_lista(ultima,"pericoli",esito)),
+      shiny::checkboxGroupInput("pericoli","Pericoli individuati *",choices=opzioni_menu(pericoli),selected=vecchia_lista(ultima,"pericoli",esito)),
       shiny::uiOutput("altro_pericolo"),
-      shiny::checkboxGroupInput("fonti","Elementi utilizzati per la verifica *",choices=fonti,selected=vecchia_lista(ultima,"fonti",esito)),
+      shiny::checkboxGroupInput("fonti","Elementi utilizzati per la verifica *",choices=opzioni_menu(fonti),selected=vecchia_lista(ultima,"fonti",esito)),
       shiny::textAreaInput("fonti_nota","Riferimento al riscontro",rows=2,width="100%",value=vecchio_campo(ultima,"fonti_nota",esito)),
       shiny::h3("Qualificazione dell'accaduto"),
       scelta("episodio","È stato verificato anche un episodio effettivamente accaduto?",si_no_ignoto,valore=vecchio_campo(ultima,"episodio",esito)),
@@ -103,16 +105,16 @@ interfaccia_percorso <- function(esito, n_azioni=1L, ultima=NULL) {
       shiny::uiOutput("chiarimenti_ui"),
       shiny::h3("Risposta aziendale dichiarata"),
       scelta("misure","Sono state adottate o disposte misure?",
-             c("Sì"="YES","Nessuna misura dichiarata"="NONE","Informazione non disponibile"="UNKNOWN"),valore=vecchio_campo(ultima,"misure",esito)),
+             c("YES"="Sì","NONE"="Nessuna misura dichiarata","UNKNOWN"="Informazione non disponibile"),valore=vecchio_campo(ultima,"misure",esito)),
       shiny::uiOutput("misure_ui"),
       shiny::selectInput("comunicazioni","Comunicazioni / escalation *",
-                        choices=c("Seleziona"="",comunicazioni),selected=vecchio_campo(ultima,"comunicazioni",esito)),
+                        choices=c("Seleziona"="",opzioni_menu(comunicazioni)),selected=vecchio_campo(ultima,"comunicazioni",esito)),
       shiny::textAreaInput("nota_comunicazioni","Comunicazioni e riferimenti *",rows=2,width="100%",value=vecchio_campo(ultima,"nota_comunicazioni",esito)),
       shiny::selectInput("stato_gestione","Stato dichiarato della gestione aziendale *",
-                        choices=c("Seleziona"="",stati_gestione))),
+                        choices=c("Seleziona"="",opzioni_menu(stati_gestione)))),
     if(esito!="4") shiny::tagList(
       shiny::checkboxGroupInput("evidenze","Riferimenti ed evidenze aziendali (facoltativi)",
-                                 choices=evidenze,selected=vecchia_lista(ultima,"evidenze",esito)),
+                                 choices=opzioni_menu(evidenze),selected=vecchia_lista(ultima,"evidenze",esito)),
       shiny::textAreaInput("azione_immediata","Eventuale azione immediata già adottata",rows=2,width="100%",value=vecchio_campo(ultima,"azione_immediata",esito))),
     shiny::textAreaInput("riferimento","Riferimento aziendale libero (facoltativo)",rows=2,width="100%",value=vecchio_campo(ultima,"riferimento",esito)),
     if(esito %in% c("2","4")) scelta("indagine","Richiedere un'indagine 5SAN?",si_no,valore=if(!is.null(ultima) && as.character(ultima$esito[[1]])==esito) if(isTRUE(ultima$indagine_richiesta[[1]])) "YES" else "NO" else character(0)),
@@ -131,8 +133,8 @@ azione_ui <- function(i, ultima=NULL, correnti=list()) {
   }
   shiny::div(class="azione",
   shiny::h4(paste("Misura",i)),
-  shiny::selectInput(paste0("azione_tipo_",i),"Tipo di misura *",choices=c("Seleziona"="",tipi_misura),selected=v("tipo")),
-  shiny::selectInput(paste0("azione_stato_",i),"Stato dichiarato *",choices=c("Seleziona"="",stati_misura),selected=v("stato")),
+  shiny::selectInput(paste0("azione_tipo_",i),"Tipo di misura *",choices=c("Seleziona"="",opzioni_menu(tipi_misura)),selected=v("tipo")),
+  shiny::selectInput(paste0("azione_stato_",i),"Stato dichiarato *",choices=c("Seleziona"="",opzioni_menu(stati_misura)),selected=v("stato")),
   shiny::textAreaInput(paste0("azione_descrizione_",i),"Descrizione concreta *",rows=2,width="100%",value=v("descrizione")))
 }
 
