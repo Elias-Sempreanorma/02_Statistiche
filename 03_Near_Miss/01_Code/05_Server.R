@@ -82,7 +82,7 @@ server <- function(input, output, session) {
   })
   output$percorso <- shiny::renderUI({
     req(selezionata())
-    interfaccia_percorso(input$esito,numero_azioni(),precedente())
+    interfaccia_percorso(input$esito,ultima=precedente())
   })
   output$altra_criticita <- shiny::renderUI({
     if ("CR25" %in% input$criticita)
