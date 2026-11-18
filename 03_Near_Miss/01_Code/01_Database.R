@@ -152,7 +152,7 @@ salva_verifica <- function(con, segnalazione, operatore, coupon_autorizzati,
       indagine_richiesta=isTRUE(dati$indagine_richiesta),
       snapshot_segnalazione=codifica_json(as.list(seg[1, , drop=FALSE]))
     )
-    campi <- names(valori)
+    # Parametri SQL scalari: NULL R non equivale a SQL NULL nel binding.\n    valori <- lapply(valori, function(v) {\n      if (is.null(v) || length(v) == 0L) return(NA_character_)\n      if (length(v) == 1L && is.character(v) && !nzchar(v)) return(NA_character_)\n      v\n    })\n    campi <- names(valori)
     # DBI parametrizzato, nessun dato dell'utente interpolato nella query.
     json <- c("criticita","pericoli","fonti","evidenze","azioni","snapshot_segnalazione")
     placeholder <- paste0("$",seq_along(campi),ifelse(campi %in% json,"::jsonb",""))
