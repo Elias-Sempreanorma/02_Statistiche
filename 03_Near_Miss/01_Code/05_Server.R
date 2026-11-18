@@ -90,6 +90,32 @@ server <- function(input, output, session) {
       shiny::div(class="avviso",paste("Errore nel caricamento:",errore_lista()))
   })
 
+  # Apertura da dashboard: ?id_segnalazione=...
+  # Solo in modalità interna già autorizzata; la querystring non assegna permessi.
+  id_aperto <- shiny::reactiveVal("")
+  shiny::observeEvent(utente(), {
+    if (is.null(utente()) || modalita!="internal") return()
+    query <- shiny::parseQueryString(if (is.null(session$clientData$url_search)) "" else session$clientData$url_search)
+    id <- query[["id_segnalazione"]]
+    if (is.null(id) || length(id)!=1L || !nzchar(id) || nchar(id)>40L) return()
+    if (identical(id_aperto(),id)) return()
+    tryCatch({
+      a <- leggi_segnalazione(con,id,utente()$coupon)
+      p <- ultima_verifica(con,id)
+      precedente(p)
+      numero_azioni(if(is.null(p)) 1L else max(1L,length(decodifica_json(p$azioni[[1]]))))
+      selezionata(a)
+      id_aperto(id)
+      # Allinea la vista senza alterare la selezione della segnalazione.
+      info <- anagrafica[anagrafica$coupon==as.character(a$coupon[[1]]),,drop=FALSE]
+      if(nrow(info)) {
+        shiny::updateSelectInput(session,"azienda",selected=info$azienda[1])
+        shiny::updateSelectInput(session,"stabilimento",selected=info$stabilimento[1])
+        shiny::updateSelectInput(session,"macchina",selected=info$coupon[1])
+      }
+    },error=function(e) warning(conditionMessage(e)))
+  },once=TRUE)
+
   output$elenco <- DT::renderDT({
     d <- lista()
     if (!nrow(d)) return(DT::datatable(data.frame(Messaggio="Nessuna segnalazione nel periodo selezionato"),rownames=FALSE,options=list(dom="t")))
