@@ -132,7 +132,7 @@ server <- function(input, output, session) {
         search="Cerca nella lista:",lengthMenu="Mostra _MENU_ segnalazioni",
         info="Segnalazioni _START_–_END_ di _TOTAL_",
         zeroRecords="Nessuna corrispondenza",paginate=list(
-          previous="Precedente",next="Successiva"))))
+          previous="Precedente",`next`="Successiva"))))
   },server=TRUE)
 
   passi <- c("presa","esito","verifica","qualificazione","seguito","riepilogo")
