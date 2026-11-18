@@ -118,7 +118,7 @@ server <- function(input, output, session) {
   output$misure_ui <- shiny::renderUI({
     if (identical(input$misure,"YES"))
       shiny::tagList(
-        lapply(seq_len(numero_azioni()),function(i) azione_ui(i,precedente())),
+        lapply(seq_len(numero_azioni()),function(i) azione_ui(i,precedente(),shiny::isolate(shiny::reactiveValuesToList(input)))),
         shiny::actionButton("aggiungi_misura","+ Aggiungi una misura"),
         if(numero_azioni()>1L) shiny::actionButton("togli_misura","Rimuovi l'ultima misura"))
     else if (input$misure %in% c("NONE","UNKNOWN"))
