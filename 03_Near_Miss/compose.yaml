@@ -1,0 +1,11 @@
+services:
+  near_miss:
+    build: .
+    image: san-near-miss:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:3842:3838"
+    environment:
+      TZ: Europe/Rome
