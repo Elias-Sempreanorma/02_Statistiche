@@ -116,110 +116,145 @@ server <- function(input, output, session) {
     },error=function(e) warning(conditionMessage(e)))
   },once=TRUE)
 
+
   output$elenco <- DT::renderDT({
     d <- lista()
-    if (!nrow(d)) return(DT::datatable(data.frame(Messaggio="Nessuna segnalazione nel periodo selezionato"),rownames=FALSE,options=list(dom="t")))
-    v <- d[,c("alert_id","coupon","machine_name","generated_at",
+    if (!nrow(d)) return(DT::datatable(
+      data.frame(Messaggio="Nessuna segnalazione nel periodo selezionato"),
+      rownames=FALSE,options=list(dom="t")))
+    v <- d[,c("alert_id","machine_name","period_start","period_end",
              "alert_type","signal_description","ultima_revisione")]
-    names(v) <- c("ID segnalazione","Coupon","Macchina","Generata",
-                  "Tipo","Descrizione","Revisione")
-    v$Generata <- format(v$Generata,"%d/%m/%Y %H:%M",tz="Europe/Rome")
+    names(v) <- c("ID segnalazione","Macchina","Inizio","Fine","Tipo","Descrizione","Revisione")
+    for(k in c("Inizio","Fine"))
+      v[[k]] <- format(v[[k]],"%d/%m/%Y %H:%M",tz="Europe/Rome")
     DT::datatable(v,selection="single",rownames=FALSE,
-      options=list(pageLength=10,scrollX=TRUE))
+      options=list(pageLength=10,scrollX=TRUE,language=list(
+        search="Cerca nella lista:",lengthMenu="Mostra _MENU_ segnalazioni",
+        info="Segnalazioni _START_–_END_ di _TOTAL_",
+        zeroRecords="Nessuna corrispondenza",paginate=list(
+          previous="Precedente",next="Successiva"))))
   },server=TRUE)
 
-  shiny::observeEvent(input$elenco_rows_selected,{
+  passi <- c("presa","esito","verifica","qualificazione","seguito","riepilogo")
+  indice_passo <- shiny::reactiveVal(1L)
+  numero_azioni <- shiny::reactiveVal(1L)
+  azioni_salvate_sessione <- shiny::reactiveVal(list())
+  segnalazione_aperta <- shiny::reactiveVal(NULL)
+
+  apri_modulo <- function(id) {
     req(utente(),con)
-    d <- lista()
-    indice <- input$elenco_rows_selected
-    if (length(indice)!=1 || indice<1 || indice>nrow(d)) return()
-    id <- as.character(d$alert_id[[indice]])
     tryCatch({
       a <- leggi_segnalazione(con,id,utente()$coupon)
       p <- ultima_verifica(con,id)
-      numero_azioni(if(is.null(p)) 1L else max(1L,length(decodifica_json(p$azioni[[1]]))))
       precedente(p)
       selezionata(a)
-      errore(NULL)
-    },error=function(e) shiny::showNotification(conditionMessage(e),type="error"))
+      azioni_precedenti <- tryCatch(decodifica_json(p$azioni[[1]]),
+                                     error=function(e) list())
+      numero_azioni(max(1L,length(azioni_precedenti)))
+      azioni_salvate_sessione(list())
+      indice_passo(1L)
+      segnalazione_aperta(id)
+      shiny::showModal(finestra_modulo(a[1,,drop=FALSE],p))
+    },error=function(e)
+      shiny::showNotification(conditionMessage(e),type="error",duration=NULL))
+  }
+
+  shiny::observeEvent(input$elenco_rows_selected,{
+    d <- lista()
+    i <- input$elenco_rows_selected
+    if(length(i)==1L && i>=1 && i<=nrow(d)) apri_modulo(as.character(d$alert_id[i]))
   })
 
-  output$dettaglio_modulo <- shiny::renderUI({
-    req(utente())
-    a <- selezionata()
-    if (is.null(a)) return(shiny::div(class="pannello","Seleziona una segnalazione dall'elenco per compilare o aggiornare la verifica."))
-    modulo_ui(a[1,],precedente())
+  # Apertura per ID proveniente da dashboard, con controllo autorizzazione server.
+  shiny::observeEvent(utente(), {
+    if(is.null(utente()) || modalita!="internal") return()
+    q <- shiny::parseQueryString(
+      if(is.null(session$clientData$url_search)) "" else session$clientData$url_search)
+    id <- q[["id_segnalazione"]]
+    if(is.null(id) || length(id)!=1L || !nzchar(id) || nchar(id)>40L) return()
+    apri_modulo(id)
+  },once=TRUE)
+
+  output$indice_modulo <- shiny::renderUI({
+    e <- input$esito
+    nomi <- c("1 · Presa in carico","2 · Esito A10",
+              "3 · Fatti e riscontri", "4 · Qualificazione",
+              "5 · Risposta e seguito","6 · Riepilogo")
+    nomi <- nomi[c(TRUE,TRUE,TRUE,identical(e,"4"),TRUE,TRUE)]
+    step <- indice_passo()
+    shiny::tagList(shiny::h4("Passaggi"),
+      lapply(seq_along(nomi),function(i)
+        shiny::div(class=if(i==step)"attivo" else "",nomi[i])))
   })
-  output$percorso <- shiny::renderUI({
-    req(selezionata())
-    interfaccia_percorso(input$esito,ultima=precedente())
+  passi_attivi <- function() {
+    if(identical(input$esito,"4")) passi else passi[passi!="qualificazione"]
+  }
+  output$domanda_a11 <- shiny::renderUI({
+    if(is.null(input$esito) || !input$esito %in% names(domande_a11)) return(NULL)
+    shiny::div(class="info",domande_a11[[input$esito]])
   })
-  output$altra_criticita <- shiny::renderUI({
-    if ("CR25" %in% input$criticita)
-      shiny::textAreaInput("criticita_altro","Specifica l'altra criticità *",rows=2,width="100%")
+  output$qualificazione_proposta <- shiny::renderUI({
+    if(is.null(input$episodio) || !nzchar(input$episodio)) return(NULL)
+    q <- qualifica(input$episodio, if(is.null(input$danno)) "" else input$danno,
+      if(is.null(input$potenziale)) "" else input$potenziale)
+    etichette <- c(NC="Non conformità / situazione di pericolo",
+      NEAR_MISS="Near miss - mancato infortunio",
+      INJURY_EVENT="Evento con danno alla persona",
+      REVIEW_NEEDED="Criticità da riesaminare",
+      UNDETERMINED="Criticità riconosciuta, episodio non determinabile")
+    shiny::div(class="info",shiny::strong("Qualificazione proposta: "),
+      unname(etichette[[q]]))
   })
-  output$altro_pericolo <- shiny::renderUI({
-    if ("OTHER" %in% input$pericoli)
-      shiny::textAreaInput("pericolo_altro","Specifica l'altro pericolo *",rows=2,width="100%")
-  })
-  output$domande_episodio <- shiny::renderUI({
-    if (identical(input$episodio,"YES"))
-      shiny::tagList(
-        scelta("danno","Dall'episodio è derivato un danno fisico a una persona?",
-               si_no_ignoto,valore=vecchio_campo(precedente(),"danno","4")),
-        shiny::uiOutput("potenziale_ui"))
-  })
-  output$potenziale_ui <- shiny::renderUI({
-    if (identical(input$episodio,"YES") && identical(input$danno,"NO"))
-      scelta("potenziale","L'episodio avrebbe potuto causare un danno fisico?",
-             si_no_ignoto,valore=vecchio_campo(precedente(),"potenziale","4"))
-  })
-  output$proposta_qualificazione <- shiny::renderUI({
-    if (is.null(input$episodio) || !nzchar(input$episodio)) return(NULL)
-    q <- qualifica(input$episodio,
-                  if(is.null(input$danno)) "" else input$danno,
-                  if(is.null(input$potenziale)) "" else input$potenziale)
-    shiny::div(class="info",paste("Qualificazione proposta:",q),
-      shiny::p("La qualificazione deriva dai fatti dichiarati e non dalla scelta di aprire un'indagine."))
-  })
-  output$chiarimenti_ui <- shiny::renderUI({
-    if (is.null(input$episodio) || !nzchar(input$episodio)) return(NULL)
-    q <- qualifica(input$episodio,
-                   if(is.null(input$danno)) "" else input$danno,
-                   if(is.null(input$potenziale)) "" else input$potenziale)
-    if(q %in% c("UNDETERMINED","REVIEW_NEEDED"))
-      shiny::textAreaInput("chiarimenti","Limite della ricostruzione / chiarimento necessario *",rows=2,width="100%",value=vecchio_campo(precedente(),"chiarimenti","4"))
-  })
-  output$misure_ui <- shiny::renderUI({
-    if (identical(input$misure,"YES"))
-      shiny::tagList(
-        lapply(seq_len(numero_azioni()),function(i) azione_ui(i,precedente(),shiny::isolate(shiny::reactiveValuesToList(input)))),
-        shiny::actionButton("aggiungi_misura","+ Aggiungi una misura"),
-        if(numero_azioni()>1L) shiny::actionButton("togli_misura","Rimuovi l'ultima misura"))
-    else if (isTRUE(input$misure %in% c("NONE","UNKNOWN")))
-      shiny::textAreaInput("nota_misure","Spiegazione / limite delle informazioni *",rows=2,width="100%",value=vecchio_campo(precedente(),"nota_misure","4"))
-  })
-  shiny::observeEvent(input$aggiungi_misura,numero_azioni(min(20L,numero_azioni()+1L)))
-  shiny::observeEvent(input$togli_misura,numero_azioni(max(1L,numero_azioni()-1L)))
-  output$riepilogo <- shiny::renderUI({
-    req(selezionata())
-    if (is.null(input$esito) || !input$esito %in% names(esiti))
-      return(shiny::p("Completa A08, A10 e A11 prima di inviare."))
-    shiny::tagList(
-      shiny::p(shiny::strong("Segnalazione: "),selezionata()$alert_id),
-      shiny::p(shiny::strong("Esito: "),unname(esiti[[input$esito]])),
-      if (input$esito %in% c("2","4")) shiny::p("Indagine richiesta: ",
-        if (identical(input$indagine,"YES")) "Sì" else if(identical(input$indagine,"NO")) "No" else "Da indicare"),
-      if (input$esito=="3") shiny::p("Indagine richiesta automaticamente dal percorso."),
-      shiny::p("Una nuova revisione sostituisce la precedente nelle analisi correnti, conservandola nello storico.")
-    )
-  })
-  estrai <- function() {
-    campo <- function(nome) {
-      v <- input[[nome]]
-      if (is.null(v) || !length(v)) "" else v
+
+  cattura_azioni <- function() {
+    current <- azioni_salvate_sessione()
+    for (i in seq_len(numero_azioni())) {
+      if(length(current)<i) current[[i]] <- list()
+      for(k in c("tipo","stato","descrizione")) {
+        v <- input[[paste0("azione_",k,"_",i)]]
+        if(!is.null(v)) current[[i]][[k]] <- v
+      }
     }
-    n <- if(identical(campo("misure"),"YES")) numero_azioni() else 0L
+    current
+  }
+  output$azioni_modulo <- shiny::renderUI({
+    n <- numero_azioni()
+    p <- precedente()
+    local <- azioni_salvate_sessione()
+    shiny::tagList(lapply(seq_len(n),function(i) {
+      valori <- list()
+      if(length(local)>=i && length(local[[i]])) {
+        for(k in c("tipo","stato","descrizione"))
+          valori[[paste0("azione_",k,"_",i)]] <- local[[i]][[k]]
+      }
+      azione_ui(i,p,valori)
+    }))
+  })
+  output$rimuovi_misura <- shiny::renderUI({
+    if(numero_azioni()>1L) shiny::actionButton("togli_misura","Rimuovi ultima misura")
+  })
+  shiny::observeEvent(input$aggiungi_misura,{
+    azioni_salvate_sessione(cattura_azioni())
+    numero_azioni(min(20L,numero_azioni()+1L))
+  })
+  shiny::observeEvent(input$togli_misura,{
+    local <- cattura_azioni()
+    if(length(local)) local <- head(local,-1L)
+    azioni_salvate_sessione(local)
+    numero_azioni(max(1L,numero_azioni()-1L))
+  })
+
+  campo <- function(nome) {
+    v <- input[[nome]]
+    if(is.null(v) || !length(v)) "" else v
+  }
+  estrai <- function() {
+    gruppi <- c("pericoli_meccanici","pericoli_elettrici","pericoli_termici",
+                "pericoli_sostanze","pericoli_altri")
+    pericoli_scelti <- unique(unlist(lapply(gruppi,function(k)campo(k)),
+      use.names=FALSE))
+    n <- if(identical(campo("misure"),"YES") && identical(campo("esito"),"4"))
+      numero_azioni() else 0L
     azioni <- lapply(seq_len(n),function(i) list(
       tipo=campo(paste0("azione_tipo_",i)),
       stato=campo(paste0("azione_stato_",i)),
@@ -227,39 +262,139 @@ server <- function(input, output, session) {
     x <- list(
       compilatore_nome=campo("compilatore_nome"),
       responsabile_funzione=campo("responsabile_funzione"),
-      responsabile_nome=campo("responsabile_nome"),responsabile_ruolo=campo("responsabile_ruolo"),
-      esito=campo("esito"), motivazione=campo("motivazione"),
-      indagine=campo("indagine"), criticita=vettore(campo("criticita")),
+      responsabile_nome=campo("responsabile_nome"),
+      responsabile_ruolo=campo("responsabile_ruolo"),
+      esito=campo("esito"),motivazione=campo("motivazione"),
+      indagine=campo("indagine"),criticita=as.character(campo("criticita")),
       criticita_altro=campo("criticita_altro"),
-      pericoli=vettore(campo("pericoli")),pericolo_altro=campo("pericolo_altro"),
-      fonti=vettore(campo("fonti")),fonti_nota=campo("fonti_nota"),
-      evidenze=vettore(campo("evidenze")),riferimento=campo("riferimento"),
+      pericoli=as.character(pericoli_scelti),pericolo_altro=campo("pericolo_altro"),
+      fonti=as.character(campo("fonti")),fonti_nota=campo("fonti_nota"),
+      evidenze=as.character(campo("evidenze")),riferimento=campo("riferimento"),
       azione_immediata=campo("azione_immediata"),
       episodio=campo("episodio"),danno=campo("danno"),potenziale=campo("potenziale"),
       chiarimenti=campo("chiarimenti"),misure=campo("misure"),azioni=azioni,
       nota_misure=campo("nota_misure"),comunicazioni=campo("comunicazioni"),
-      nota_comunicazioni=campo("nota_comunicazioni"),stato_gestione=campo("stato_gestione")
-    )
+      nota_comunicazioni=campo("nota_comunicazioni"),
+      stato_gestione=campo("stato_gestione"))
     ripulisci_percorso(x)
   }
+
+  validazione_passo <- function(passo) {
+    x <- estrai()
+    if(passo=="presa") {
+      campi <- c(compilatore_nome="Chi compila",responsabile_nome="Nome responsabile",
+        responsabile_ruolo="Ruolo responsabile",responsabile_funzione="Funzione aziendale")
+      for(n in names(campi)) if(!nzchar(testo(x[[n]])))
+        stop("Compila: ",unname(campi[n]),call.=FALSE)
+    }
+    if(passo=="esito" && !x$esito %in% names(esiti))
+      stop("Seleziona uno dei cinque esiti.",call.=FALSE)
+    if(passo=="verifica") {
+      if(!nzchar(testo(x$motivazione))) stop("Compila A11: motivazione.",call.=FALSE)
+      if(x$esito=="4" && (!length(x$criticita) || !length(x$pericoli) ||
+                         !length(x$fonti)))
+        stop("Indica condizioni critiche, pericoli e fonti del riscontro.",call.=FALSE)
+      if(x$esito=="4" && "CR25" %in% x$criticita &&
+         !nzchar(testo(x$criticita_altro))) stop("Specifica l'altra criticità.",call.=FALSE)
+      if(x$esito=="4" && "OTHER" %in% x$pericoli &&
+         !nzchar(testo(x$pericolo_altro))) stop("Specifica l'altro pericolo.",call.=FALSE)
+    }
+    if(passo=="qualificazione" && x$esito=="4") {
+      if(!valido(x$episodio,names(si_no_ignoto))) stop("Indica se è avvenuto un episodio.",call.=FALSE)
+      if(x$episodio=="YES" && !valido(x$danno,names(si_no_ignoto)))
+        stop("Indica se vi è stato danno.",call.=FALSE)
+      if(x$episodio=="YES" && x$danno=="NO" &&
+         !valido(x$potenziale,names(si_no_ignoto)))
+        stop("Indica il potenziale lesivo.",call.=FALSE)
+      if(qualifica(x$episodio,x$danno,x$potenziale) %in%
+         c("UNDETERMINED","REVIEW_NEEDED") && !nzchar(testo(x$chiarimenti)))
+        stop("Spiega il limite della ricostruzione.",call.=FALSE)
+    }
+    if(passo=="seguito") valida_modulo(x)
+    TRUE
+  }
+  messaggio_errore <- shiny::reactiveVal(NULL)
+  output$errori_modulo <- shiny::renderUI({
+    if(!is.null(messaggio_errore()))
+      shiny::div(class="avviso",shiny::strong("Prima di continuare"),
+        shiny::tags$pre(messaggio_errore()))
+  })
+
+  shiny::observeEvent(input$avanti_modulo,{
+    percorso <- passi_attivi()
+    indice <- indice_passo()
+    if(indice>=length(percorso)) return()
+    tryCatch({
+      validazione_passo(percorso[indice])
+      messaggio_errore(NULL)
+      indice_passo(indice+1L)
+      shiny::updateTabsetPanel(session,"passo_modulo",selected=percorso[indice+1L])
+    },error=function(e) messaggio_errore(conditionMessage(e)))
+  })
+  shiny::observeEvent(input$indietro_modulo,{
+    percorso <- passi_attivi()
+    indice <- indice_passo()
+    if(indice<=1L) return()
+    indice_passo(indice-1L)
+    messaggio_errore(NULL)
+    shiny::updateTabsetPanel(session,"passo_modulo",selected=percorso[indice-1L])
+  })
+  shiny::observeEvent(input$chiudi_modulo,{
+    shiny::removeModal()
+    selezionata(NULL)
+    precedente(NULL)
+    segnalazione_aperta(NULL)
+    messaggio_errore(NULL)
+    indice_passo(1L)
+  })
+
+  output$riepilogo_dettagliato <- shiny::renderUI({
+    req(selezionata())
+    x <- estrai()
+    elenco <- list(
+      "Segnalazione"=as.character(selezionata()$alert_id[[1]]),
+      "Macchina"=as.character(selezionata()$machine_name[[1]]),
+      "Compilatore"=testo(x$compilatore_nome),
+      "Responsabile"=testo(x$responsabile_nome),
+      "Esito"=if(x$esito %in% names(esiti)) unname(esiti[[x$esito]]) else "",
+      "Motivazione"=testo(x$motivazione),
+      "Qualificazione"=testo(x$qualificazione),
+      "Condizioni critiche"=paste(x$criticita,collapse=", "),
+      "Pericoli"=paste(x$pericoli,collapse=", "),
+      "Fonti"=paste(x$fonti,collapse=", "),
+      "Misure"=testo(x$misure),
+      "Numero azioni"=as.character(length(x$azioni)),
+      "Comunicazioni"=testo(x$comunicazioni),
+      "Stato gestione"=testo(x$stato_gestione),
+      "Indagine richiesta"=if(isTRUE(x$indagine_richiesta)) "Sì" else "No")
+    shiny::tagList(lapply(names(elenco),function(k) shiny::div(
+      style="padding:7px;border-bottom:1px solid #edf0f2;",
+      shiny::strong(paste0(k,": ")),if(nzchar(elenco[[k]])) elenco[[k]] else "Non applicabile")))
+  })
+
   shiny::observeEvent(input$invia,{
     req(utente(),selezionata(),con)
-    dati <- estrai()
     tryCatch({
+      if(!identical(passi_attivi()[indice_passo()],"riepilogo"))
+        stop("Raggiungi il riepilogo prima dell'invio.")
+      dati <- estrai()
       valida_modulo(dati)
       attesa <- if(is.null(precedente())) 0L else as.integer(precedente()$revisione[[1]])
-      risultato <- salva_verifica(con,selezionata(),dati$compilatore_nome,utente()$coupon,attesa,dati)
+      risultato <- salva_verifica(con,selezionata(),dati$compilatore_nome,
+                                 utente()$coupon,attesa,dati)
       precedente(ultima_verifica(con,as.character(selezionata()$alert_id[[1]])))
-      carica_lista()
+      lista(elenco_segnalazioni(con,filtri_correnti()$coupon,filtri_correnti()$date))
+      shiny::removeModal()
+      segnalazione_aperta(NULL)
       shiny::showModal(shiny::modalDialog(
-        title="Modulo registrato",paste("Verifica salvata. Revisione",risultato$revisione[[1]],
-        "· ID registrazione",risultato$id[[1]]),easyClose=TRUE))
-    },error=function(e) shiny::showModal(shiny::modalDialog(
-      title="Impossibile inviare",shiny::tags$pre(conditionMessage(e)),easyClose=TRUE)))
+        title="Verifica registrata",
+        paste("Modulo salvato. Revisione",risultato$revisione[[1]],
+              "· Registrazione",risultato$id[[1]]),easyClose=TRUE))
+    },error=function(e) messaggio_errore(conditionMessage(e)))
   })
 }
 
 decodifica_json <- function(x) {
-  if(is.null(x) || !nzchar(as.character(x))) return(list())
-  jsonlite::fromJSON(as.character(x),simplifyVector=FALSE)
+  if(is.null(x) || !length(x) || is.na(x[[1]])) return(list())
+  jsonlite::fromJSON(as.character(x[[1]]),simplifyVector=FALSE)
 }
