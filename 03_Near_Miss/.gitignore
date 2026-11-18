@@ -1,0 +1,6 @@
+.env
+.Renviron
+.Rhistory
+.RData
+.Rproj.user/
+02_Output/*
