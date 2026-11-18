@@ -26,18 +26,8 @@ interfaccia <- shiny::fluidPage(
   shiny::uiOutput("schermata")
 )
 
-interfaccia_accesso <- function() shiny::div(class="pannello",
-  shiny::h3("Accesso riservato"),
-  shiny::textInput("account","Account"),
-  shiny::passwordInput("password","Password"),
-  shiny::actionButton("accedi","Accedi",class="btn-primary"),
-  shiny::p("Ogni operatore può consultare soltanto le macchine a lui autorizzate.")
-)
-
 interfaccia_lavoro <- function() shiny::tagList(
-  shiny::div(class="pannello",shiny::fluidRow(
-    shiny::column(9,shiny::strong(shiny::textOutput("utente_attivo",inline=TRUE))),
-    shiny::column(3,shiny::actionButton("esci","Esci"))),
+  shiny::div(class="pannello", shiny::strong(shiny::textOutput("utente_attivo",inline=TRUE)),
     shiny::h3("Segnalazioni 5SAN"),
     shiny::textInput("ricerca","Ricerca per codice o nome macchina"),
     shiny::actionButton("cerca","Aggiorna elenco"),
@@ -67,13 +57,14 @@ modulo_ui <- function(segnalazione, ultima) {
                                       " · ",format(ultima$data_registrazione,"%d/%m/%Y %H:%M",tz="Europe/Rome"))),
     shiny::div(class="pannello",
       shiny::h3("A08 · Responsabile della presa in carico"),
+      shiny::textInput("compilatore_nome","Nome e cognome di chi compila il modulo *",value=vecchio_campo(ultima,"operatore_account")),
       shiny::selectInput("responsabile_funzione","Funzione aziendale *",
                          c("Seleziona"="", "RSPP / HSE"="RSPP_HSE",
                            "Responsabile della manutenzione"="MAINTENANCE",
                            "Altro"="OTHER"),selected=vecchio_campo(ultima,"responsabile_funzione")),
       shiny::textInput("responsabile_nome","Nome e cognome *",value=vecchio_campo(ultima,"responsabile_nome")),
       shiny::textInput("responsabile_ruolo","Ruolo aziendale *",value=vecchio_campo(ultima,"responsabile_ruolo")),
-      shiny::p("Il responsabile dichiarato può essere diverso dall'account che registra la verifica.")),
+      shiny::p("Il compilatore dichiarato può essere diverso dal responsabile della presa in carico.")),
     shiny::div(class="pannello",
       shiny::h3("A10 · Esito della verifica preliminare"),
       scelta("esito","Seleziona un solo percorso",setNames(paste0(names(esiti),". ",unname(esiti)),names(esiti)),valore=vecchio_campo(ultima,"esito")),
