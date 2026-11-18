@@ -22,7 +22,7 @@ criticita <- c(
   "CR01" = "Errore procedurale nell'attività sulla macchina",
   "CR02" = "Problema di comunicazione relativo all'attività sulla macchina",
   "CR03" = "Procedure operative assenti o inadeguate",
-  "5SAN_INFO_MACHINE" = "Informazioni o avvertenze sulla macchina assenti o inadeguate (descrittore CR11)",
+  "5SAN_INFO_MACHINE" = "Informazioni e avvertenze di sicurezza della macchina assenti o inadeguate (descrittore CR11)",
   "CR04" = "Protezioni della macchina assenti",
   "CR05" = "Protezioni della macchina inadeguate o inefficaci",
   "CR06" = "Anomalia o guasto in avviamento, arresto o esercizio",
@@ -34,9 +34,9 @@ criticita <- c(
   "CR17" = "Presenza imprevista di liquidi presso la macchina",
   "CR18" = "Presenza imprevista di gas o vapori presso la macchina",
   "CR19" = "Sistema ausiliario necessario alla sicurezza della macchina assente, inefficace o malfunzionante",
-  "CR20" = "Problema con DPI inerenti all'attività sulla macchina",
-  "CR21" = "Problema nell'uso di attrezzature / utensili per la lavorazione",
-  "CR25" = "Altro - specificare"
+  "CR20" = "Elementi elettrici pericolosi accessibili",
+  "CR21" = "Rumorosità della macchina riconosciuta come inadeguata",
+  "CR25" = "Altra condizione critica della macchina - specificare"
 )
 
 pericoli <- c(
