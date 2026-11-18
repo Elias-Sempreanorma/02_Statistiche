@@ -15,7 +15,7 @@ connessione_db <- function() {
 sql_creazione <- "
 CREATE TABLE IF NOT EXISTS public.verifiche_near_miss (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  id_segnalazione VARCHAR(40) NOT NULL REFERENCES public.alerts(alert_id),
+  id_segnalazione VARCHAR(40) NOT NULL,
   revisione INTEGER NOT NULL CHECK (revisione > 0),
   data_registrazione TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   operatore_account TEXT NOT NULL,
