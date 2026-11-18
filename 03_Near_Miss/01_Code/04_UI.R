@@ -26,11 +26,19 @@ interfaccia <- shiny::fluidPage(
   shiny::uiOutput("schermata")
 )
 
-interfaccia_lavoro <- function() shiny::tagList(
-  shiny::div(class="pannello", shiny::strong(shiny::textOutput("utente_attivo",inline=TRUE)),
+interfaccia_lavoro <- function(modalita="internal", intervallo=Sys.Date()+c(-30,0)) shiny::tagList(
+  shiny::div(class="pannello",
+    shiny::strong(shiny::textOutput("utente_attivo",inline=TRUE)),
     shiny::h3("Segnalazioni 5SAN"),
-    shiny::textInput("ricerca","Ricerca per codice o nome macchina"),
-    shiny::actionButton("cerca","Aggiorna elenco"),
+    if (modalita=="internal") shiny::fluidRow(
+      shiny::column(4,shiny::selectInput("azienda","Azienda:",choices=NULL)),
+      shiny::column(4,shiny::selectInput("stabilimento","Stabilimento:",choices=NULL)),
+      shiny::column(4,shiny::selectInput("macchina","Macchina:",choices=NULL))
+    ),
+    shiny::dateRangeInput("date","Periodo:",start=intervallo[1],end=intervallo[2],
+      min=intervallo[1],max=intervallo[2],format="dd-mm-yyyy",
+      separator=" a ",language="it",weekstart=1),
+    shiny::uiOutput("messaggio_elenco"),
     DT::DTOutput("elenco")),
   shiny::uiOutput("dettaglio_modulo")
 )
