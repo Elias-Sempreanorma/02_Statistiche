@@ -1,40 +1,40 @@
 # La sessione conserva solo stato temporaneo. I dati ufficiali sono nel DB.
 server <- function(input, output, session) {
-  utente <- shiny::reactiveVal(NULL)
+  # Modalità interna uguale alla dashboard: accesso gestito dalla rete/IP,
+  # non da una seconda schermata di login. Docker resta su 127.0.0.1.
+  # Modalità web: bloccata finché il portale non passa un'identità verificata.
+  modalita <- tolower(Sys.getenv("APP_MODE", "internal"))
   selezionata <- shiny::reactiveVal(NULL)
   precedente <- shiny::reactiveVal(NULL)
   errore <- shiny::reactiveVal(NULL)
   numero_azioni <- shiny::reactiveVal(1L)
   lista <- shiny::reactiveVal(data.frame())
-  accessi <- tryCatch(carica_accessi(),error=function(e) {
-    warning(conditionMessage(e)); list()
-  })
   con <- tryCatch(connessione_db(),error=function(e) {
     warning(conditionMessage(e)); NULL
   })
-  session$onSessionEnded(function() if (!is.null(con) && DBI::dbIsValid(con)) DBI::dbDisconnect(con))
+  session$onSessionEnded(function() {
+    if (!is.null(con) && DBI::dbIsValid(con)) DBI::dbDisconnect(con)
+  })
+  coupon_interni <- if (identical(modalita, "internal") && !is.null(con)) {
+    tryCatch(DBI::dbGetQuery(con,
+      "SELECT DISTINCT coupon FROM public.alerts WHERE coupon IS NOT NULL")$coupon,
+      error=function(e) {warning(conditionMessage(e));character()})
+  } else character()
+  utente <- shiny::reactiveVal(if (identical(modalita, "internal") &&
+                                !is.null(con) && length(coupon_interni)) {
+    list(account="accesso_interno", coupon=as.character(coupon_interni))
+  } else NULL)
   output$schermata <- shiny::renderUI({
-    if (is.null(utente())) interfaccia_accesso() else interfaccia_lavoro()
+    if (is.null(utente())) {
+      return(shiny::div(class="pannello",
+        shiny::h3("Applicazione non disponibile"),
+        shiny::p("Connessione al database assente o accesso web non ancora integrato.")))
+    }
+    interfaccia_lavoro()
   })
   output$utente_attivo <- shiny::renderText({
-    req(utente()); paste0("Account: ",utente()$account,
-                         " · Macchine autorizzate: ",length(utente()$coupon))
-  })
-
-  shiny::observeEvent(input$accedi,{
-    profilo <- verifica_credenziali(input$account,input$password,accessi)
-    if (is.null(profilo)) {
-      shiny::showNotification("Credenziali non valide o accesso non configurato.",type="error")
-      return()
-    }
-    if (is.null(con)) {
-      shiny::showNotification("Database non disponibile.",type="error")
-      return()
-    }
-    utente(profilo)
-  })
-  shiny::observeEvent(input$esci,{
-    selezionata(NULL); precedente(NULL);lista(data.frame());utente(NULL)
+    req(utente()); paste0("Accesso interno · ",length(utente()$coupon),
+                         " macchine disponibili")
   })
 
   carica_lista <- function() {
@@ -155,6 +155,7 @@ server <- function(input, output, session) {
       stato=campo(paste0("azione_stato_",i)),
       descrizione=campo(paste0("azione_descrizione_",i))))
     x <- list(
+      compilatore_nome=campo("compilatore_nome"),
       responsabile_funzione=campo("responsabile_funzione"),
       responsabile_nome=campo("responsabile_nome"),responsabile_ruolo=campo("responsabile_ruolo"),
       esito=campo("esito"), motivazione=campo("motivazione"),
@@ -177,7 +178,7 @@ server <- function(input, output, session) {
     tryCatch({
       valida_modulo(dati)
       attesa <- if(is.null(precedente())) 0L else as.integer(precedente()$revisione[[1]])
-      risultato <- salva_verifica(con,selezionata(),utente()$account,utente()$coupon,attesa,dati)
+      risultato <- salva_verifica(con,selezionata(),dati$compilatore_nome,utente()$coupon,attesa,dati)
       precedente(ultima_verifica(con,as.character(selezionata()$alert_id[[1]])))
       carica_lista()
       shiny::showModal(shiny::modalDialog(
