@@ -1,0 +1,8 @@
+suppressPackageStartupMessages({library(shiny);library(DT);library(DBI);library(RPostgres);library(jsonlite);library(sodium)})
+source("00_Data/cataloghi.R",local=TRUE)
+source("01_Code/02_Regole.R",local=TRUE)
+source("01_Code/01_Database.R",local=TRUE)
+source("01_Code/03_Accesso.R",local=TRUE)
+source("01_Code/04_UI.R",local=TRUE)
+source("01_Code/05_Server.R",local=TRUE)
+shinyApp(ui=interfaccia,server=server)
