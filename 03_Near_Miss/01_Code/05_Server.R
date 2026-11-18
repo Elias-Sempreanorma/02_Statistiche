@@ -249,9 +249,13 @@ server <- function(input, output, session) {
     if(is.null(v) || !length(v)) "" else v
   }
   estrai <- function() {
+    selezioni <- function(nome) {
+      x <- input[[nome]]
+      if(is.null(x) || !length(x)) character() else as.character(x)
+    }
     gruppi <- c("pericoli_meccanici","pericoli_elettrici","pericoli_termici",
                 "pericoli_sostanze","pericoli_altri")
-    pericoli_scelti <- unique(unlist(lapply(gruppi,function(k)campo(k)),
+    pericoli_scelti <- unique(unlist(lapply(gruppi,selezioni),
       use.names=FALSE))
     n <- if(identical(campo("misure"),"YES") && identical(campo("esito"),"4"))
       numero_azioni() else 0L
@@ -265,11 +269,11 @@ server <- function(input, output, session) {
       responsabile_nome=campo("responsabile_nome"),
       responsabile_ruolo=campo("responsabile_ruolo"),
       esito=campo("esito"),motivazione=campo("motivazione"),
-      indagine=campo("indagine"),criticita=as.character(campo("criticita")),
+      indagine=campo("indagine"),criticita=selezioni("criticita"),
       criticita_altro=campo("criticita_altro"),
       pericoli=as.character(pericoli_scelti),pericolo_altro=campo("pericolo_altro"),
-      fonti=as.character(campo("fonti")),fonti_nota=campo("fonti_nota"),
-      evidenze=as.character(campo("evidenze")),riferimento=campo("riferimento"),
+      fonti=selezioni("fonti"),fonti_nota=campo("fonti_nota"),
+      evidenze=selezioni("evidenze"),riferimento=campo("riferimento"),
       azione_immediata=campo("azione_immediata"),
       episodio=campo("episodio"),danno=campo("danno"),potenziale=campo("potenziale"),
       chiarimenti=campo("chiarimenti"),misure=campo("misure"),azioni=azioni,
